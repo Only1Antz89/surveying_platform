@@ -4,7 +4,7 @@ import type { Client, Job, Member, Property, Tenant } from "./demo-data";
 import { clients as demoClients, jobs as demoJobs, members as demoMembers, properties as demoProperties, tenants as demoTenants } from "./demo-data";
 import { isClerkConfigured, requireFirmAccess } from "./access";
 
-const connected = () => Boolean(isClerkConfigured() && process.env.DATABASE_URL);
+const connected = () => Boolean(isClerkConfigured() && (process.env.DATABASE_APP_URL ?? process.env.DATABASE_URL));
 
 export async function loadClients(slug: string): Promise<Client[]> {
   if (!connected()) return demoClients;
