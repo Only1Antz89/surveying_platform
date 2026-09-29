@@ -7,6 +7,11 @@ const clerkProxy = clerkMiddleware(async (auth, request) => {
 });
 
 export default function proxy(request: NextRequest, event: NextFetchEvent) {
+  if (request.nextUrl.pathname.startsWith("/app/north-star-surveying")) {
+    const destination = request.nextUrl.clone();
+    destination.pathname = request.nextUrl.pathname.replace("/app/north-star-surveying", "/app/clifton-surveyors");
+    return NextResponse.redirect(destination);
+  }
   if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || !process.env.CLERK_SECRET_KEY) return NextResponse.next();
   return clerkProxy(request, event);
 }
