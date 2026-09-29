@@ -1,5 +1,5 @@
 import { and, asc, count, desc, eq, gt, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
-import { auditEvents, createDatabase, clients, invitations, jobs, onboardingSteps, organisationMemberships, organisations, properties, subscriptions, users } from "@fieldnote/db";
+import { auditEvents, createDatabase, clients, invitations, jobs, onboardingSteps, organisationBranding, organisationMemberships, organisations, properties, serviceDefinitions, subscriptions, users } from "@fieldnote/db";
 import type { Client, Job, Member, Property, Tenant } from "./demo-data";
 import { activities as demoActivities, clients as demoClients, jobs as demoJobs, members as demoMembers, properties as demoProperties, tenants as demoTenants } from "./demo-data";
 import { isClerkConfigured, requireFirmAccess } from "./access";
@@ -21,6 +21,25 @@ export type JobFormOptions = {
   clients: { id: string; name: string }[];
   properties: { id: string; clientId: string; label: string }[];
   surveyors: { id: string; name: string }[];
+};
+export type OrganisationSettings = {
+  name: string;
+  region: string;
+  tradingName: string;
+  supportEmail: string;
+  accentColour: string;
+  services: { id: string; name: string; defaultFee: string }[];
+};
+export type BillingSummary = {
+  configured: boolean;
+  planKey: string;
+  status: "incomplete" | "trialing" | "active" | "past_due" | "unpaid" | "canceled";
+  seats: number;
+  activeMembers: number;
+  trialEndsAt: string | null;
+  currentPeriodEndsAt: string | null;
+  graceEndsAt: string | null;
+  cancelAtPeriodEnd: boolean;
 };
 
 const formatTarget = (value: string | null) => value
@@ -198,6 +217,55 @@ export async function loadJobFormOptions(slug: string): Promise<JobFormOptions> 
       clients: clientRows,
       properties: propertyRows.map((property) => ({ id: property.id, clientId: property.clientId, label: `${property.line1}, ${property.city} · ${property.postcode}` })),
       surveyors: surveyorRows.filter((member) => member.role === "owner" || member.role === "administrator" || member.role === "surveyor").map((member) => ({ id: member.id, name: [member.firstName, member.lastName].filter(Boolean).join(" ") || member.email })),
+    };
+  });
+}
+
+export async function loadOrganisationSettings(slug: string): Promise<OrganisationSettings> {
+  if (!connected()) return {
+    name: "North Star Surveying",
+    region: "South West England",
+    tradingName: "North Star Surveying",
+    supportEmail: "hello@northstarsurveying.co.uk",
+    accentColour: "#2563eb",
+    services: [{ id: "service-1", name: "Level 2 Home Survey", defaultFee: "895.00" }, { id: "service-2", name: "Level 3 Building Survey", defaultFee: "1295.00" }],
+  };
+  const context = await requireFirmAccess(slug);
+  const db = createDatabase();
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
+    const [organisation] = await tx.select({ name: organisations.name, region: organisations.region }).from(organisations).where(eq(organisations.id, context.organisationId)).limit(1);
+    const [branding] = await tx.select().from(organisationBranding).where(eq(organisationBranding.organisationId, context.organisationId)).limit(1);
+    const services = await tx.select({ id: serviceDefinitions.id, name: serviceDefinitions.name, defaultFee: serviceDefinitions.defaultFee }).from(serviceDefinitions).where(and(eq(serviceDefinitions.organisationId, context.organisationId), eq(serviceDefinitions.active, true))).orderBy(asc(serviceDefinitions.name));
+    return {
+      name: organisation.name,
+      region: organisation.region,
+      tradingName: branding?.tradingName ?? organisation.name,
+      supportEmail: branding?.supportEmail ?? "",
+      accentColour: branding?.accentColour ?? "#2563eb",
+      services: services.map((service) => ({ id: service.id, name: service.name, defaultFee: service.defaultFee ?? "" })),
+    };
+  });
+}
+
+export async function loadBillingSummary(slug: string): Promise<BillingSummary> {
+  if (!connected()) return { configured: true, planKey: "practice", status: "trialing", seats: 5, activeMembers: 4, trialEndsAt: "2026-10-10T00:00:00.000Z", currentPeriodEndsAt: null, graceEndsAt: null, cancelAtPeriodEnd: false };
+  const context = await requireFirmAccess(slug);
+  const db = createDatabase();
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
+    const [subscription] = await tx.select().from(subscriptions).where(eq(subscriptions.organisationId, context.organisationId)).limit(1);
+    const [members] = await tx.select({ count: count(organisationMemberships.id) }).from(organisationMemberships).where(and(eq(organisationMemberships.organisationId, context.organisationId), eq(organisationMemberships.active, true)));
+    return {
+      configured: Boolean(subscription),
+      planKey: subscription?.planKey ?? "practice",
+      status: subscription?.status ?? "incomplete",
+      seats: subscription?.seats ?? 1,
+      activeMembers: members?.count ?? 0,
+      trialEndsAt: subscription?.trialEndsAt?.toISOString() ?? null,
+      currentPeriodEndsAt: subscription?.currentPeriodEndsAt?.toISOString() ?? null,
+      graceEndsAt: subscription?.graceEndsAt?.toISOString() ?? null,
+      cancelAtPeriodEnd: subscription?.cancelAtPeriodEnd ?? false,
     };
   });
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canManageTeam, canMutateOperations, canTransitionJob, resolveAccess } from "./index";
+import { canManageBilling, canManageTeam, canMutateOperations, canTransitionJob, resolveAccess } from "./index";
 
 describe("job transitions", () => {
   it("allows the normal instructed to scheduled transition", () => {
@@ -45,5 +45,14 @@ describe("firm permissions", () => {
     expect(canManageTeam("coordinator")).toBe(false);
     expect(canManageTeam("finance")).toBe(false);
     expect(canManageTeam("read_only")).toBe(false);
+  });
+
+  it("allows owners, administrators and finance to manage billing", () => {
+    expect(canManageBilling("owner")).toBe(true);
+    expect(canManageBilling("administrator")).toBe(true);
+    expect(canManageBilling("finance")).toBe(true);
+    expect(canManageBilling("surveyor")).toBe(false);
+    expect(canManageBilling("coordinator")).toBe(false);
+    expect(canManageBilling("read_only")).toBe(false);
   });
 });
