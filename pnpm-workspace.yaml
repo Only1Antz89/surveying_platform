@@ -1,0 +1,15 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+allowBuilds:
+  esbuild: true
+  unrs-resolver: true
+
+minimumReleaseAge: 1440
+minimumReleaseAgeExclude:
+  - next
+  - react
+  - react-dom
+  - "@next/*"
+  - eslint-config-next

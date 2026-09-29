@@ -1,0 +1,13 @@
+import { ArrowLeft, ShieldCheck } from "lucide-react";
+import Link from "next/link";
+import { StatusDot } from "@fieldnote/ui";
+import { PageHeader } from "@/components/page-header";
+import { TenantControls } from "@/components/tenant-controls";
+import { activities, members, tenants } from "@/lib/demo-data";
+
+export const metadata = { title: "Customer account" };
+export default async function TenantPage({ params }: { params: Promise<{ tenantId: string }> }) {
+  const { tenantId } = await params;
+  const tenant = tenants.find((item) => item.id === tenantId) ?? tenants[0];
+  return <main className="page"><Link className="panel-link" href="/platform/tenants"><ArrowLeft size={13} style={{ verticalAlign: "middle", marginRight: 6 }} />All customer accounts</Link><div style={{ height: 18 }} /><PageHeader eyebrow={tenant.id} title={tenant.name} description={`${tenant.owner} · ${tenant.plan} plan · ${tenant.seats} seats`} actions={<StatusDot tone={tenant.status === "active" ? "green" : "amber"}>{tenant.status}</StatusDot>} /><div className="dashboard-grid"><div><section className="panel"><div className="panel-header"><div><h2>Account controls</h2><p>High-impact actions require a reason and are permanently audited.</p></div><ShieldCheck size={17} color="#2563eb" /></div><div className="panel-body"><TenantControls /></div></section><section className="panel"><div className="panel-header"><div><h2>Members</h2><p>Mirrored from the customer&apos;s Clerk organisation</p></div></div><div className="data-table-wrap"><table className="data-table"><thead><tr><th>Name</th><th>Role</th><th>Status</th></tr></thead><tbody>{members.slice(0, 4).map((member) => <tr key={member.id}><td data-label="Name"><strong>{member.name}</strong><span className="cell-sub">{member.email}</span></td><td data-label="Role">{member.role}</td><td data-label="Status"><StatusDot tone="green">{member.status}</StatusDot></td></tr>)}</tbody></table></div></section></div><aside><section className="panel"><div className="panel-header"><h2>Subscription</h2></div><dl className="detail-grid"><div className="detail"><dt>Status</dt><dd>{tenant.subscription}</dd></div><div className="detail"><dt>Trial ends</dt><dd>{tenant.trialEnds}</dd></div><div className="detail"><dt>Seats</dt><dd>{tenant.seats}</dd></div><div className="detail"><dt>Usage</dt><dd>{tenant.usage}%</dd></div></dl></section><section className="panel"><div className="panel-header"><h2>Recent audit events</h2></div><div className="panel-body"><ul className="activity-list">{activities.map((activity) => <li className="activity-item" key={activity.text}>{activity.text}<time>{activity.time}</time></li>)}</ul></div></section></aside></div></main>;
+}
