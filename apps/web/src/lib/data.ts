@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, isNotNull, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
 import { auditEvents, createDatabase, clients, jobs, onboardingSteps, organisationMemberships, organisations, properties, subscriptions, users } from "@fieldnote/db";
 import type { Client, Job, Member, Property, Tenant } from "./demo-data";
 import { activities as demoActivities, clients as demoClients, jobs as demoJobs, members as demoMembers, properties as demoProperties, tenants as demoTenants } from "./demo-data";
@@ -16,6 +16,11 @@ export type OverviewData = {
   workQueue: Job[];
   inspectionsToday: Job[];
   recentActivity: OverviewActivity[];
+};
+export type JobFormOptions = {
+  clients: { id: string; name: string }[];
+  properties: { id: string; clientId: string; label: string }[];
+  surveyors: { id: string; name: string }[];
 };
 
 const formatTarget = (value: string | null) => value
@@ -40,7 +45,7 @@ export async function loadOverviewForOrganisation(organisationId: string): Promi
       activeJobs: count(jobs.id),
       inspectionsThisWeek: sql<number>`count(*) filter (where ${jobs.stage} = 'scheduled' and ${jobs.targetDate} between ${weekStart} and ${weekEnd})`.mapWith(Number),
       feesInProgress: sql<number>`coalesce(sum(${jobs.fee}::numeric), 0)`.mapWith(Number),
-    }).from(jobs).where(and(eq(jobs.organisationId, organisationId), ne(jobs.stage, "archived")));
+    }).from(jobs).where(and(eq(jobs.organisationId, organisationId), notInArray(jobs.stage, ["paid", "archived"])));
     const [clientSummary] = await tx.select({ openClients: count(clients.id) })
       .from(clients)
       .where(and(eq(clients.organisationId, organisationId), isNull(clients.archivedAt)));
@@ -58,7 +63,7 @@ export async function loadOverviewForOrganisation(organisationId: string): Promi
       .innerJoin(clients, eq(jobs.clientId, clients.id))
       .innerJoin(properties, eq(jobs.propertyId, properties.id))
       .leftJoin(users, eq(jobs.assignedSurveyorId, users.id))
-      .where(and(eq(jobs.organisationId, organisationId), ne(jobs.stage, "archived")))
+      .where(and(eq(jobs.organisationId, organisationId), notInArray(jobs.stage, ["paid", "archived"])))
       .orderBy(desc(jobs.updatedAt))
       .limit(8);
     const activityRows = await tx.select({
@@ -157,6 +162,27 @@ export async function loadMembers(slug: string): Promise<Member[]> {
     return tx.select({ membership: organisationMemberships, user: users }).from(organisationMemberships).innerJoin(users, eq(organisationMemberships.userId, users.id)).where(eq(organisationMemberships.organisationId, context.organisationId)).orderBy(asc(users.firstName));
   });
   return rows.map(({ membership, user }) => { const name = [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email; return { id: membership.id, name, email: user.email, initials: name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(), role: membership.role, status: membership.active ? "Active" : "Invited", workload: "Workload available after job assignment" }; });
+}
+
+export async function loadJobFormOptions(slug: string): Promise<JobFormOptions> {
+  if (!connected()) return {
+    clients: demoClients.map((client) => ({ id: client.id, name: client.name })),
+    properties: demoProperties.map((property) => ({ id: property.id, clientId: demoClients.find((client) => client.name === property.client)?.id ?? demoClients[0].id, label: `${property.address}, ${property.town}` })),
+    surveyors: demoMembers.filter((member) => member.role === "owner" || member.role === "administrator" || member.role === "surveyor").map((member) => ({ id: member.id, name: member.name })),
+  };
+  const context = await requireFirmAccess(slug);
+  const db = createDatabase();
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
+    const clientRows = await tx.select({ id: clients.id, name: clients.displayName }).from(clients).where(and(eq(clients.organisationId, context.organisationId), isNull(clients.archivedAt))).orderBy(asc(clients.displayName));
+    const propertyRows = await tx.select({ id: properties.id, clientId: properties.clientId, line1: properties.line1, city: properties.city, postcode: properties.postcode }).from(properties).where(and(eq(properties.organisationId, context.organisationId), isNull(properties.archivedAt))).orderBy(asc(properties.line1));
+    const surveyorRows = await tx.select({ id: users.id, firstName: users.firstName, lastName: users.lastName, email: users.email, role: organisationMemberships.role }).from(organisationMemberships).innerJoin(users, eq(organisationMemberships.userId, users.id)).where(and(eq(organisationMemberships.organisationId, context.organisationId), eq(organisationMemberships.active, true))).orderBy(asc(users.firstName));
+    return {
+      clients: clientRows,
+      properties: propertyRows.map((property) => ({ id: property.id, clientId: property.clientId, label: `${property.line1}, ${property.city} · ${property.postcode}` })),
+      surveyors: surveyorRows.filter((member) => member.role === "owner" || member.role === "administrator" || member.role === "surveyor").map((member) => ({ id: member.id, name: [member.firstName, member.lastName].filter(Boolean).join(" ") || member.email })),
+    };
+  });
 }
 
 export async function loadTenants(): Promise<Tenant[]> {
