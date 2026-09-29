@@ -64,6 +64,10 @@ export function canMutateOperations(role: OrganisationRole) {
   return role === "owner" || role === "administrator" || role === "surveyor" || role === "coordinator";
 }
 
+export function canManageTeam(role: OrganisationRole) {
+  return role === "owner" || role === "administrator";
+}
+
 const stageTransitions: Record<JobStage, readonly JobStage[]> = {
   enquiry: ["quoted", "archived"],
   quoted: ["instructed", "archived"],

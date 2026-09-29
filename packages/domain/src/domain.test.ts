@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canMutateOperations, canTransitionJob, resolveAccess } from "./index";
+import { canManageTeam, canMutateOperations, canTransitionJob, resolveAccess } from "./index";
 
 describe("job transitions", () => {
   it("allows the normal instructed to scheduled transition", () => {
@@ -36,5 +36,14 @@ describe("firm permissions", () => {
   it("keeps finance and read-only roles from mutating operations", () => {
     expect(canMutateOperations("finance")).toBe(false);
     expect(canMutateOperations("read_only")).toBe(false);
+  });
+
+  it("limits team management to owners and administrators", () => {
+    expect(canManageTeam("owner")).toBe(true);
+    expect(canManageTeam("administrator")).toBe(true);
+    expect(canManageTeam("surveyor")).toBe(false);
+    expect(canManageTeam("coordinator")).toBe(false);
+    expect(canManageTeam("finance")).toBe(false);
+    expect(canManageTeam("read_only")).toBe(false);
   });
 });

@@ -1,12 +1,21 @@
 import { createHash } from "node:crypto";
 import { Webhook } from "svix";
 import { z } from "zod";
-import { createDatabase, organisations, platformStaff, users, webhookEvents } from "@fieldnote/db";
-import { eq } from "drizzle-orm";
+import { organisationRoles, type OrganisationRole } from "@fieldnote/domain";
+import { auditEvents, createDatabase, invitations, organisationMemberships, organisations, platformStaff, users, webhookEvents } from "@fieldnote/db";
+import { and, eq } from "drizzle-orm";
 
 export const runtime = "nodejs";
 
 const eventSchema = z.object({ type: z.string(), data: z.record(z.string(), z.unknown()), object: z.string().optional() });
+const organisationRoleSchema = z.enum(organisationRoles);
+
+function membershipRole(clerkRole: string, metadata: Record<string, unknown>, current?: OrganisationRole): OrganisationRole {
+  const configured = organisationRoleSchema.safeParse(metadata.fieldnoteRole);
+  if (configured.success) return configured.data;
+  if (current === "owner") return current;
+  return clerkRole === "org:admin" ? "administrator" : "surveyor";
+}
 
 function isBootstrapSuperAdmin(email: string) {
   const configured = process.env.PLATFORM_SUPER_ADMIN_EMAILS ?? "";
@@ -50,6 +59,33 @@ export async function POST(request: Request) {
       if (verifiedEmail && isBootstrapSuperAdmin(verifiedEmail.email_address)) {
         await db.insert(platformStaff).values({ clerkUserId: data.id, role: "super_admin", active: true }).onConflictDoUpdate({ target: platformStaff.clerkUserId, set: { role: "super_admin", active: true, updatedAt: new Date() } });
       }
+    }
+    if (parsed.data.type === "organizationMembership.created" || parsed.data.type === "organizationMembership.updated" || parsed.data.type === "organizationMembership.deleted") {
+      const data = z.object({
+        role: z.string(),
+        public_metadata: z.record(z.string(), z.unknown()).default({}),
+        organization: z.object({ id: z.string() }),
+        public_user_data: z.object({ user_id: z.string(), identifier: z.string(), first_name: z.string().nullable().optional(), last_name: z.string().nullable().optional() }),
+      }).parse(parsed.data.data);
+      const [organisation] = await db.select({ id: organisations.id }).from(organisations).where(eq(organisations.clerkOrganisationId, data.organization.id)).limit(1);
+      if (organisation) {
+        const [memberUser] = await db.insert(users).values({ clerkUserId: data.public_user_data.user_id, email: data.public_user_data.identifier, firstName: data.public_user_data.first_name, lastName: data.public_user_data.last_name }).onConflictDoUpdate({ target: users.clerkUserId, set: { email: data.public_user_data.identifier, firstName: data.public_user_data.first_name, lastName: data.public_user_data.last_name, updatedAt: new Date() } }).returning({ id: users.id });
+        const [current] = await db.select({ id: organisationMemberships.id, role: organisationMemberships.role }).from(organisationMemberships).where(and(eq(organisationMemberships.organisationId, organisation.id), eq(organisationMemberships.userId, memberUser.id))).limit(1);
+        const role = membershipRole(data.role, data.public_metadata, current?.role);
+        const active = parsed.data.type !== "organizationMembership.deleted";
+        await db.insert(organisationMemberships).values({ organisationId: organisation.id, userId: memberUser.id, role, active }).onConflictDoUpdate({ target: [organisationMemberships.organisationId, organisationMemberships.userId], set: { role, active, updatedAt: new Date() } });
+        await db.insert(auditEvents).values({ organisationId: organisation.id, action: active ? "membership.synchronised" : "membership.deactivated", resourceType: "membership", resourceId: current?.id, metadata: { clerkUserId: data.public_user_data.user_id, role } });
+      }
+    }
+    if (parsed.data.type === "organizationInvitation.accepted") {
+      const data = z.object({ id: z.string(), organization_id: z.string(), user_id: z.string() }).parse(parsed.data.data);
+      const [organisation] = await db.select({ id: organisations.id }).from(organisations).where(eq(organisations.clerkOrganisationId, data.organization_id)).limit(1);
+      if (organisation) await db.update(invitations).set({ acceptedAt: new Date(), updatedAt: new Date() }).where(and(eq(invitations.organisationId, organisation.id), eq(invitations.clerkInvitationId, data.id)));
+    }
+    if (parsed.data.type === "organizationInvitation.revoked") {
+      const data = z.object({ id: z.string(), organization_id: z.string() }).parse(parsed.data.data);
+      const [organisation] = await db.select({ id: organisations.id }).from(organisations).where(eq(organisations.clerkOrganisationId, data.organization_id)).limit(1);
+      if (organisation) await db.update(invitations).set({ revokedAt: new Date(), updatedAt: new Date() }).where(and(eq(invitations.organisationId, organisation.id), eq(invitations.clerkInvitationId, data.id)));
     }
     await db.update(webhookEvents).set({ processedAt: new Date() }).where(eq(webhookEvents.id, claim.id));
     return Response.json({ received: true });

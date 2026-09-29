@@ -1,5 +1,5 @@
-import { and, asc, count, desc, eq, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
-import { auditEvents, createDatabase, clients, jobs, onboardingSteps, organisationMemberships, organisations, properties, subscriptions, users } from "@fieldnote/db";
+import { and, asc, count, desc, eq, gt, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
+import { auditEvents, createDatabase, clients, invitations, jobs, onboardingSteps, organisationMemberships, organisations, properties, subscriptions, users } from "@fieldnote/db";
 import type { Client, Job, Member, Property, Tenant } from "./demo-data";
 import { activities as demoActivities, clients as demoClients, jobs as demoJobs, members as demoMembers, properties as demoProperties, tenants as demoTenants } from "./demo-data";
 import { isClerkConfigured, requireFirmAccess } from "./access";
@@ -157,11 +157,28 @@ export async function loadMembers(slug: string): Promise<Member[]> {
   if (!connected()) return demoMembers;
   const context = await requireFirmAccess(slug);
   const db = createDatabase();
-  const rows = await db.transaction(async (tx) => {
+  const data = await db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
-    return tx.select({ membership: organisationMemberships, user: users }).from(organisationMemberships).innerJoin(users, eq(organisationMemberships.userId, users.id)).where(eq(organisationMemberships.organisationId, context.organisationId)).orderBy(asc(users.firstName));
+    const memberRows = await tx.select({ membership: organisationMemberships, user: users }).from(organisationMemberships).innerJoin(users, eq(organisationMemberships.userId, users.id)).where(and(eq(organisationMemberships.organisationId, context.organisationId), eq(organisationMemberships.active, true))).orderBy(asc(users.firstName));
+    const assignedJobs = await tx.select({ assignedSurveyorId: jobs.assignedSurveyorId }).from(jobs).where(and(eq(jobs.organisationId, context.organisationId), notInArray(jobs.stage, ["paid", "archived"])));
+    const pendingInvitations = await tx.select().from(invitations).where(and(eq(invitations.organisationId, context.organisationId), isNull(invitations.acceptedAt), isNull(invitations.revokedAt), gt(invitations.expiresAt, new Date()))).orderBy(desc(invitations.createdAt));
+    return { memberRows, assignedJobs, pendingInvitations };
   });
-  return rows.map(({ membership, user }) => { const name = [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email; return { id: membership.id, name, email: user.email, initials: name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(), role: membership.role, status: membership.active ? "Active" : "Invited", workload: "Workload available after job assignment" }; });
+  const activeMembers: Member[] = data.memberRows.map(({ membership, user }) => {
+    const name = [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email;
+    const jobCount = data.assignedJobs.filter((job) => job.assignedSurveyorId === user.id).length;
+    return { id: membership.id, name, email: user.email, initials: name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(), role: membership.role, status: "Active", workload: `${jobCount} active ${jobCount === 1 ? "job" : "jobs"}` };
+  });
+  const invitedMembers: Member[] = data.pendingInvitations.map((invitation) => ({
+    id: invitation.id,
+    name: invitation.email,
+    email: invitation.email,
+    initials: invitation.email.slice(0, 2).toUpperCase(),
+    role: invitation.role,
+    status: "Invited",
+    workload: `Expires ${invitation.expiresAt.toLocaleDateString("en-GB")}`,
+  }));
+  return [...activeMembers, ...invitedMembers];
 }
 
 export async function loadJobFormOptions(slug: string): Promise<JobFormOptions> {
