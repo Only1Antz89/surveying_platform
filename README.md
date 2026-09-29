@@ -2,11 +2,11 @@
 
 FIELDNOTE is a multi-tenant operations platform for UK surveying practices. This repository contains the new SaaS product; it does not modify the existing Clifton Surveyors application.
 
-> **Temporary identity and hostname:** `FIELDNOTE` is a working name only, and
-> `fieldnote.cliftonsurveyors.com` is a temporary deployment hostname. Neither
-> may be treated as the permanent product identity, embedded in tenant data, or
-> used as an immutable integration identifier. Permanent branding and domain
-> selection must remain a configuration change.
+> **Temporary identity:** `FIELDNOTE` is a working name only and must not be
+> treated as the permanent product identity, embedded in tenant data, or used as
+> an immutable integration identifier. Client demos currently use Vercel's
+> project hostname; no Clifton Surveyors custom subdomain is assigned. Permanent
+> branding and domain selection must remain a configuration change.
 
 ## Workspace
 
