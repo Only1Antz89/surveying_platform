@@ -13,8 +13,9 @@ export async function requireFirmAccess(slug: string) {
   if (!session.orgId) redirect("/start");
   if (!isDatabaseConfigured()) throw new Error("DATABASE_APP_URL or DATABASE_URL is required when Clerk is enabled");
   const db = createDatabase();
-  const [organisation] = await db.select({ id: organisations.id, clerkOrganisationId: organisations.clerkOrganisationId }).from(organisations).where(eq(organisations.slug, slug)).limit(1);
-  if (!organisation || organisation.clerkOrganisationId !== session.orgId) notFound();
+  const [organisation] = await db.select({ id: organisations.id, clerkOrganisationId: organisations.clerkOrganisationId, slug: organisations.slug }).from(organisations).where(eq(organisations.clerkOrganisationId, session.orgId)).limit(1);
+  if (!organisation) notFound();
+  if (organisation.slug !== slug) redirect(`/app/${organisation.slug}/overview`);
   return { userId: session.userId, clerkOrganisationId: session.orgId, organisationId: organisation.id };
 }
 
