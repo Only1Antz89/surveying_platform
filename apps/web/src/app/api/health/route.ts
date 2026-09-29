@@ -1,5 +1,18 @@
+import { createDatabase } from "@fieldnote/db";
+import { sql } from "drizzle-orm";
+
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  return Response.json({ status: "ok", service: "fieldnote-web", mode: process.env.DATABASE_APP_URL || process.env.DATABASE_URL ? "connected" : "demo", timestamp: new Date().toISOString() });
+  const timestamp = new Date().toISOString();
+  if (!process.env.DATABASE_APP_URL && !process.env.DATABASE_URL) {
+    return Response.json({ status: "ok", service: "fieldnote-web", mode: "demo", timestamp });
+  }
+
+  try {
+    await createDatabase().execute(sql`select 1`);
+    return Response.json({ status: "ok", service: "fieldnote-web", mode: "connected", timestamp });
+  } catch {
+    return Response.json({ status: "degraded", service: "fieldnote-web", mode: "database_unavailable", timestamp }, { status: 503 });
+  }
 }
