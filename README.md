@@ -26,3 +26,19 @@ pnpm check
 ```
 
 Database migrations are in `packages/db/migrations`. Production deployments must run migrations with the application database role and admin database role separated.
+
+## Platform administration
+
+Platform access is independent from a firm's Clerk organisation membership. Set
+`PLATFORM_SUPER_ADMIN_EMAILS` to the exact verified email addresses that may be
+bootstrapped as platform super administrators. When Clerk sends a `user.created`
+or `user.updated` webhook for a matching address, FIELDNOTE idempotently creates
+or reactivates the `platform_staff` record. Remove the bootstrap variable after
+the initial administrator has been created; ongoing staff changes should be made
+through the audited platform controls.
+
+Clifton's legacy passwords must not be copied into deployment variables or the
+database. Migrate Anthony and Stephen through Clerk invitations or activation
+links so Clerk owns password and MFA enrolment. Anthony should be both the
+Clifton organisation owner and the initial FIELDNOTE `super_admin`; Stephen is a
+Clifton organisation member only unless platform access is granted separately.
