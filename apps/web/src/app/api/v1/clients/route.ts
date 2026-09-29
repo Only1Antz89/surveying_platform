@@ -2,7 +2,8 @@ import { z } from "zod";
 import { apiContext } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
 import { clients as demoClients } from "@/lib/demo-data";
-import { clients, createDatabase } from "@fieldnote/db";
+import { auditEvents, clients, createDatabase } from "@fieldnote/db";
+import { canMutateOperations } from "@fieldnote/domain";
 import { asc, eq, sql } from "drizzle-orm";
 
 const createClient = z.object({ kind: z.enum(["individual", "company"]), displayName: z.string().trim().min(2).max(160), email: z.email().optional(), phone: z.string().trim().max(40).optional() });
@@ -24,11 +25,20 @@ export async function POST(request: Request) {
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
   const parsed = await parseBody(request, createClient);
   if (!parsed.success) return problem(400, "invalid_request", "The client details are invalid.", parsed.error.flatten());
+  if (!canMutateOperations(context.role)) return problem(403, "forbidden", "Your role cannot create client records.");
   if (context.demo) return ok({ id: crypto.randomUUID(), ...parsed.data }, { demo: true, persisted: false });
   const db = createDatabase();
   const [created] = await db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
-    return tx.insert(clients).values({ organisationId: context.organisationId, ...parsed.data }).returning();
+    const result = await tx.insert(clients).values({ organisationId: context.organisationId, ...parsed.data }).returning();
+    await tx.insert(auditEvents).values({
+      organisationId: context.organisationId,
+      actorUserId: context.internalUserId,
+      action: "client.created",
+      resourceType: "client",
+      resourceId: result[0].id,
+    });
+    return result;
   });
   return ok(created);
 }

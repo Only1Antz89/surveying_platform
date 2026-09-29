@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canTransitionJob, resolveAccess } from "./index";
+import { canMutateOperations, canTransitionJob, resolveAccess } from "./index";
 
 describe("job transitions", () => {
   it("allows the normal instructed to scheduled transition", () => {
@@ -22,5 +22,19 @@ describe("access policy", () => {
 
   it("reduces expired past-due accounts to read only", () => {
     expect(resolveAccess("active", "past_due", new Date("2026-01-01"), new Date("2026-01-08"))).toBe("read_only");
+  });
+});
+
+describe("firm permissions", () => {
+  it("allows operational roles to create and update records", () => {
+    expect(canMutateOperations("owner")).toBe(true);
+    expect(canMutateOperations("administrator")).toBe(true);
+    expect(canMutateOperations("surveyor")).toBe(true);
+    expect(canMutateOperations("coordinator")).toBe(true);
+  });
+
+  it("keeps finance and read-only roles from mutating operations", () => {
+    expect(canMutateOperations("finance")).toBe(false);
+    expect(canMutateOperations("read_only")).toBe(false);
   });
 });

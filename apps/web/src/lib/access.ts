@@ -1,23 +1,74 @@
 import { auth } from "@clerk/nextjs/server";
-import { createDatabase, organisations, platformStaff } from "@fieldnote/db";
-import { and, eq } from "drizzle-orm";
+import { createDatabase, organisationMemberships, organisations, platformStaff, subscriptions, users } from "@fieldnote/db";
+import { and, eq, sql } from "drizzle-orm";
 import { notFound, redirect } from "next/navigation";
+import { cache } from "react";
 
 export const isClerkConfigured = () => Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY);
 const isDatabaseConfigured = () => Boolean(process.env.DATABASE_APP_URL ?? process.env.DATABASE_URL);
 
-export async function requireFirmAccess(slug: string) {
-  if (!isClerkConfigured()) return { userId: "demo_user", clerkOrganisationId: "demo_org", organisationId: "00000000-0000-0000-0000-000000000001" };
+async function requireFirmAccessUncached(slug: string) {
+  if (!isClerkConfigured()) return {
+    userId: "demo_user",
+    clerkOrganisationId: "demo_org",
+    organisationId: "00000000-0000-0000-0000-000000000001",
+    organisationName: "North Star Surveying",
+    organisationRegion: "Bristol, United Kingdom",
+    userName: "Maya Patel",
+    userEmail: "maya@northstarsurveying.co.uk",
+    userRole: "owner" as const,
+    trialEndsAt: new Date("2026-10-10T00:00:00.000Z"),
+  };
   const session = await auth();
   if (!session.userId) redirect("/sign-in");
   if (!session.orgId) redirect("/start");
   if (!isDatabaseConfigured()) throw new Error("DATABASE_APP_URL or DATABASE_URL is required when Clerk is enabled");
   const db = createDatabase();
-  const [organisation] = await db.select({ id: organisations.id, clerkOrganisationId: organisations.clerkOrganisationId, slug: organisations.slug }).from(organisations).where(eq(organisations.clerkOrganisationId, session.orgId)).limit(1);
+  const [organisation] = await db.select({
+    id: organisations.id,
+    clerkOrganisationId: organisations.clerkOrganisationId,
+    slug: organisations.slug,
+    name: organisations.name,
+    region: organisations.region,
+  }).from(organisations).where(eq(organisations.clerkOrganisationId, session.orgId)).limit(1);
   if (!organisation) notFound();
   if (organisation.slug !== slug) redirect(`/app/${organisation.slug}/overview`);
-  return { userId: session.userId, clerkOrganisationId: session.orgId, organisationId: organisation.id };
+  const details = await db.transaction(async (tx) => {
+    await tx.execute(sql`select set_config('app.current_organisation_id', ${organisation.id}, true)`);
+    const [member] = await tx.select({
+      email: users.email,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      role: organisationMemberships.role,
+    }).from(organisationMemberships)
+      .innerJoin(users, eq(organisationMemberships.userId, users.id))
+      .where(and(
+        eq(organisationMemberships.organisationId, organisation.id),
+        eq(organisationMemberships.active, true),
+        eq(users.clerkUserId, session.userId),
+      )).limit(1);
+    const [subscription] = await tx.select({ trialEndsAt: subscriptions.trialEndsAt })
+      .from(subscriptions)
+      .where(eq(subscriptions.organisationId, organisation.id))
+      .limit(1);
+    return { member, subscription };
+  });
+  if (!details.member) notFound();
+  const userName = [details.member.firstName, details.member.lastName].filter(Boolean).join(" ") || details.member.email;
+  return {
+    userId: session.userId,
+    clerkOrganisationId: session.orgId,
+    organisationId: organisation.id,
+    organisationName: organisation.name,
+    organisationRegion: organisation.region,
+    userName,
+    userEmail: details.member.email,
+    userRole: details.member.role,
+    trialEndsAt: details.subscription?.trialEndsAt ?? null,
+  };
 }
+
+export const requireFirmAccess = cache(requireFirmAccessUncached);
 
 export async function requirePlatformAccess() {
   if (!isClerkConfigured()) return { userId: "demo_platform_user", role: "super_admin" as const };
@@ -32,7 +83,7 @@ export async function requirePlatformAccess() {
 
 export async function apiContext(request: Request) {
   if (!isClerkConfigured()) {
-    return { userId: "demo_user", clerkOrganisationId: "demo_org", organisationId: "00000000-0000-0000-0000-000000000001", demo: true };
+    return { userId: "demo_user", internalUserId: null, clerkOrganisationId: "demo_org", organisationId: "00000000-0000-0000-0000-000000000001", role: "owner" as const, demo: true };
   }
   const session = await auth();
   if (!session.userId || !session.orgId) return null;
@@ -40,6 +91,18 @@ export async function apiContext(request: Request) {
   const db = createDatabase();
   const [organisation] = await db.select({ id: organisations.id }).from(organisations).where(eq(organisations.clerkOrganisationId, session.orgId)).limit(1);
   if (!organisation) return null;
+  const [member] = await db.transaction(async (tx) => {
+    await tx.execute(sql`select set_config('app.current_organisation_id', ${organisation.id}, true)`);
+    return tx.select({ internalUserId: users.id, role: organisationMemberships.role })
+      .from(organisationMemberships)
+      .innerJoin(users, eq(organisationMemberships.userId, users.id))
+      .where(and(
+        eq(organisationMemberships.organisationId, organisation.id),
+        eq(organisationMemberships.active, true),
+        eq(users.clerkUserId, session.userId),
+      )).limit(1);
+  });
+  if (!member) return null;
   void request;
-  return { userId: session.userId, clerkOrganisationId: session.orgId, organisationId: organisation.id, demo: false };
+  return { userId: session.userId, internalUserId: member.internalUserId, clerkOrganisationId: session.orgId, organisationId: organisation.id, role: member.role, demo: false };
 }

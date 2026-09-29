@@ -9,6 +9,7 @@ import {
   CircleDollarSign, ClipboardCheck, FileClock, Headphones, House, Menu, Settings,
   ShieldCheck, SlidersHorizontal, Users, X, type LucideIcon,
 } from "lucide-react";
+import { roleLabels, type OrganisationRole } from "@fieldnote/domain";
 
 type Item = { label: string; href: string; icon: LucideIcon };
 
@@ -33,7 +34,17 @@ const platformItems: Item[] = [
   { label: "Settings", href: "/platform/settings", icon: SlidersHorizontal },
 ];
 
-export function AppShell({ children, mode, slug = "north-star-surveying" }: { children: React.ReactNode; mode: "firm" | "platform"; slug?: string }) {
+type FirmWorkspace = {
+  name: string;
+  region: string;
+  userName: string;
+  userRole: OrganisationRole;
+  trialEnds: string | null;
+};
+
+const initials = (value: string) => value.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+
+export function AppShell({ children, mode, slug = "north-star-surveying", workspace }: { children: React.ReactNode; mode: "firm" | "platform"; slug?: string; workspace?: FirmWorkspace }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const items = mode === "firm" ? firmItems(slug) : platformItems;
@@ -56,8 +67,8 @@ export function AppShell({ children, mode, slug = "north-star-surveying" }: { ch
         </nav>
         <div className="sidebar-footer">
           <div className="profile-mini">
-            <div className="avatar">{mode === "firm" ? "MP" : "FO"}</div>
-            <div><strong>{mode === "firm" ? "Maya Patel" : "Fieldnote Ops"}</strong><span>{mode === "firm" ? "Practice owner" : "Super administrator"}</span></div>
+            <div className="avatar">{mode === "firm" ? initials(workspace?.userName ?? "Practice user") : "FO"}</div>
+            <div><strong>{mode === "firm" ? workspace?.userName ?? "Practice user" : "Fieldnote Ops"}</strong><span>{mode === "firm" ? roleLabels[workspace?.userRole ?? "read_only"] : "Super administrator"}</span></div>
             <ChevronDown size={14} color="#8295aa" />
           </div>
         </div>
@@ -66,11 +77,11 @@ export function AppShell({ children, mode, slug = "north-star-surveying" }: { ch
         <header className="topbar">
           <button className="menu-button" aria-label="Open navigation" onClick={() => setOpen(true)}><Menu size={18} /></button>
           <div className="workspace-switcher">
-            <div className="avatar">{mode === "firm" ? "NS" : "FN"}</div>
-            <div>{mode === "firm" ? "North Star Surveying" : "FIELDNOTE Platform"}<small>{mode === "firm" ? "Bristol, United Kingdom" : "Production operations"}</small></div>
+            <div className="avatar">{mode === "firm" ? initials(workspace?.name ?? "Practice") : "FN"}</div>
+            <div>{mode === "firm" ? workspace?.name ?? "Practice workspace" : "FIELDNOTE Platform"}<small>{mode === "firm" ? workspace?.region ?? "United Kingdom" : "Production operations"}</small></div>
           </div>
           <div className="topbar-actions">
-            {mode === "firm" ? <div className="trial-label"><span>Trial ends</span><b>10 Oct</b></div> : null}
+            {mode === "firm" && workspace?.trialEnds ? <div className="trial-label"><span>Trial ends</span><b>{workspace.trialEnds}</b></div> : null}
             <button className="icon-button" aria-label="Notifications"><Bell size={16} /></button>
           </div>
         </header>

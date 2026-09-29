@@ -60,6 +60,10 @@ export const jobStageLabels: Record<JobStage, string> = {
   archived: "Archived",
 };
 
+export function canMutateOperations(role: OrganisationRole) {
+  return role === "owner" || role === "administrator" || role === "surveyor" || role === "coordinator";
+}
+
 const stageTransitions: Record<JobStage, readonly JobStage[]> = {
   enquiry: ["quoted", "archived"],
   quoted: ["instructed", "archived"],
