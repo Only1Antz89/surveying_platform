@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import Stripe from "stripe";
-import { createDatabase, organisations, subscriptionEvents, subscriptions, webhookEvents } from "@fieldnote/db";
+import { createDatabase, onboardingSteps, organisations, subscriptionEvents, subscriptions, webhookEvents } from "@fieldnote/db";
 import { eq } from "drizzle-orm";
 
 export const runtime = "nodejs";
@@ -59,6 +59,7 @@ async function synchroniseSubscription(
 
   if (status === "trialing" || status === "active") {
     await db.update(organisations).set({ status: "active", suspendedReason: null, updatedAt: new Date() }).where(eq(organisations.id, organisationId));
+    await db.insert(onboardingSteps).values({ organisationId, key: "billing", completedAt: new Date() }).onConflictDoUpdate({ target: [onboardingSteps.organisationId, onboardingSteps.key], set: { completedAt: new Date(), updatedAt: new Date() } });
   }
 }
 

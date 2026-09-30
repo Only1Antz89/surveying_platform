@@ -2,7 +2,7 @@ import { clerkClient } from "@clerk/nextjs/server";
 import { z } from "zod";
 import { and, eq, sql } from "drizzle-orm";
 import { canManageTeam } from "@fieldnote/domain";
-import { auditEvents, createDatabase, organisationBranding, organisations, serviceDefinitions } from "@fieldnote/db";
+import { auditEvents, createDatabase, onboardingSteps, organisationBranding, organisations, serviceDefinitions } from "@fieldnote/db";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
 
@@ -56,6 +56,7 @@ export async function PATCH(request: Request) {
       const [created] = await tx.insert(serviceDefinitions).values({ organisationId: context.organisationId, name: service.name, defaultFee: service.defaultFee || null }).returning();
       services.push(created);
     }
+    await tx.insert(onboardingSteps).values({ organisationId: context.organisationId, key: "services", completedAt: services.length ? new Date() : null, completedByUserId: context.internalUserId }).onConflictDoUpdate({ target: [onboardingSteps.organisationId, onboardingSteps.key], set: { completedAt: services.length ? new Date() : null, completedByUserId: services.length ? context.internalUserId : null, updatedAt: new Date() } });
     await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "organisation.settings_updated", resourceType: "organisation", resourceId: context.organisationId, metadata: { serviceCount: services.length } });
     return { ...parsed.data, services };
   });
