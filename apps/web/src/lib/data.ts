@@ -63,6 +63,14 @@ export type PlatformTenantDetail = {
   audit: { id: string; action: string; resourceType: string; occurredAt: string; actor: string }[];
 };
 export type PlatformQueueRow = { id: string; primary: string; secondary: string; state: string; detail: string; href?: string; action?: string; actionEndpoint?: string; tone?: "blue" | "green" | "amber" | "red" | "slate" };
+export type PracticePackRecord = {
+  id: string;
+  key: string;
+  name: string;
+  discipline: string;
+  active: boolean;
+  versions: { id: string; version: string; status: string; definition: Record<string, unknown>; publishedAt: string | null; createdAt: string }[];
+};
 
 const formatTarget = (value: string | null) => value
   ? new Date(`${value}T12:00:00.000Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/London" })
@@ -493,6 +501,21 @@ export async function loadPlatformPracticePackQueue(): Promise<PlatformQueueRow[
     const version = versions.find((item) => item.practicePackId === pack.id);
     return { id: pack.id, primary: pack.name, secondary: pack.discipline, state: pack.active ? version?.status ?? "No version" : "Inactive", detail: version ? `Version ${version.version}${version.publishedAt ? ` · Published ${version.publishedAt.toLocaleDateString("en-GB")}` : ""}` : "No version has been created", tone: pack.active && version?.status === "published" ? "green" : pack.active ? "amber" : "slate" };
   });
+}
+
+export async function loadPlatformPracticePacks(): Promise<PracticePackRecord[]> {
+  if (!process.env.DATABASE_ADMIN_URL || !isClerkConfigured()) return [];
+  await requirePlatformAccess();
+  const db = createDatabase(process.env.DATABASE_ADMIN_URL);
+  const [packs, versions] = await Promise.all([db.select().from(practicePacks).orderBy(asc(practicePacks.name)), db.select().from(practicePackVersions).orderBy(desc(practicePackVersions.createdAt))]);
+  return packs.map((pack) => ({
+    id: pack.id,
+    key: pack.key,
+    name: pack.name,
+    discipline: pack.discipline,
+    active: pack.active,
+    versions: versions.filter((version) => version.practicePackId === pack.id).map((version) => ({ id: version.id, version: version.version, status: version.status, definition: version.definition, publishedAt: version.publishedAt?.toISOString() ?? null, createdAt: version.createdAt.toISOString() })),
+  }));
 }
 
 export async function loadPlatformAuditQueue(): Promise<PlatformQueueRow[]> {
