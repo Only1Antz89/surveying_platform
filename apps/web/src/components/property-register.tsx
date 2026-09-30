@@ -1,14 +1,15 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { Building2, Plus, X } from "lucide-react";
+import { Archive, Building2, Pencil, Plus, X } from "lucide-react";
 import type { Client, Property } from "@/lib/demo-data";
 
-type ApiProperty = { id: string; clientId: string; line1: string; city: string; postcode: string; propertyType: string | null };
+type ApiProperty = { id: string; clientId: string; line1: string; city: string; postcode: string; propertyType: string | null; version: number };
 
-export function PropertyRegister({ properties: initialProperties, clients }: { properties: Property[]; clients: Client[] }) {
+export function PropertyRegister({ properties: initialProperties, clients, canEdit = true }: { properties: Property[]; clients: Client[]; canEdit?: boolean }) {
   const [properties, setProperties] = useState(initialProperties);
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<Property | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,14 +32,35 @@ export function PropertyRegister({ properties: initialProperties, clients }: { p
     setSaving(false);
     if (!response.ok) { setError(payload?.error?.message ?? "The property could not be created."); return; }
     const created = payload.data as ApiProperty;
-    setProperties((current) => [{ id: created.id, address: created.line1, town: created.city, postcode: created.postcode, type: created.propertyType ?? "Not recorded", client: clients.find((client) => client.id === created.clientId)?.name ?? "Client", activeJobs: 0 }, ...current]);
+    setProperties((current) => [{ id: created.id, address: created.line1, town: created.city, postcode: created.postcode, type: created.propertyType ?? "Not recorded", client: clients.find((client) => client.id === created.clientId)?.name ?? "Client", activeJobs: 0, version: created.version }, ...current]);
     setCreating(false);
+  }
+
+  async function updateProperty(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!editing) return;
+    setSaving(true); setError(null);
+    const form = new FormData(event.currentTarget);
+    const response = await fetch(`/api/v1/properties/${editing.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ line1: form.get("line1"), city: form.get("city"), postcode: form.get("postcode"), propertyType: String(form.get("propertyType") || "") || null, version: editing.version ?? 1 }) });
+    const payload = await response.json(); setSaving(false);
+    if (!response.ok) return setError(payload?.error?.message ?? "The property could not be updated.");
+    setProperties((current) => current.map((property) => property.id === editing.id ? { ...property, address: payload.data.line1, town: payload.data.city, postcode: payload.data.postcode, type: payload.data.propertyType ?? "Not recorded", version: payload.data.version } : property));
+    setEditing(null);
+  }
+
+  async function archiveProperty(property: Property) {
+    if (!window.confirm(`Archive ${property.address}? Existing jobs will retain their property reference.`)) return;
+    setError(null);
+    const response = await fetch(`/api/v1/properties/${property.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ archived: true, version: property.version ?? 1 }) });
+    const payload = await response.json();
+    if (!response.ok) return setError(payload?.error?.message ?? "The property could not be archived.");
+    setProperties((current) => current.filter((item) => item.id !== property.id));
   }
 
   return <>
     <section className="panel">
-      <div className="panel-header"><div><h2>Property register</h2><p>{properties.length} properties in this workspace</p></div><div className="header-actions"><Building2 size={17} color="#2563eb" /><button className="button button-primary" onClick={() => setCreating(true)} disabled={!clients.length}><Plus size={15} />New property</button></div></div>
-      {properties.length ? <div className="data-table-wrap"><table className="data-table"><thead><tr><th>Address</th><th>Property type</th><th>Client</th><th>Active jobs</th></tr></thead><tbody>{properties.map((property) => <tr key={property.id}><td data-label="Address"><strong>{property.address}</strong><span className="cell-sub">{property.town} · {property.postcode}</span></td><td data-label="Property type">{property.type}</td><td data-label="Client">{property.client}</td><td data-label="Active jobs">{property.activeJobs}</td></tr>)}</tbody></table></div> : <div className="empty-state"><strong>No properties yet</strong><span>{clients.length ? "Add the first property linked to a client." : "Create a client before adding a property."}</span></div>}
+      <div className="panel-header"><div><h2>Property register</h2><p>{properties.length} properties in this workspace</p></div><div className="header-actions"><Building2 size={17} color="#2563eb" /><button className="button button-primary" onClick={() => setCreating(true)} disabled={!clients.length || !canEdit}><Plus size={15} />New property</button></div></div>
+      {error && !creating && !editing ? <div className="form-section"><p className="form-error" role="alert">{error}</p></div> : null}
+      {properties.length ? <div className="data-table-wrap"><table className="data-table"><thead><tr><th>Address</th><th>Property type</th><th>Client</th><th>Active jobs</th>{canEdit ? <th>Actions</th> : null}</tr></thead><tbody>{properties.map((property) => <tr key={property.id}><td data-label="Address"><strong>{property.address}</strong><span className="cell-sub">{property.town} · {property.postcode}</span></td><td data-label="Property type">{property.type}</td><td data-label="Client">{property.client}</td><td data-label="Active jobs">{property.activeJobs}</td>{canEdit ? <td data-label="Actions"><div className="row-actions"><button className="button button-quiet" onClick={() => { setError(null); setEditing(property); }}><Pencil size={14} />Edit</button><button className="button button-quiet danger" onClick={() => archiveProperty(property)}><Archive size={14} />Archive</button></div></td> : null}</tr>)}</tbody></table></div> : <div className="empty-state"><strong>No properties yet</strong><span>{clients.length ? "Add the first property linked to a client." : "Create a client before adding a property."}</span></div>}
     </section>
     {creating ? <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setCreating(false); }}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="new-property-title">
       <div className="modal-header"><div><h2 id="new-property-title">New property</h2><p>Record the address once and link it to the responsible client.</p></div><button className="icon-button" aria-label="Close new property form" onClick={() => setCreating(false)}><X size={16} /></button></div>
@@ -51,5 +73,6 @@ export function PropertyRegister({ properties: initialProperties, clients }: { p
         <div className="field full"><label htmlFor="property-type">Property type</label><input id="property-type" name="propertyType" className="input" maxLength={100} placeholder="For example, Victorian terrace" /></div>
       </div>{error ? <p className="form-error" role="alert">{error}</p> : null}</div><div className="modal-actions"><button type="button" className="button button-secondary" onClick={() => setCreating(false)}>Cancel</button><button className="button button-primary" disabled={saving}>{saving ? "Creating…" : "Create property"}</button></div></form>
     </section></div> : null}
+    {editing ? <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditing(null); }}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="edit-property-title"><div className="modal-header"><div><h2 id="edit-property-title">Edit property</h2><p>Update the property record without changing its job history.</p></div><button className="icon-button" aria-label="Close edit property form" onClick={() => setEditing(null)}><X size={16} /></button></div><form onSubmit={updateProperty}><div className="form-section"><div className="form-grid"><div className="field full"><label htmlFor="edit-property-line1">Address line 1</label><input id="edit-property-line1" name="line1" className="input" defaultValue={editing.address} required minLength={2} maxLength={180} autoFocus /></div><div className="field"><label htmlFor="edit-property-city">Town or city</label><input id="edit-property-city" name="city" className="input" defaultValue={editing.town} required minLength={2} maxLength={100} /></div><div className="field"><label htmlFor="edit-property-postcode">Postcode</label><input id="edit-property-postcode" name="postcode" className="input" defaultValue={editing.postcode} required minLength={5} maxLength={10} /></div><div className="field full"><label htmlFor="edit-property-type">Property type</label><input id="edit-property-type" name="propertyType" className="input" defaultValue={editing.type === "Not recorded" ? "" : editing.type} maxLength={100} /></div></div>{error ? <p className="form-error" role="alert">{error}</p> : null}</div><div className="modal-actions"><button type="button" className="button button-secondary" onClick={() => setEditing(null)}>Cancel</button><button className="button button-primary" disabled={saving}>{saving ? "Saving…" : "Save changes"}</button></div></form></section></div> : null}
   </>;
 }

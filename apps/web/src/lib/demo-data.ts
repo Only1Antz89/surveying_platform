@@ -1,7 +1,7 @@
 import type { JobStage, OrganisationRole, OrganisationStatus, SubscriptionStatus } from "@fieldnote/domain";
 
-export type Client = { id: string; name: string; kind: "Individual" | "Company"; email: string; phone: string; properties: number; lastActivity: string };
-export type Property = { id: string; address: string; town: string; postcode: string; type: string; client: string; activeJobs: number };
+export type Client = { id: string; name: string; kind: "Individual" | "Company"; email: string; phone: string; properties: number; lastActivity: string; version?: number };
+export type Property = { id: string; address: string; town: string; postcode: string; type: string; client: string; activeJobs: number; version?: number };
 export type Job = { id: string; reference: string; client: string; address: string; service: string; stage: JobStage; assignee: string; target: string; fee: number; priority: "Normal" | "High"; version?: number };
 export type Member = { id: string; name: string; email: string; initials: string; role: OrganisationRole; status: "Active" | "Invited"; workload: string };
 export type Tenant = { id: string; name: string; owner: string; plan: string; status: OrganisationStatus; subscription: SubscriptionStatus; seats: number; trialEnds: string; onboarding: number; usage: number; lastActive: string };

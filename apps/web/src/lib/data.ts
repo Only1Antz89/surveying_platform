@@ -157,22 +157,26 @@ export async function loadClients(slug: string): Promise<Client[]> {
   if (!connected()) return demoClients;
   const context = await requireFirmAccess(slug);
   const db = createDatabase();
-  const rows = await db.transaction(async (tx) => {
+  const data = await db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
-    return tx.select().from(clients).where(eq(clients.organisationId, context.organisationId)).orderBy(asc(clients.displayName));
+    const clientRows = await tx.select().from(clients).where(and(eq(clients.organisationId, context.organisationId), isNull(clients.archivedAt))).orderBy(asc(clients.displayName));
+    const propertyRows = await tx.select({ clientId: properties.clientId, value: count(properties.id) }).from(properties).where(and(eq(properties.organisationId, context.organisationId), isNull(properties.archivedAt))).groupBy(properties.clientId);
+    return { clientRows, propertyRows };
   });
-  return rows.map((client) => ({ id: client.id, name: client.displayName, kind: client.kind === "company" ? "Company" : "Individual", email: client.email ?? "—", phone: client.phone ?? "—", properties: 0, lastActivity: client.updatedAt.toLocaleDateString("en-GB") }));
+  return data.clientRows.map((client) => ({ id: client.id, name: client.displayName, kind: client.kind === "company" ? "Company" : "Individual", email: client.email ?? "—", phone: client.phone ?? "—", properties: data.propertyRows.find((row) => row.clientId === client.id)?.value ?? 0, lastActivity: client.updatedAt.toLocaleDateString("en-GB"), version: client.version }));
 }
 
 export async function loadProperties(slug: string): Promise<Property[]> {
   if (!connected()) return demoProperties;
   const context = await requireFirmAccess(slug);
   const db = createDatabase();
-  const rows = await db.transaction(async (tx) => {
+  const data = await db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
-    return tx.select({ property: properties, clientName: clients.displayName }).from(properties).innerJoin(clients, eq(properties.clientId, clients.id)).where(eq(properties.organisationId, context.organisationId)).orderBy(asc(properties.line1));
+    const propertyRows = await tx.select({ property: properties, clientName: clients.displayName }).from(properties).innerJoin(clients, eq(properties.clientId, clients.id)).where(and(eq(properties.organisationId, context.organisationId), isNull(properties.archivedAt))).orderBy(asc(properties.line1));
+    const activeJobRows = await tx.select({ propertyId: jobs.propertyId, value: count(jobs.id) }).from(jobs).where(and(eq(jobs.organisationId, context.organisationId), notInArray(jobs.stage, ["paid", "archived"]))).groupBy(jobs.propertyId);
+    return { propertyRows, activeJobRows };
   });
-  return rows.map(({ property, clientName }) => ({ id: property.id, address: property.line1, town: property.city, postcode: property.postcode, type: property.propertyType ?? "Not recorded", client: clientName, activeJobs: 0 }));
+  return data.propertyRows.map(({ property, clientName }) => ({ id: property.id, address: property.line1, town: property.city, postcode: property.postcode, type: property.propertyType ?? "Not recorded", client: clientName, activeJobs: data.activeJobRows.find((row) => row.propertyId === property.id)?.value ?? 0, version: property.version }));
 }
 
 export async function loadJobs(slug: string): Promise<Job[]> {
