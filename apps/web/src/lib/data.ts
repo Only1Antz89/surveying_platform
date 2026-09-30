@@ -183,7 +183,7 @@ export async function loadJobs(slug: string): Promise<Job[]> {
     await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
     return tx.select({ job: jobs, clientName: clients.displayName, address: properties.line1, city: properties.city }).from(jobs).innerJoin(clients, eq(jobs.clientId, clients.id)).innerJoin(properties, eq(jobs.propertyId, properties.id)).where(eq(jobs.organisationId, context.organisationId)).orderBy(desc(jobs.updatedAt));
   });
-  return rows.map(({ job, clientName, address, city }) => ({ id: job.id, reference: job.reference, client: clientName, address: `${address}, ${city}`, service: job.serviceName, stage: job.stage, assignee: job.assignedSurveyorId ? "Assigned surveyor" : "Unassigned", target: job.targetDate ?? "Not scheduled", fee: Number(job.fee ?? 0), priority: job.priority === "high" ? "High" : "Normal" }));
+  return rows.map(({ job, clientName, address, city }) => ({ id: job.id, reference: job.reference, client: clientName, address: `${address}, ${city}`, service: job.serviceName, stage: job.stage, assignee: job.assignedSurveyorId ? "Assigned surveyor" : "Unassigned", target: job.targetDate ?? "Not scheduled", fee: Number(job.fee ?? 0), priority: job.priority === "high" ? "High" : "Normal", version: job.version }));
 }
 
 export async function loadMembers(slug: string): Promise<Member[]> {
