@@ -75,6 +75,18 @@ export function canManageTeam(role: OrganisationRole) {
   return role === "owner" || role === "administrator";
 }
 
+export function membershipChangeBlocker(
+  actorRole: OrganisationRole,
+  targetRole: OrganisationRole,
+  nextRole: OrganisationRole | null,
+  activeOwnerCount: number,
+) {
+  if (!canManageTeam(actorRole)) return "forbidden" as const;
+  if (actorRole !== "owner" && (targetRole === "owner" || nextRole === "owner")) return "owner_permission" as const;
+  if (targetRole === "owner" && nextRole !== "owner" && activeOwnerCount <= 1) return "final_owner" as const;
+  return null;
+}
+
 export function canManageBilling(role: OrganisationRole) {
   return role === "owner" || role === "administrator" || role === "finance";
 }

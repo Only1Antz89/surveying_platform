@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canManageBilling, canManageTeam, canManageTenants, canMutateOperations, canTransitionJob, resolveAccess } from "./index";
+import { canManageBilling, canManageTeam, canManageTenants, canMutateOperations, canTransitionJob, membershipChangeBlocker, resolveAccess } from "./index";
 
 describe("job transitions", () => {
   it("allows the normal instructed to scheduled transition", () => {
@@ -61,5 +61,12 @@ describe("firm permissions", () => {
     expect(canManageTenants("support")).toBe(false);
     expect(canManageTenants("billing")).toBe(false);
     expect(canManageTenants("compliance")).toBe(false);
+  });
+
+  it("protects owner membership changes", () => {
+    expect(membershipChangeBlocker("administrator", "owner", "surveyor", 2)).toBe("owner_permission");
+    expect(membershipChangeBlocker("owner", "owner", "administrator", 1)).toBe("final_owner");
+    expect(membershipChangeBlocker("owner", "owner", "administrator", 2)).toBeNull();
+    expect(membershipChangeBlocker("administrator", "surveyor", "coordinator", 1)).toBeNull();
   });
 });
