@@ -24,6 +24,13 @@ export type OrganisationRole = (typeof organisationRoles)[number];
 export const platformRoles = ["super_admin", "support", "billing", "compliance"] as const;
 export type PlatformRole = (typeof platformRoles)[number];
 
+export const platformRoleLabels: Record<PlatformRole, string> = {
+  super_admin: "Super administrator",
+  support: "Support",
+  billing: "Billing",
+  compliance: "Compliance",
+};
+
 export const jobStages = [
   "enquiry",
   "quoted",
@@ -70,6 +77,10 @@ export function canManageTeam(role: OrganisationRole) {
 
 export function canManageBilling(role: OrganisationRole) {
   return role === "owner" || role === "administrator" || role === "finance";
+}
+
+export function canManageTenants(role: PlatformRole) {
+  return role === "super_admin";
 }
 
 const stageTransitions: Record<JobStage, readonly JobStage[]> = {

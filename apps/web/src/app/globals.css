@@ -184,6 +184,10 @@ a { color: inherit; text-decoration: none; }
 .billing-summary-grid strong { font-size: 12px; }
 .billing-footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
 .billing-action { display: grid; justify-items: end; gap: 7px; }
+.data-table tr.selected-row td { background: #f3f7ff; }
+.table-link-button { display: grid; gap: 3px; width: 100%; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.table-link-button:hover strong { color: var(--blue); }
+.stack { display: grid; gap: 16px; align-content: start; }
 .form-section { padding: 22px; border-bottom: 1px solid var(--border); }
 .form-section:last-child { border-bottom: 0; }
 .form-section h2 { margin: 0 0 5px; font-size: 14px; }

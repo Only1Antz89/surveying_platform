@@ -2,7 +2,7 @@ import { and, asc, count, desc, eq, gt, isNotNull, isNull, notInArray, sql } fro
 import { auditEvents, createDatabase, clients, invitations, jobs, onboardingSteps, organisationBranding, organisationMemberships, organisations, properties, serviceDefinitions, subscriptions, users } from "@fieldnote/db";
 import type { Client, Job, Member, Property, Tenant } from "./demo-data";
 import { activities as demoActivities, clients as demoClients, jobs as demoJobs, members as demoMembers, properties as demoProperties, tenants as demoTenants } from "./demo-data";
-import { isClerkConfigured, requireFirmAccess } from "./access";
+import { isClerkConfigured, requireFirmAccess, requirePlatformAccess } from "./access";
 
 const connected = () => Boolean(isClerkConfigured() && (process.env.DATABASE_APP_URL ?? process.env.DATABASE_URL));
 
@@ -40,6 +40,19 @@ export type BillingSummary = {
   currentPeriodEndsAt: string | null;
   graceEndsAt: string | null;
   cancelAtPeriodEnd: boolean;
+};
+export type PlatformTenantDetail = {
+  tenant: Tenant;
+  region: string;
+  practiceType: string;
+  createdAt: string;
+  branding: { tradingName: string; supportEmail: string; accentColour: string; logoUrl: string | null };
+  subscription: { status: Tenant["subscription"]; planKey: string; seats: number; trialEndsAt: string | null; currentPeriodEndsAt: string | null; graceEndsAt: string | null; cancelAtPeriodEnd: boolean } | null;
+  members: { id: string; name: string; email: string; role: Member["role"]; active: boolean }[];
+  invitations: { id: string; email: string; role: Member["role"]; expiresAt: string }[];
+  usage: { clients: number; properties: number; jobs: number; activeJobs: number };
+  onboarding: { key: string; completedAt: string | null }[];
+  audit: { id: string; action: string; resourceType: string; occurredAt: string; actor: string }[];
 };
 
 const formatTarget = (value: string | null) => value
@@ -272,7 +285,79 @@ export async function loadBillingSummary(slug: string): Promise<BillingSummary> 
 
 export async function loadTenants(): Promise<Tenant[]> {
   if (!process.env.DATABASE_ADMIN_URL || !isClerkConfigured()) return demoTenants;
+  await requirePlatformAccess();
   const db = createDatabase(process.env.DATABASE_ADMIN_URL);
-  const rows = await db.select({ organisation: organisations, subscription: subscriptions }).from(organisations).leftJoin(subscriptions, eq(subscriptions.organisationId, organisations.id)).orderBy(desc(organisations.createdAt));
-  return rows.map(({ organisation, subscription }) => ({ id: organisation.id, name: organisation.name, owner: "Owner available in members", plan: subscription?.planKey ?? "Pending", status: organisation.status, subscription: subscription?.status ?? "incomplete", seats: subscription?.seats ?? 1, trialEnds: subscription?.trialEndsAt?.toLocaleDateString("en-GB") ?? "—", onboarding: organisation.status === "active" ? 100 : 30, usage: 0, lastActive: organisation.updatedAt.toLocaleDateString("en-GB") }));
+  const [rows, ownerRows, onboardingRows, activityRows] = await Promise.all([
+    db.select({ organisation: organisations, subscription: subscriptions }).from(organisations).leftJoin(subscriptions, eq(subscriptions.organisationId, organisations.id)).orderBy(desc(organisations.createdAt)),
+    db.select({ organisationId: organisationMemberships.organisationId, firstName: users.firstName, lastName: users.lastName, email: users.email }).from(organisationMemberships).innerJoin(users, eq(organisationMemberships.userId, users.id)).where(and(eq(organisationMemberships.role, "owner"), eq(organisationMemberships.active, true))),
+    db.select({ organisationId: onboardingSteps.organisationId, completedAt: onboardingSteps.completedAt }).from(onboardingSteps),
+    db.select({ organisationId: auditEvents.organisationId, occurredAt: auditEvents.occurredAt }).from(auditEvents).where(isNotNull(auditEvents.organisationId)).orderBy(desc(auditEvents.occurredAt)),
+  ]);
+  return rows.map(({ organisation, subscription }) => {
+    const owner = ownerRows.find((row) => row.organisationId === organisation.id);
+    const completed = onboardingRows.filter((row) => row.organisationId === organisation.id && row.completedAt).length;
+    const lastAudit = activityRows.find((row) => row.organisationId === organisation.id)?.occurredAt;
+    return {
+      id: organisation.id,
+      name: organisation.name,
+      owner: owner ? [owner.firstName, owner.lastName].filter(Boolean).join(" ") || owner.email : "No owner assigned",
+      plan: subscription?.planKey ?? "Pending",
+      status: organisation.status,
+      subscription: subscription?.status ?? "incomplete",
+      seats: subscription?.seats ?? 1,
+      trialEnds: subscription?.trialEndsAt?.toLocaleDateString("en-GB") ?? "—",
+      onboarding: Math.min(100, Math.round((completed / 4) * 100)),
+      usage: 0,
+      lastActive: (lastAudit ?? organisation.updatedAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/London" }),
+    };
+  });
+}
+
+export async function loadTenantDetail(tenantId: string): Promise<PlatformTenantDetail | null> {
+  if (!process.env.DATABASE_ADMIN_URL || !isClerkConfigured()) {
+    const tenant = demoTenants.find((item) => item.id === tenantId);
+    if (!tenant) return null;
+    return { tenant, region: "United Kingdom", practiceType: "multi-disciplinary", createdAt: "26 September 2026", branding: { tradingName: tenant.name, supportEmail: "", accentColour: "#2563eb", logoUrl: null }, subscription: { status: tenant.subscription, planKey: tenant.plan, seats: tenant.seats, trialEndsAt: null, currentPeriodEndsAt: null, graceEndsAt: null, cancelAtPeriodEnd: false }, members: demoMembers.map((member) => ({ id: member.id, name: member.name, email: member.email, role: member.role, active: member.status === "Active" })), invitations: [], usage: { clients: demoClients.length, properties: demoProperties.length, jobs: demoJobs.length, activeJobs: demoJobs.filter((job) => job.stage !== "paid" && job.stage !== "archived").length }, onboarding: [], audit: demoActivities.map((activity, index) => ({ id: String(index), action: activity.text, resourceType: "demo", occurredAt: activity.time, actor: "Demo operator" })) };
+  }
+  await requirePlatformAccess();
+  const db = createDatabase(process.env.DATABASE_ADMIN_URL);
+  const [record] = await db.select({ organisation: organisations, branding: organisationBranding, subscription: subscriptions }).from(organisations).leftJoin(organisationBranding, eq(organisationBranding.organisationId, organisations.id)).leftJoin(subscriptions, eq(subscriptions.organisationId, organisations.id)).where(eq(organisations.id, tenantId)).limit(1);
+  if (!record) return null;
+  const [memberRows, invitationRows, clientRows, propertyRows, jobRows, onboardingRows, auditRows] = await Promise.all([
+    db.select({ id: organisationMemberships.id, firstName: users.firstName, lastName: users.lastName, email: users.email, role: organisationMemberships.role, active: organisationMemberships.active }).from(organisationMemberships).innerJoin(users, eq(organisationMemberships.userId, users.id)).where(eq(organisationMemberships.organisationId, tenantId)).orderBy(asc(users.firstName)),
+    db.select({ id: invitations.id, email: invitations.email, role: invitations.role, expiresAt: invitations.expiresAt }).from(invitations).where(and(eq(invitations.organisationId, tenantId), isNull(invitations.acceptedAt), isNull(invitations.revokedAt), gt(invitations.expiresAt, new Date()))).orderBy(desc(invitations.createdAt)),
+    db.select({ id: clients.id }).from(clients).where(eq(clients.organisationId, tenantId)),
+    db.select({ id: properties.id }).from(properties).where(eq(properties.organisationId, tenantId)),
+    db.select({ id: jobs.id, stage: jobs.stage }).from(jobs).where(eq(jobs.organisationId, tenantId)),
+    db.select({ key: onboardingSteps.key, completedAt: onboardingSteps.completedAt }).from(onboardingSteps).where(eq(onboardingSteps.organisationId, tenantId)).orderBy(asc(onboardingSteps.key)),
+    db.select({ id: auditEvents.id, action: auditEvents.action, resourceType: auditEvents.resourceType, occurredAt: auditEvents.occurredAt, actorUserId: auditEvents.actorUserId, platformStaffId: auditEvents.platformStaffId }).from(auditEvents).where(eq(auditEvents.organisationId, tenantId)).orderBy(desc(auditEvents.occurredAt)).limit(50),
+  ]);
+  const owner = memberRows.find((member) => member.role === "owner" && member.active);
+  const completed = onboardingRows.filter((step) => step.completedAt).length;
+  const tenant: Tenant = {
+    id: record.organisation.id,
+    name: record.organisation.name,
+    owner: owner ? [owner.firstName, owner.lastName].filter(Boolean).join(" ") || owner.email : "No owner assigned",
+    plan: record.subscription?.planKey ?? "Pending",
+    status: record.organisation.status,
+    subscription: record.subscription?.status ?? "incomplete",
+    seats: record.subscription?.seats ?? 1,
+    trialEnds: record.subscription?.trialEndsAt?.toLocaleDateString("en-GB") ?? "—",
+    onboarding: Math.min(100, Math.round((completed / 4) * 100)),
+    usage: jobRows.length,
+    lastActive: (auditRows[0]?.occurredAt ?? record.organisation.updatedAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/London" }),
+  };
+  return {
+    tenant,
+    region: record.organisation.region,
+    practiceType: record.organisation.practiceType,
+    createdAt: record.organisation.createdAt.toLocaleString("en-GB", { dateStyle: "long", timeZone: "Europe/London" }),
+    branding: { tradingName: record.branding?.tradingName ?? record.organisation.name, supportEmail: record.branding?.supportEmail ?? "", accentColour: record.branding?.accentColour ?? "#2563eb", logoUrl: record.branding?.logoUrl ?? null },
+    subscription: record.subscription ? { status: record.subscription.status, planKey: record.subscription.planKey, seats: record.subscription.seats, trialEndsAt: record.subscription.trialEndsAt?.toISOString() ?? null, currentPeriodEndsAt: record.subscription.currentPeriodEndsAt?.toISOString() ?? null, graceEndsAt: record.subscription.graceEndsAt?.toISOString() ?? null, cancelAtPeriodEnd: record.subscription.cancelAtPeriodEnd } : null,
+    members: memberRows.map((member) => ({ id: member.id, name: [member.firstName, member.lastName].filter(Boolean).join(" ") || member.email, email: member.email, role: member.role, active: member.active })),
+    invitations: invitationRows.map((invitation) => ({ ...invitation, expiresAt: invitation.expiresAt.toISOString() })),
+    usage: { clients: clientRows.length, properties: propertyRows.length, jobs: jobRows.length, activeJobs: jobRows.filter((job) => job.stage !== "paid" && job.stage !== "archived").length },
+    onboarding: onboardingRows.map((step) => ({ key: step.key, completedAt: step.completedAt?.toISOString() ?? null })),
+    audit: auditRows.map((event) => ({ id: event.id, action: event.action, resourceType: event.resourceType, occurredAt: event.occurredAt.toISOString(), actor: event.platformStaffId ? "Platform staff" : event.actorUserId ? "Firm user" : "System" })),
+  };
 }

@@ -71,14 +71,26 @@ async function requireFirmAccessUncached(slug: string) {
 export const requireFirmAccess = cache(requireFirmAccessUncached);
 
 export async function requirePlatformAccess() {
-  if (!isClerkConfigured()) return { userId: "demo_platform_user", role: "super_admin" as const };
+  if (!isClerkConfigured()) return { userId: "demo_platform_user", platformStaffId: "00000000-0000-0000-0000-000000000001", userName: "Fieldnote Operator", userEmail: "operator@fieldnote.local", role: "super_admin" as const };
   const session = await auth();
   if (!session.userId) redirect("/sign-in");
   if (!process.env.DATABASE_ADMIN_URL) throw new Error("DATABASE_ADMIN_URL is required for platform administration");
   const db = createDatabase(process.env.DATABASE_ADMIN_URL);
-  const [operator] = await db.select({ role: platformStaff.role }).from(platformStaff).where(and(eq(platformStaff.clerkUserId, session.userId), eq(platformStaff.active, true))).limit(1);
+  const [operator] = await db.select({ id: platformStaff.id, role: platformStaff.role, email: users.email, firstName: users.firstName, lastName: users.lastName }).from(platformStaff).leftJoin(users, eq(users.clerkUserId, platformStaff.clerkUserId)).where(and(eq(platformStaff.clerkUserId, session.userId), eq(platformStaff.active, true))).limit(1);
   if (!operator) notFound();
-  return { userId: session.userId, role: operator.role };
+  const userEmail = operator.email ?? "platform-operator@fieldnote.local";
+  const userName = [operator.firstName, operator.lastName].filter(Boolean).join(" ") || userEmail;
+  return { userId: session.userId, platformStaffId: operator.id, userName, userEmail, role: operator.role };
+}
+
+export async function platformApiContext() {
+  if (!isClerkConfigured()) return { userId: "demo_platform_user", platformStaffId: "00000000-0000-0000-0000-000000000001", role: "super_admin" as const, demo: true };
+  const session = await auth();
+  if (!session.userId || !process.env.DATABASE_ADMIN_URL) return null;
+  const db = createDatabase(process.env.DATABASE_ADMIN_URL);
+  const [operator] = await db.select({ id: platformStaff.id, role: platformStaff.role }).from(platformStaff).where(and(eq(platformStaff.clerkUserId, session.userId), eq(platformStaff.active, true))).limit(1);
+  if (!operator) return null;
+  return { userId: session.userId, platformStaffId: operator.id, role: operator.role, demo: false };
 }
 
 export async function apiContext(request: Request) {

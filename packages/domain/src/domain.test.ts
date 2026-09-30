@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canManageBilling, canManageTeam, canMutateOperations, canTransitionJob, resolveAccess } from "./index";
+import { canManageBilling, canManageTeam, canManageTenants, canMutateOperations, canTransitionJob, resolveAccess } from "./index";
 
 describe("job transitions", () => {
   it("allows the normal instructed to scheduled transition", () => {
@@ -54,5 +54,12 @@ describe("firm permissions", () => {
     expect(canManageBilling("surveyor")).toBe(false);
     expect(canManageBilling("coordinator")).toBe(false);
     expect(canManageBilling("read_only")).toBe(false);
+  });
+
+  it("limits tenant lifecycle controls to super administrators", () => {
+    expect(canManageTenants("super_admin")).toBe(true);
+    expect(canManageTenants("support")).toBe(false);
+    expect(canManageTenants("billing")).toBe(false);
+    expect(canManageTenants("compliance")).toBe(false);
   });
 });

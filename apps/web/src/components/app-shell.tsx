@@ -9,7 +9,7 @@ import {
   CircleDollarSign, ClipboardCheck, FileClock, Headphones, House, Menu, Settings,
   ShieldCheck, SlidersHorizontal, Users, X, type LucideIcon,
 } from "lucide-react";
-import { roleLabels, type OrganisationRole } from "@fieldnote/domain";
+import { platformRoleLabels, roleLabels, type OrganisationRole, type PlatformRole } from "@fieldnote/domain";
 
 type Item = { label: string; href: string; icon: LucideIcon };
 
@@ -41,10 +41,11 @@ type FirmWorkspace = {
   userRole: OrganisationRole;
   trialEnds: string | null;
 };
+type PlatformWorkspace = { userName: string; userRole: PlatformRole };
 
 const initials = (value: string) => value.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
 
-export function AppShell({ children, mode, slug = "north-star-surveying", workspace }: { children: React.ReactNode; mode: "firm" | "platform"; slug?: string; workspace?: FirmWorkspace }) {
+export function AppShell({ children, mode, slug = "north-star-surveying", workspace, platformWorkspace }: { children: React.ReactNode; mode: "firm" | "platform"; slug?: string; workspace?: FirmWorkspace; platformWorkspace?: PlatformWorkspace }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const items = mode === "firm" ? firmItems(slug) : platformItems;
@@ -67,8 +68,8 @@ export function AppShell({ children, mode, slug = "north-star-surveying", worksp
         </nav>
         <div className="sidebar-footer">
           <div className="profile-mini">
-            <div className="avatar">{mode === "firm" ? initials(workspace?.userName ?? "Practice user") : "FO"}</div>
-            <div><strong>{mode === "firm" ? workspace?.userName ?? "Practice user" : "Fieldnote Ops"}</strong><span>{mode === "firm" ? roleLabels[workspace?.userRole ?? "read_only"] : "Super administrator"}</span></div>
+            <div className="avatar">{mode === "firm" ? initials(workspace?.userName ?? "Practice user") : initials(platformWorkspace?.userName ?? "Platform operator")}</div>
+            <div><strong>{mode === "firm" ? workspace?.userName ?? "Practice user" : platformWorkspace?.userName ?? "Platform operator"}</strong><span>{mode === "firm" ? roleLabels[workspace?.userRole ?? "read_only"] : platformRoleLabels[platformWorkspace?.userRole ?? "support"]}</span></div>
             <ChevronDown size={14} color="#8295aa" />
           </div>
         </div>
