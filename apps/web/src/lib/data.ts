@@ -1,5 +1,5 @@
 import { and, asc, count, desc, eq, gt, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
-import { auditEvents, backgroundJobs, createDatabase, clients, invitations, jobs, onboardingSteps, organisationBranding, organisationMemberships, organisations, practicePacks, practicePackVersions, properties, serviceDefinitions, subscriptions, supportSessions, users, webhookEvents } from "@fieldnote/db";
+import { auditEvents, backgroundJobs, createDatabase, clients, invitations, jobs, onboardingSteps, organisationBranding, organisationMemberships, organisations, platformIncidentOrganisations, platformIncidents, practicePacks, practicePackVersions, properties, serviceDefinitions, subscriptions, supportSessions, users, webhookEvents } from "@fieldnote/db";
 import type { Client, Job, Member, Property, Tenant } from "./demo-data";
 import { activities as demoActivities, clients as demoClients, jobs as demoJobs, members as demoMembers, properties as demoProperties, tenants as demoTenants } from "./demo-data";
 import { isClerkConfigured, requireFirmAccess, requirePlatformAccess } from "./access";
@@ -70,6 +70,16 @@ export type PracticePackRecord = {
   discipline: string;
   active: boolean;
   versions: { id: string; version: string; status: string; definition: Record<string, unknown>; publishedAt: string | null; createdAt: string }[];
+};
+export type PlatformIncidentRecord = {
+  id: string;
+  title: string;
+  summary: string;
+  severity: "low" | "medium" | "high" | "critical";
+  status: "investigating" | "monitoring" | "resolved";
+  startedAt: string;
+  resolvedAt: string | null;
+  affectedOrganisations: { id: string; name: string }[];
 };
 
 const formatTarget = (value: string | null) => value
@@ -432,6 +442,23 @@ export async function loadPlatformIncidentQueue(): Promise<PlatformQueueRow[]> {
     ...failedJobs.map(({ job, organisationName }) => ({ id: job.id, primary: job.type.replaceAll("_", " "), secondary: organisationName ?? "Platform-wide", state: "Delivery failed", detail: `${job.attempts} attempts · ${job.error ?? "No error detail"}`, action: "Retry delivery", actionEndpoint: `/api/platform/background-jobs/${job.id}/retry`, tone: "red" as const })),
     ...failedWebhooks.map((event) => ({ id: event.id, primary: event.eventType, secondary: `${event.provider} webhook`, state: "Processing failed", detail: event.error ?? "No error detail", tone: "red" as const })),
   ];
+}
+
+export async function loadPlatformIncidents(): Promise<{ incidents: PlatformIncidentRecord[]; tenants: { id: string; name: string }[]; technicalFailures: PlatformQueueRow[] }> {
+  if (!process.env.DATABASE_ADMIN_URL || !isClerkConfigured()) return { incidents: [], tenants: [], technicalFailures: [] };
+  await requirePlatformAccess();
+  const db = createDatabase(process.env.DATABASE_ADMIN_URL);
+  const [incidentRows, affectedRows, tenantRows, technicalFailures] = await Promise.all([
+    db.select().from(platformIncidents).orderBy(desc(platformIncidents.startedAt)).limit(100),
+    db.select({ incidentId: platformIncidentOrganisations.incidentId, organisationId: organisations.id, organisationName: organisations.name }).from(platformIncidentOrganisations).innerJoin(organisations, eq(platformIncidentOrganisations.organisationId, organisations.id)),
+    db.select({ id: organisations.id, name: organisations.name }).from(organisations).orderBy(asc(organisations.name)),
+    loadPlatformIncidentQueue(),
+  ]);
+  return {
+    incidents: incidentRows.map((incident) => ({ id: incident.id, title: incident.title, summary: incident.summary, severity: incident.severity, status: incident.status, startedAt: incident.startedAt.toISOString(), resolvedAt: incident.resolvedAt?.toISOString() ?? null, affectedOrganisations: affectedRows.filter((row) => row.incidentId === incident.id).map((row) => ({ id: row.organisationId, name: row.organisationName })) })),
+    tenants: tenantRows,
+    technicalFailures,
+  };
 }
 
 export async function loadPlatformUsageQueue(): Promise<PlatformQueueRow[]> {

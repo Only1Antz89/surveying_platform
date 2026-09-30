@@ -36,6 +36,13 @@
       "when": 1790761021421,
       "tag": "0004_high_photon",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790777960787,
+      "tag": "0005_regular_masked_marvel",
+      "breakpoints": true
     }
   ]
 }

@@ -24,6 +24,8 @@ export const organisationRole = pgEnum("organisation_role", ["owner", "administr
 export const platformRole = pgEnum("platform_role", ["super_admin", "support", "billing", "compliance"]);
 export const jobStage = pgEnum("job_stage", ["enquiry", "quoted", "instructed", "scheduled", "inspection_complete", "report_drafting", "internal_review", "issued", "paid", "archived"]);
 export const supportPermission = pgEnum("support_permission", ["read", "write"]);
+export const incidentSeverity = pgEnum("incident_severity", ["low", "medium", "high", "critical"]);
+export const incidentStatus = pgEnum("incident_status", ["investigating", "monitoring", "resolved"]);
 
 export const organisations = pgTable("organisations", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -259,6 +261,25 @@ export const platformStaff = pgTable("platform_staff", {
   active: boolean("active").notNull().default(true),
   ...timestamps,
 });
+
+export const platformIncidents = pgTable("platform_incidents", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  title: text("title").notNull(),
+  summary: text("summary").notNull(),
+  severity: incidentSeverity("severity").notNull(),
+  status: incidentStatus("status").notNull().default("investigating"),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  createdByStaffId: uuid("created_by_staff_id").references(() => platformStaff.id, { onDelete: "set null" }),
+  ...timestamps,
+}, (table) => [index("platform_incidents_status_idx").on(table.status), index("platform_incidents_severity_idx").on(table.severity)]);
+
+export const platformIncidentOrganisations = pgTable("platform_incident_organisations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  incidentId: uuid("incident_id").notNull().references(() => platformIncidents.id, { onDelete: "cascade" }),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [uniqueIndex("platform_incident_org_uidx").on(table.incidentId, table.organisationId), index("platform_incident_org_org_idx").on(table.organisationId)]);
 
 export const supportSessions = pgTable("support_sessions", {
   id: uuid("id").primaryKey().defaultRandom(),
