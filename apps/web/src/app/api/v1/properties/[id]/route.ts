@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { and, eq, sql } from "drizzle-orm";
 import { canMutateOperations } from "@fieldnote/domain";
-import { auditEvents, createDatabase, properties } from "@fieldnote/db";
+import { auditEvents, clients, createDatabase, jobs, properties } from "@fieldnote/db";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
+import { properties as demoProperties } from "@/lib/demo-data";
 
 const patchProperty = z.object({
   line1: z.string().trim().min(2).max(180).optional(),
@@ -14,6 +15,25 @@ const patchProperty = z.object({
   archived: z.boolean().optional(),
   version: z.number().int().positive(),
 }).refine((value) => Object.keys(value).some((key) => key !== "version"), "At least one change is required.");
+
+export async function GET(request: Request, route: RouteContext<"/api/v1/properties/[id]">) {
+  const context = await apiContext(request);
+  if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  const { id } = await route.params;
+  if (context.demo) {
+    const property = demoProperties.find((item) => item.id === id);
+    return property ? ok({ property, jobs: [] }, { demo: true }) : problem(404, "property_not_found", "The property could not be found.");
+  }
+  const db = createDatabase();
+  const detail = await db.transaction(async (tx) => {
+    await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
+    const [property] = await tx.select({ property: properties, clientName: clients.displayName }).from(properties).innerJoin(clients, eq(properties.clientId, clients.id)).where(and(eq(properties.id, id), eq(properties.organisationId, context.organisationId))).limit(1);
+    if (!property) return null;
+    const linkedJobs = await tx.select({ id: jobs.id, reference: jobs.reference, serviceName: jobs.serviceName, stage: jobs.stage, targetDate: jobs.targetDate }).from(jobs).where(and(eq(jobs.propertyId, id), eq(jobs.organisationId, context.organisationId)));
+    return { ...property, jobs: linkedJobs };
+  });
+  return detail ? ok(detail) : problem(404, "property_not_found", "The property could not be found.");
+}
 
 export async function PATCH(request: Request, route: RouteContext<"/api/v1/properties/[id]">) {
   const context = await apiContext(request);
