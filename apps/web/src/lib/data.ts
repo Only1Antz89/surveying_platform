@@ -1,5 +1,5 @@
 import { and, asc, count, desc, eq, gt, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
-import { auditEvents, createDatabase, clients, invitations, jobs, onboardingSteps, organisationBranding, organisationMemberships, organisations, practicePacks, practicePackVersions, properties, serviceDefinitions, subscriptions, supportSessions, users } from "@fieldnote/db";
+import { auditEvents, backgroundJobs, createDatabase, clients, invitations, jobs, onboardingSteps, organisationBranding, organisationMemberships, organisations, practicePacks, practicePackVersions, properties, serviceDefinitions, subscriptions, supportSessions, users, webhookEvents } from "@fieldnote/db";
 import type { Client, Job, Member, Property, Tenant } from "./demo-data";
 import { activities as demoActivities, clients as demoClients, jobs as demoJobs, members as demoMembers, properties as demoProperties, tenants as demoTenants } from "./demo-data";
 import { isClerkConfigured, requireFirmAccess, requirePlatformAccess } from "./access";
@@ -61,7 +61,7 @@ export type PlatformTenantDetail = {
   onboarding: { key: string; completedAt: string | null }[];
   audit: { id: string; action: string; resourceType: string; occurredAt: string; actor: string }[];
 };
-export type PlatformQueueRow = { id: string; primary: string; secondary: string; state: string; detail: string; href?: string; action?: string; tone?: "blue" | "green" | "amber" | "red" | "slate" };
+export type PlatformQueueRow = { id: string; primary: string; secondary: string; state: string; detail: string; href?: string; action?: string; actionEndpoint?: string; tone?: "blue" | "green" | "amber" | "red" | "slate" };
 
 const formatTarget = (value: string | null) => value
   ? new Date(`${value}T12:00:00.000Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/London" })
@@ -407,6 +407,20 @@ export async function loadPlatformOnboardingQueue(): Promise<PlatformQueueRow[]>
 export async function loadPlatformBillingQueue(): Promise<PlatformQueueRow[]> {
   const tenants = await loadTenants();
   return tenants.filter((tenant) => tenant.subscription !== "active" && tenant.subscription !== "trialing").map((tenant) => ({ id: tenant.id, primary: tenant.name, secondary: `${tenant.plan} · ${tenant.seats} seats`, state: tenant.subscription.replace("_", " "), detail: tenant.subscription === "incomplete" ? "Billing setup has not completed" : tenant.trialEnds === "—" ? "No active trial" : `Trial ends ${tenant.trialEnds}`, href: `/platform/tenants/${tenant.id}`, action: "Inspect account", tone: tenant.subscription === "unpaid" ? "red" : tenant.subscription === "canceled" ? "slate" : "amber" }));
+}
+
+export async function loadPlatformIncidentQueue(): Promise<PlatformQueueRow[]> {
+  if (!process.env.DATABASE_ADMIN_URL || !isClerkConfigured()) return [];
+  await requirePlatformAccess();
+  const db = createDatabase(process.env.DATABASE_ADMIN_URL);
+  const [failedJobs, failedWebhooks] = await Promise.all([
+    db.select({ job: backgroundJobs, organisationName: organisations.name }).from(backgroundJobs).leftJoin(organisations, eq(backgroundJobs.organisationId, organisations.id)).where(eq(backgroundJobs.status, "failed")).orderBy(desc(backgroundJobs.failedAt)).limit(100),
+    db.select().from(webhookEvents).where(and(isNotNull(webhookEvents.failedAt), isNull(webhookEvents.processedAt))).orderBy(desc(webhookEvents.failedAt)).limit(100),
+  ]);
+  return [
+    ...failedJobs.map(({ job, organisationName }) => ({ id: job.id, primary: job.type.replaceAll("_", " "), secondary: organisationName ?? "Platform-wide", state: "Delivery failed", detail: `${job.attempts} attempts · ${job.error ?? "No error detail"}`, action: "Retry delivery", actionEndpoint: `/api/platform/background-jobs/${job.id}/retry`, tone: "red" as const })),
+    ...failedWebhooks.map((event) => ({ id: event.id, primary: event.eventType, secondary: `${event.provider} webhook`, state: "Processing failed", detail: event.error ?? "No error detail", tone: "red" as const })),
+  ];
 }
 
 export async function loadPlatformUsageQueue(): Promise<PlatformQueueRow[]> {

@@ -1,0 +1,2 @@
+ALTER TABLE "background_jobs" ADD COLUMN "deduplication_key" text;--> statement-breakpoint
+ALTER TABLE "background_jobs" ADD CONSTRAINT "background_jobs_deduplication_key_unique" UNIQUE("deduplication_key");

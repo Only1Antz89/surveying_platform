@@ -29,6 +29,13 @@
       "when": 1790675767330,
       "tag": "0003_tenant_rls_expansion",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790761021421,
+      "tag": "0004_high_photon",
+      "breakpoints": true
     }
   ]
 }

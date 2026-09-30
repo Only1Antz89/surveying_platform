@@ -3,6 +3,7 @@ import { auditEvents, backgroundJobs, createDatabase, organisationMemberships, o
 import { and, eq } from "drizzle-orm";
 import { platformApiContext } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
+import { applicationUrl } from "@/lib/email";
 
 const requestSchema = z.object({
   ticketReference: z.string().trim().min(3).max(80),
@@ -22,18 +23,30 @@ export async function POST(request: Request, route: RouteContext<"/api/platform/
   const permission = parsed.data.breakGlass ? "write" : parsed.data.permission;
   if (operator.demo) return ok({ id: crypto.randomUUID(), permission, pendingApproval: permission === "write" && !parsed.data.breakGlass, breakGlass: parsed.data.breakGlass }, { demo: true, persisted: false });
   const db = createDatabase(process.env.DATABASE_ADMIN_URL);
-  const [tenant] = await db.select({ id: organisations.id }).from(organisations).where(eq(organisations.id, tenantId)).limit(1);
+  const [tenant] = await db.select({ id: organisations.id, name: organisations.name, slug: organisations.slug }).from(organisations).where(eq(organisations.id, tenantId)).limit(1);
   if (!tenant) return problem(404, "tenant_not_found", "The customer account could not be found.");
   const expiresAt = new Date(Date.now() + (parsed.data.breakGlass ? 15 : 60) * 60 * 1000);
   const [session] = await db.insert(supportSessions).values({ organisationId: tenantId, platformStaffId: operator.platformStaffId, ticketReference: parsed.data.ticketReference, reason: parsed.data.reason, permission, expiresAt, breakGlass: parsed.data.breakGlass }).returning();
   await db.insert(auditEvents).values({ organisationId: tenantId, platformStaffId: operator.platformStaffId, supportSessionId: session.id, action: parsed.data.breakGlass ? "support.break_glass_started" : "support.session_requested", resourceType: "support_session", resourceId: session.id, metadata: { ticketReference: session.ticketReference, reason: session.reason, permission: session.permission, expiresAt: session.expiresAt.toISOString(), breakGlass: session.breakGlass } });
-  if (parsed.data.breakGlass) {
-    const [owners, administrators] = await Promise.all([
-      db.select({ email: users.email }).from(organisationMemberships).innerJoin(users, eq(organisationMemberships.userId, users.id)).where(and(eq(organisationMemberships.organisationId, tenantId), eq(organisationMemberships.role, "owner"), eq(organisationMemberships.active, true))),
-      db.select({ email: users.email }).from(platformStaff).innerJoin(users, eq(platformStaff.clerkUserId, users.clerkUserId)).where(and(eq(platformStaff.role, "super_admin"), eq(platformStaff.active, true))),
-    ]);
+  if (permission === "write") {
+    const owners = await db.select({ email: users.email }).from(organisationMemberships).innerJoin(users, eq(organisationMemberships.userId, users.id)).where(and(eq(organisationMemberships.organisationId, tenantId), eq(organisationMemberships.role, "owner"), eq(organisationMemberships.active, true)));
+    const administrators = parsed.data.breakGlass
+      ? await db.select({ email: users.email }).from(platformStaff).innerJoin(users, eq(platformStaff.clerkUserId, users.clerkUserId)).where(and(eq(platformStaff.role, "super_admin"), eq(platformStaff.active, true)))
+      : [];
     const recipients = [...new Set([...owners, ...administrators].map((person) => person.email))];
-    await db.insert(backgroundJobs).values({ organisationId: tenantId, queue: "email", type: "support_break_glass_notification", payload: { recipients, tenantId, supportSessionId: session.id, ticketReference: session.ticketReference, reason: session.reason, expiresAt: session.expiresAt.toISOString() } });
+    if (recipients.length) await db.insert(backgroundJobs).values(parsed.data.breakGlass ? {
+      organisationId: tenantId,
+      queue: "email",
+      type: "support_break_glass_notification",
+      deduplicationKey: `support-break-glass:${session.id}`,
+      payload: { recipients, organisationName: tenant.name, ticketReference: session.ticketReference, reason: session.reason, expiresAt: session.expiresAt.toISOString() },
+    } : {
+      organisationId: tenantId,
+      queue: "email",
+      type: "support_approval_requested",
+      deduplicationKey: `support-approval:${session.id}`,
+      payload: { recipients, organisationName: tenant.name, ticketReference: session.ticketReference, reason: session.reason, approvalUrl: `${applicationUrl()}/app/${tenant.slug}/team`, expiresAt: session.expiresAt.toISOString() },
+    }).onConflictDoNothing();
   }
   const pendingApproval = session.permission === "write" && !session.breakGlass;
   return ok({ id: session.id, permission: session.permission, expiresAt: session.expiresAt.toISOString(), pendingApproval, breakGlass: session.breakGlass, url: pendingApproval ? null : `/platform/support/${session.id}` });

@@ -305,6 +305,7 @@ export const backgroundJobs = pgTable("background_jobs", {
   organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "restrict" }),
   queue: text("queue").notNull(),
   type: text("type").notNull(),
+  deduplicationKey: text("deduplication_key").unique(),
   providerMessageId: text("provider_message_id").unique(),
   status: text("status").notNull().default("queued"),
   attempts: integer("attempts").notNull().default(0),

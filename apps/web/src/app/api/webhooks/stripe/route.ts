@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import Stripe from "stripe";
 import { createDatabase, onboardingSteps, organisations, subscriptionEvents, subscriptions, webhookEvents } from "@fieldnote/db";
-import { eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
+import { queueSubscriptionEmail } from "@/lib/email-queue";
 
 export const runtime = "nodejs";
 
@@ -61,6 +62,12 @@ async function synchroniseSubscription(
     await db.update(organisations).set({ status: "active", suspendedReason: null, updatedAt: new Date() }).where(eq(organisations.id, organisationId));
     await db.insert(onboardingSteps).values({ organisationId, key: "billing", completedAt: new Date() }).onConflictDoUpdate({ target: [onboardingSteps.organisationId, onboardingSteps.key], set: { completedAt: new Date(), updatedAt: new Date() } });
   }
+  if (status === "trialing" && saved.trialEndsAt) {
+    await queueSubscriptionEmail({ organisationId, subscriptionId: saved.id, type: "trial_started_notice", deduplicationKey: `trial-started:${saved.id}`, trialEndsAt: saved.trialEndsAt });
+  }
+  if (status === "past_due" || status === "unpaid") {
+    await queueSubscriptionEmail({ organisationId, subscriptionId: saved.id, type: "payment_issue_notice", deduplicationKey: `payment-issue:${event.id}`, status, graceEndsAt: saved.graceEndsAt });
+  }
 }
 
 export async function POST(request: Request) {
@@ -74,8 +81,15 @@ export async function POST(request: Request) {
   catch { return Response.json({ error: "Invalid Stripe signature." }, { status: 400 }); }
 
   const db = createDatabase(process.env.DATABASE_ADMIN_URL);
-  const [claim] = await db.insert(webhookEvents).values({ provider: "stripe", providerEventId: event.id, eventType: event.type, payloadHash: createHash("sha256").update(payload).digest("hex") }).onConflictDoNothing().returning({ id: webhookEvents.id });
-  if (!claim) return Response.json({ received: true, duplicate: true });
+  const payloadHash = createHash("sha256").update(payload).digest("hex");
+  let [claim] = await db.insert(webhookEvents).values({ provider: "stripe", providerEventId: event.id, eventType: event.type, payloadHash }).onConflictDoNothing().returning({ id: webhookEvents.id });
+  if (!claim) {
+    const [existing] = await db.select().from(webhookEvents).where(and(eq(webhookEvents.provider, "stripe"), eq(webhookEvents.providerEventId, event.id))).limit(1);
+    if (!existing || existing.payloadHash !== payloadHash) return Response.json({ error: "Webhook event identity conflict." }, { status: 409 });
+    if (existing.processedAt || !existing.failedAt) return Response.json({ received: true, duplicate: true });
+    [claim] = await db.update(webhookEvents).set({ failedAt: null, error: null }).where(and(eq(webhookEvents.id, existing.id), isNotNull(webhookEvents.failedAt))).returning({ id: webhookEvents.id });
+    if (!claim) return Response.json({ received: true, duplicate: true });
+  }
 
   try {
     if (event.type === "checkout.session.completed") {

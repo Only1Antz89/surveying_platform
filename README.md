@@ -33,6 +33,15 @@ pnpm check
 
 Database migrations are in `packages/db/migrations`. Production deployments must run migrations with the application database role and admin database role separated.
 
+## Transactional email
+
+Production email is delivered through SMTP2GO's standard email API. Configure
+`SMTP2GO_API_KEY` and a verified `SMTP2GO_SENDER`; never expose either to the
+browser. The protected daily Vercel cron queues trial-ending notices at seven,
+three and one day, then processes the durable database outbox. Delivery attempts
+are bounded and retried with backoff. Permanently failed jobs and failed webhook
+processing appear in Platform → Incidents.
+
 ## Platform administration
 
 Platform access is independent from a firm's Clerk organisation membership. Set
