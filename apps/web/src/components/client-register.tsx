@@ -91,13 +91,14 @@ export function ClientRegister({ clients: initialClients, canEdit = true }: { cl
     event.preventDefault();
     if (!editing) return;
     setSaving(true); setError(null);
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const response = await fetch(`/api/v1/clients/${editing.id}/contacts`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: form.get("name"), email: String(form.get("email") || "") || null, phone: String(form.get("phone") || "") || null, preferredChannel: form.get("preferredChannel"), primary: form.get("primary") === "on" }) });
     const payload = await response.json(); setSaving(false);
     if (!response.ok) return setError(payload?.error?.message ?? "The contact could not be added.");
     const created = payload.data as ClientContact;
     setContacts((current) => [created, ...current.map((contact) => created.primary ? { ...contact, primary: false } : contact)]);
-    event.currentTarget.reset();
+    formElement.reset();
   }
 
   async function updateContact(contact: ClientContact, changes: Partial<Pick<ClientContact, "preferredChannel" | "primary">>) {
