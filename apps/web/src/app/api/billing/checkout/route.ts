@@ -19,6 +19,9 @@ export async function POST(request: Request) {
   const [organisation] = await db.select().from(organisations).where(eq(organisations.id, context.organisationId)).limit(1);
   if (!organisation) return problem(404, "organisation_not_found", "The organisation could not be found.");
   const [existing] = await db.select().from(subscriptions).where(eq(subscriptions.organisationId, organisation.id)).limit(1);
+  if (existing && (existing.status === "trialing" || existing.status === "active" || existing.status === "past_due")) {
+    return problem(409, "subscription_exists", "This practice already has a subscription. Manage it from billing settings.");
+  }
   const user = await currentUser();
   const email = user?.primaryEmailAddress?.emailAddress;
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -27,6 +30,8 @@ export async function POST(request: Request) {
     const customer = await stripe.customers.create({ name: organisation.name, email, metadata: { fieldnoteOrganisationId: organisation.id, clerkOrganisationId: organisation.clerkOrganisationId } });
     customerId = customer.id;
     await db.insert(subscriptions).values({ organisationId: organisation.id, stripeCustomerId: customerId, status: "incomplete", seats: parsed.data.seats }).onConflictDoNothing();
+  } else {
+    await db.update(subscriptions).set({ seats: parsed.data.seats, updatedAt: new Date() }).where(eq(subscriptions.organisationId, organisation.id));
   }
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? new URL(request.url).origin;
   const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [{ price: process.env.STRIPE_BASE_PRICE_ID, quantity: 1 }];

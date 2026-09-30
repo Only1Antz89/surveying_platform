@@ -3,14 +3,14 @@
 import { useState } from "react";
 import { CreditCard, LoaderCircle } from "lucide-react";
 
-export function CheckoutButton() {
+export function CheckoutButton({ seats }: { seats: number }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   async function beginCheckout() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/billing/checkout", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ seats: 5 }) });
+      const response = await fetch("/api/billing/checkout", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ seats }) });
       const payload = await response.json() as { data?: { url?: string }; error?: { message?: string } };
       if (!response.ok || !payload.data?.url) throw new Error(payload.error?.message ?? "Checkout is unavailable.");
       window.location.assign(payload.data.url);
