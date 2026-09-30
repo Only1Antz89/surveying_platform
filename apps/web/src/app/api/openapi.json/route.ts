@@ -15,6 +15,7 @@ const document = {
     "/team": { get: { summary: "List team members", responses: { "200": { description: "Team" } } } },
     "/team/{id}": { patch: { summary: "Change an active member role", parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }], responses: { "200": { description: "Updated membership" }, "409": { description: "Final owner protection" } } }, delete: { summary: "Remove an active member", parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }], responses: { "200": { description: "Removed membership" }, "409": { description: "Final owner protection" } } } },
     "/team/invitations": { post: { summary: "Invite a team member", responses: { "200": { description: "Invitation" } } } },
+    "/support-sessions/{id}": { patch: { summary: "Approve or deny a pending support write-access request as a tenant owner", parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }], responses: { "200": { description: "Support access decision recorded" }, "403": { description: "Owner role required" }, "409": { description: "Request expired or no longer pending" } } } },
     "/organisation": { get: { summary: "Get the active organisation", responses: { "200": { description: "Organisation" } } }, patch: { summary: "Update practice settings", responses: { "200": { description: "Updated organisation" } } } },
   },
 } as const;

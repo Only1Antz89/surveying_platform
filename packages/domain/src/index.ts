@@ -91,6 +91,10 @@ export function canManageBilling(role: OrganisationRole) {
   return role === "owner" || role === "administrator" || role === "finance";
 }
 
+export function canApproveSupportAccess(role: OrganisationRole) {
+  return role === "owner";
+}
+
 export function canManageTenants(role: PlatformRole) {
   return role === "super_admin";
 }

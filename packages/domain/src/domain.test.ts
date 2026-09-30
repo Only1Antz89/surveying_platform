@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canManageBilling, canManageTeam, canManageTenants, canMutateOperations, canTransitionJob, membershipChangeBlocker, resolveAccess } from "./index";
+import { canApproveSupportAccess, canManageBilling, canManageTeam, canManageTenants, canMutateOperations, canTransitionJob, membershipChangeBlocker, resolveAccess } from "./index";
 
 describe("job transitions", () => {
   it("allows the normal instructed to scheduled transition", () => {
@@ -54,6 +54,12 @@ describe("firm permissions", () => {
     expect(canManageBilling("surveyor")).toBe(false);
     expect(canManageBilling("coordinator")).toBe(false);
     expect(canManageBilling("read_only")).toBe(false);
+  });
+
+  it("reserves support write approval for tenant owners", () => {
+    expect(canApproveSupportAccess("owner")).toBe(true);
+    expect(canApproveSupportAccess("administrator")).toBe(false);
+    expect(canApproveSupportAccess("surveyor")).toBe(false);
   });
 
   it("limits tenant lifecycle controls to super administrators", () => {

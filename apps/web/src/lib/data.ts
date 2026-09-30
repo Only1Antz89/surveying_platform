@@ -41,6 +41,13 @@ export type BillingSummary = {
   graceEndsAt: string | null;
   cancelAtPeriodEnd: boolean;
 };
+export type SupportAccessRequest = {
+  id: string;
+  ticketReference: string;
+  reason: string;
+  expiresAt: string;
+  requestedAt: string;
+};
 export type PlatformTenantDetail = {
   tenant: Tenant;
   region: string;
@@ -216,6 +223,31 @@ export async function loadMembers(slug: string): Promise<Member[]> {
     workload: `Expires ${invitation.expiresAt.toLocaleDateString("en-GB")}`,
   }));
   return [...activeMembers, ...invitedMembers];
+}
+
+export async function loadPendingSupportRequests(slug: string): Promise<SupportAccessRequest[]> {
+  if (!connected()) return [];
+  const context = await requireFirmAccess(slug);
+  if (context.userRole !== "owner") return [];
+  const db = createDatabase();
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
+    const rows = await tx.select({
+      id: supportSessions.id,
+      ticketReference: supportSessions.ticketReference,
+      reason: supportSessions.reason,
+      expiresAt: supportSessions.expiresAt,
+      requestedAt: supportSessions.createdAt,
+    }).from(supportSessions).where(and(
+      eq(supportSessions.organisationId, context.organisationId),
+      eq(supportSessions.permission, "write"),
+      eq(supportSessions.breakGlass, false),
+      isNull(supportSessions.approvedByUserId),
+      isNull(supportSessions.revokedAt),
+      gt(supportSessions.expiresAt, new Date()),
+    )).orderBy(desc(supportSessions.createdAt));
+    return rows.map((row) => ({ ...row, expiresAt: row.expiresAt.toISOString(), requestedAt: row.requestedAt.toISOString() }));
+  });
 }
 
 export async function loadJobFormOptions(slug: string): Promise<JobFormOptions> {
@@ -406,7 +438,7 @@ export async function loadPlatformSupportQueue(): Promise<PlatformQueueRow[]> {
     const active = !session.revokedAt && session.expiresAt > now;
     const awaiting = active && session.permission === "write" && !session.approvedByUserId && !session.breakGlass;
     const state = session.revokedAt ? "Revoked" : session.expiresAt <= now ? "Expired" : awaiting ? "Awaiting approval" : "Active";
-    return { id: session.id, primary: session.ticketReference, secondary: organisationName, state, detail: `${session.permission === "read" ? "Read-only" : "Write"} · Expires ${session.expiresAt.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/London" })}`, href: `/platform/tenants/${session.organisationId}`, action: "Open tenant", tone: active ? awaiting ? "amber" : "blue" : "slate" };
+    return { id: session.id, primary: session.ticketReference, secondary: organisationName, state, detail: `${session.breakGlass ? "Emergency write" : session.permission === "read" ? "Read-only" : "Write"} · Expires ${session.expiresAt.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/London" })}`, href: `/platform/tenants/${session.organisationId}`, action: "Open tenant", tone: active ? awaiting ? "amber" : "blue" : "slate" };
   });
 }
 
@@ -426,7 +458,7 @@ export async function loadSupportSessionView(sessionId: string) {
   ]);
   await db.insert(auditEvents).values({ organisationId: record.organisation.id, platformStaffId: operator.platformStaffId, supportSessionId: record.session.id, action: "support.tenant_summary_viewed", resourceType: "organisation", resourceId: record.organisation.id, metadata: { ticketReference: record.session.ticketReference, reason: record.session.reason } });
   return {
-    session: { id: record.session.id, ticketReference: record.session.ticketReference, reason: record.session.reason, permission: record.session.permission, expiresAt: record.session.expiresAt.toISOString() },
+    session: { id: record.session.id, ticketReference: record.session.ticketReference, reason: record.session.reason, permission: record.session.permission, breakGlass: record.session.breakGlass, expiresAt: record.session.expiresAt.toISOString() },
     organisation: { id: record.organisation.id, name: record.organisation.name, status: record.organisation.status, practiceType: record.organisation.practiceType, region: record.organisation.region },
     members: memberRows,
     clients: clientRows,
