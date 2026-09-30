@@ -1,5 +1,5 @@
 import { and, asc, count, desc, eq, gt, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
-import { auditEvents, createDatabase, clients, invitations, jobs, onboardingSteps, organisationBranding, organisationMemberships, organisations, properties, serviceDefinitions, subscriptions, users } from "@fieldnote/db";
+import { auditEvents, createDatabase, clients, invitations, jobs, onboardingSteps, organisationBranding, organisationMemberships, organisations, practicePacks, practicePackVersions, properties, serviceDefinitions, subscriptions, supportSessions, users } from "@fieldnote/db";
 import type { Client, Job, Member, Property, Tenant } from "./demo-data";
 import { activities as demoActivities, clients as demoClients, jobs as demoJobs, members as demoMembers, properties as demoProperties, tenants as demoTenants } from "./demo-data";
 import { isClerkConfigured, requireFirmAccess, requirePlatformAccess } from "./access";
@@ -54,6 +54,7 @@ export type PlatformTenantDetail = {
   onboarding: { key: string; completedAt: string | null }[];
   audit: { id: string; action: string; resourceType: string; occurredAt: string; actor: string }[];
 };
+export type PlatformQueueRow = { id: string; primary: string; secondary: string; state: string; detail: string; href?: string; action?: string; tone?: "blue" | "green" | "amber" | "red" | "slate" };
 
 const formatTarget = (value: string | null) => value
   ? new Date(`${value}T12:00:00.000Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/London" })
@@ -360,4 +361,66 @@ export async function loadTenantDetail(tenantId: string): Promise<PlatformTenant
     onboarding: onboardingRows.map((step) => ({ key: step.key, completedAt: step.completedAt?.toISOString() ?? null })),
     audit: auditRows.map((event) => ({ id: event.id, action: event.action, resourceType: event.resourceType, occurredAt: event.occurredAt.toISOString(), actor: event.platformStaffId ? "Platform staff" : event.actorUserId ? "Firm user" : "System" })),
   };
+}
+
+export async function loadPlatformOnboardingQueue(): Promise<PlatformQueueRow[]> {
+  const tenants = await loadTenants();
+  return tenants.filter((tenant) => tenant.onboarding < 100 || tenant.status === "provisioning" || tenant.subscription === "incomplete").map((tenant) => ({ id: tenant.id, primary: tenant.name, secondary: tenant.owner, state: tenant.subscription === "incomplete" ? "Checkout incomplete" : `${tenant.onboarding}% complete`, detail: `${tenant.status} · Last activity ${tenant.lastActive}`, href: `/platform/tenants/${tenant.id}`, action: "Open tenant", tone: tenant.subscription === "incomplete" ? "amber" : "blue" }));
+}
+
+export async function loadPlatformBillingQueue(): Promise<PlatformQueueRow[]> {
+  const tenants = await loadTenants();
+  return tenants.filter((tenant) => tenant.subscription !== "active" && tenant.subscription !== "trialing").map((tenant) => ({ id: tenant.id, primary: tenant.name, secondary: `${tenant.plan} · ${tenant.seats} seats`, state: tenant.subscription.replace("_", " "), detail: tenant.subscription === "incomplete" ? "Billing setup has not completed" : tenant.trialEnds === "—" ? "No active trial" : `Trial ends ${tenant.trialEnds}`, href: `/platform/tenants/${tenant.id}`, action: "Inspect account", tone: tenant.subscription === "unpaid" ? "red" : tenant.subscription === "canceled" ? "slate" : "amber" }));
+}
+
+export async function loadPlatformUsageQueue(): Promise<PlatformQueueRow[]> {
+  if (!process.env.DATABASE_ADMIN_URL || !isClerkConfigured()) return [];
+  await requirePlatformAccess();
+  const db = createDatabase(process.env.DATABASE_ADMIN_URL);
+  const [tenantRows, clientRows, propertyRows, jobRows, memberRows] = await Promise.all([
+    db.select({ id: organisations.id, name: organisations.name }).from(organisations).orderBy(asc(organisations.name)),
+    db.select({ organisationId: clients.organisationId }).from(clients),
+    db.select({ organisationId: properties.organisationId }).from(properties),
+    db.select({ organisationId: jobs.organisationId, stage: jobs.stage }).from(jobs),
+    db.select({ organisationId: organisationMemberships.organisationId, active: organisationMemberships.active }).from(organisationMemberships),
+  ]);
+  return tenantRows.map((tenant) => {
+    const jobCount = jobRows.filter((row) => row.organisationId === tenant.id).length;
+    const activeJobs = jobRows.filter((row) => row.organisationId === tenant.id && row.stage !== "paid" && row.stage !== "archived").length;
+    const memberCount = memberRows.filter((row) => row.organisationId === tenant.id && row.active).length;
+    return { id: tenant.id, primary: tenant.name, secondary: `${memberCount} active ${memberCount === 1 ? "member" : "members"}`, state: `${activeJobs} active jobs`, detail: `${clientRows.filter((row) => row.organisationId === tenant.id).length} clients · ${propertyRows.filter((row) => row.organisationId === tenant.id).length} properties · ${jobCount} total jobs`, href: `/platform/tenants/${tenant.id}`, action: "Inspect usage", tone: activeJobs ? "blue" : "slate" };
+  });
+}
+
+export async function loadPlatformSupportQueue(): Promise<PlatformQueueRow[]> {
+  if (!process.env.DATABASE_ADMIN_URL || !isClerkConfigured()) return [];
+  await requirePlatformAccess();
+  const db = createDatabase(process.env.DATABASE_ADMIN_URL);
+  const rows = await db.select({ session: supportSessions, organisationName: organisations.name }).from(supportSessions).innerJoin(organisations, eq(supportSessions.organisationId, organisations.id)).orderBy(desc(supportSessions.createdAt)).limit(100);
+  const now = new Date();
+  return rows.map(({ session, organisationName }) => {
+    const active = !session.revokedAt && session.expiresAt > now;
+    const awaiting = active && session.permission === "write" && !session.approvedByUserId && !session.breakGlass;
+    const state = session.revokedAt ? "Revoked" : session.expiresAt <= now ? "Expired" : awaiting ? "Awaiting approval" : "Active";
+    return { id: session.id, primary: session.ticketReference, secondary: organisationName, state, detail: `${session.permission === "read" ? "Read-only" : "Write"} · Expires ${session.expiresAt.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/London" })}`, href: `/platform/tenants/${session.organisationId}`, action: "Open tenant", tone: active ? awaiting ? "amber" : "blue" : "slate" };
+  });
+}
+
+export async function loadPlatformPracticePackQueue(): Promise<PlatformQueueRow[]> {
+  if (!process.env.DATABASE_ADMIN_URL || !isClerkConfigured()) return [];
+  await requirePlatformAccess();
+  const db = createDatabase(process.env.DATABASE_ADMIN_URL);
+  const [packs, versions] = await Promise.all([db.select().from(practicePacks).orderBy(asc(practicePacks.name)), db.select().from(practicePackVersions).orderBy(desc(practicePackVersions.createdAt))]);
+  return packs.map((pack) => {
+    const version = versions.find((item) => item.practicePackId === pack.id);
+    return { id: pack.id, primary: pack.name, secondary: pack.discipline, state: pack.active ? version?.status ?? "No version" : "Inactive", detail: version ? `Version ${version.version}${version.publishedAt ? ` · Published ${version.publishedAt.toLocaleDateString("en-GB")}` : ""}` : "No version has been created", tone: pack.active && version?.status === "published" ? "green" : pack.active ? "amber" : "slate" };
+  });
+}
+
+export async function loadPlatformAuditQueue(): Promise<PlatformQueueRow[]> {
+  if (!process.env.DATABASE_ADMIN_URL || !isClerkConfigured()) return [];
+  await requirePlatformAccess();
+  const db = createDatabase(process.env.DATABASE_ADMIN_URL);
+  const rows = await db.select({ event: auditEvents, organisationName: organisations.name }).from(auditEvents).leftJoin(organisations, eq(auditEvents.organisationId, organisations.id)).orderBy(desc(auditEvents.occurredAt)).limit(100);
+  return rows.map(({ event, organisationName }) => ({ id: event.id, primary: event.action, secondary: event.platformStaffId ? "Platform staff" : event.actorUserId ? "Firm user" : "System", state: "Recorded", detail: `${organisationName ?? "Platform-wide"} · ${event.resourceType} · ${event.occurredAt.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/London" })}`, href: event.organisationId ? `/platform/tenants/${event.organisationId}` : undefined, action: event.organisationId ? "Open tenant" : undefined, tone: event.platformStaffId ? "blue" : "green" }));
 }

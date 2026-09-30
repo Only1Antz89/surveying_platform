@@ -1,4 +1,5 @@
 import { BookOpenCheck } from "lucide-react";
-import { OperationsPage, packRows } from "@/components/operations-page";
+import { OperationsPage } from "@/components/operations-page";
+import { loadPlatformPracticePackQueue } from "@/lib/data";
 export const metadata = { title: "Practice packs" };
-export default function Page() { return <OperationsPage title="Practice packs" description="Manage the versioned surveying workflows firms can enable in their workspace." icon={BookOpenCheck} rows={packRows} />; }
+export default async function Page() { const rows = await loadPlatformPracticePackQueue(); return <OperationsPage title="Practice packs" description="Inspect the versioned surveying workflows firms can enable in their workspace." icon={BookOpenCheck} rows={rows} emptyMessage="No practice packs have been configured." />; }

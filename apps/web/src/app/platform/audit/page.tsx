@@ -1,4 +1,5 @@
 import { FileClock } from "lucide-react";
-import { OperationsPage, auditRows } from "@/components/operations-page";
+import { OperationsPage } from "@/components/operations-page";
+import { loadPlatformAuditQueue } from "@/lib/data";
 export const metadata = { title: "Audit" };
-export default function Page() { return <OperationsPage title="Global audit" description="Search immutable customer, operator and integration events across FIELDNOTE." icon={FileClock} rows={auditRows} />; }
+export default async function Page() { const rows = await loadPlatformAuditQueue(); return <OperationsPage title="Global audit" description="Review immutable customer, operator and integration events across the platform." icon={FileClock} rows={rows} emptyMessage="No platform audit events have been recorded." />; }
