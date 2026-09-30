@@ -2,7 +2,7 @@ import { z } from "zod";
 import { canMutateOperations, jobStages } from "@fieldnote/domain";
 import { auditEvents, clients, createDatabase, jobs, jobStageEvents, organisationMemberships, properties } from "@fieldnote/db";
 import { and, desc, eq, sql } from "drizzle-orm";
-import { apiContext } from "@/lib/access";
+import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
 import { jobs as demoJobs } from "@/lib/demo-data";
 
@@ -23,6 +23,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  if (!canWriteWorkspace(context)) return problem(402, "workspace_read_only", "Restore billing before changing workspace records.");
   const parsed = await parseBody(request, createJob);
   if (!parsed.success) return problem(400, "invalid_request", "The job details are invalid.", parsed.error.flatten());
   if (!canMutateOperations(context.role)) return problem(403, "forbidden", "Your role cannot create jobs.");

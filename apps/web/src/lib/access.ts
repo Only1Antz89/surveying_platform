@@ -1,11 +1,16 @@
 import { auth } from "@clerk/nextjs/server";
-import { createDatabase, organisationMemberships, organisations, platformStaff, subscriptions, users } from "@fieldnote/db";
+import { resolveAccess } from "@fieldnote/domain";
+import { createDatabase, entitlements, organisationMemberships, organisations, platformStaff, subscriptions, users } from "@fieldnote/db";
 import { and, eq, sql } from "drizzle-orm";
 import { notFound, redirect } from "next/navigation";
 import { cache } from "react";
 
 export const isClerkConfigured = () => Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY);
 const isDatabaseConfigured = () => Boolean(process.env.DATABASE_APP_URL ?? process.env.DATABASE_URL);
+
+function hasPilotExemption(organisationId: string) {
+  return (process.env.BILLING_EXEMPT_ORGANISATION_IDS ?? "").split(",").map((value) => value.trim()).filter(Boolean).includes(organisationId);
+}
 
 async function requireFirmAccessUncached(slug: string) {
   if (!isClerkConfigured()) return {
@@ -17,6 +22,7 @@ async function requireFirmAccessUncached(slug: string) {
     userName: "Maya Patel",
     userEmail: "maya@northstarsurveying.co.uk",
     userRole: "owner" as const,
+    accessLevel: "full" as const,
     trialEndsAt: new Date("2026-10-10T00:00:00.000Z"),
   };
   const session = await auth();
@@ -30,6 +36,7 @@ async function requireFirmAccessUncached(slug: string) {
     slug: organisations.slug,
     name: organisations.name,
     region: organisations.region,
+    status: organisations.status,
   }).from(organisations).where(eq(organisations.clerkOrganisationId, session.orgId)).limit(1);
   if (!organisation) notFound();
   if (organisation.slug !== slug) redirect(`/app/${organisation.slug}/overview`);
@@ -47,14 +54,18 @@ async function requireFirmAccessUncached(slug: string) {
         eq(organisationMemberships.active, true),
         eq(users.clerkUserId, session.userId),
       )).limit(1);
-    const [subscription] = await tx.select({ trialEndsAt: subscriptions.trialEndsAt })
+    const [subscription] = await tx.select({ status: subscriptions.status, trialEndsAt: subscriptions.trialEndsAt, graceEndsAt: subscriptions.graceEndsAt })
       .from(subscriptions)
       .where(eq(subscriptions.organisationId, organisation.id))
       .limit(1);
-    return { member, subscription };
+    const [billingExemption] = await tx.select({ enabled: entitlements.enabled }).from(entitlements).where(and(eq(entitlements.organisationId, organisation.id), eq(entitlements.key, "billing_exempt"), eq(entitlements.enabled, true))).limit(1);
+    return { member, subscription, billingExemption };
   });
   if (!details.member) notFound();
   const userName = [details.member.firstName, details.member.lastName].filter(Boolean).join(" ") || details.member.email;
+  const accessLevel = organisation.status === "active" && (details.billingExemption?.enabled || hasPilotExemption(organisation.id))
+    ? "full" as const
+    : resolveAccess(organisation.status, details.subscription?.status ?? "incomplete", details.subscription?.graceEndsAt);
   return {
     userId: session.userId,
     clerkOrganisationId: session.orgId,
@@ -64,11 +75,16 @@ async function requireFirmAccessUncached(slug: string) {
     userName,
     userEmail: details.member.email,
     userRole: details.member.role,
+    accessLevel,
     trialEndsAt: details.subscription?.trialEndsAt ?? null,
   };
 }
 
 export const requireFirmAccess = cache(requireFirmAccessUncached);
+
+export function canWriteWorkspace(context: { accessLevel: "full" | "billing_only" | "read_only" | "blocked" }) {
+  return context.accessLevel === "full";
+}
 
 export async function requirePlatformAccess() {
   if (!isClerkConfigured()) return { userId: "demo_platform_user", platformStaffId: "00000000-0000-0000-0000-000000000001", userName: "Fieldnote Operator", userEmail: "operator@fieldnote.local", role: "super_admin" as const };
@@ -95,17 +111,17 @@ export async function platformApiContext() {
 
 export async function apiContext(request: Request) {
   if (!isClerkConfigured()) {
-    return { userId: "demo_user", internalUserId: null, clerkOrganisationId: "demo_org", organisationId: "00000000-0000-0000-0000-000000000001", role: "owner" as const, demo: true };
+    return { userId: "demo_user", internalUserId: null, clerkOrganisationId: "demo_org", organisationId: "00000000-0000-0000-0000-000000000001", role: "owner" as const, accessLevel: "full" as const, demo: true };
   }
   const session = await auth();
   if (!session.userId || !session.orgId) return null;
   if (!isDatabaseConfigured()) throw new Error("DATABASE_APP_URL or DATABASE_URL is required when Clerk is enabled");
   const db = createDatabase();
-  const [organisation] = await db.select({ id: organisations.id }).from(organisations).where(eq(organisations.clerkOrganisationId, session.orgId)).limit(1);
+  const [organisation] = await db.select({ id: organisations.id, status: organisations.status }).from(organisations).where(eq(organisations.clerkOrganisationId, session.orgId)).limit(1);
   if (!organisation) return null;
-  const [member] = await db.transaction(async (tx) => {
+  const details = await db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.current_organisation_id', ${organisation.id}, true)`);
-    return tx.select({ internalUserId: users.id, role: organisationMemberships.role })
+    const [member] = await tx.select({ internalUserId: users.id, role: organisationMemberships.role })
       .from(organisationMemberships)
       .innerJoin(users, eq(organisationMemberships.userId, users.id))
       .where(and(
@@ -113,8 +129,14 @@ export async function apiContext(request: Request) {
         eq(organisationMemberships.active, true),
         eq(users.clerkUserId, session.userId),
       )).limit(1);
+    const [subscription] = await tx.select({ status: subscriptions.status, graceEndsAt: subscriptions.graceEndsAt }).from(subscriptions).where(eq(subscriptions.organisationId, organisation.id)).limit(1);
+    const [billingExemption] = await tx.select({ enabled: entitlements.enabled }).from(entitlements).where(and(eq(entitlements.organisationId, organisation.id), eq(entitlements.key, "billing_exempt"), eq(entitlements.enabled, true))).limit(1);
+    return { member, subscription, billingExemption };
   });
-  if (!member) return null;
+  if (!details.member) return null;
+  const accessLevel = organisation.status === "active" && (details.billingExemption?.enabled || hasPilotExemption(organisation.id))
+    ? "full" as const
+    : resolveAccess(organisation.status, details.subscription?.status ?? "incomplete", details.subscription?.graceEndsAt);
   void request;
-  return { userId: session.userId, internalUserId: member.internalUserId, clerkOrganisationId: session.orgId, organisationId: organisation.id, role: member.role, demo: false };
+  return { userId: session.userId, internalUserId: details.member.internalUserId, clerkOrganisationId: session.orgId, organisationId: organisation.id, role: details.member.role, accessLevel, demo: false };
 }

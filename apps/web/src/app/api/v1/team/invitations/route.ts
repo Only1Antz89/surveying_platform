@@ -3,7 +3,7 @@ import { z } from "zod";
 import { canManageTeam, organisationRoles } from "@fieldnote/domain";
 import { auditEvents, createDatabase, invitations } from "@fieldnote/db";
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { apiContext } from "@/lib/access";
+import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
 
 const invitationSchema = z.object({ email: z.email(), role: z.enum(organisationRoles) });
@@ -11,6 +11,7 @@ const invitationSchema = z.object({ email: z.email(), role: z.enum(organisationR
 export async function POST(request: Request) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  if (!canWriteWorkspace(context)) return problem(402, "workspace_read_only", "Restore billing before changing team access.");
   if (!canManageTeam(context.role)) return problem(403, "forbidden", "Only owners and administrators can invite teammates.");
   const parsed = await parseBody(request, invitationSchema);
   if (!parsed.success) return problem(400, "invalid_request", "The invitation details are invalid.", parsed.error.flatten());

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { and, eq, sql } from "drizzle-orm";
 import { canMutateOperations, canTransitionJob, jobStages } from "@fieldnote/domain";
 import { auditEvents, createDatabase, jobs, jobStageEvents, organisationMemberships } from "@fieldnote/db";
-import { apiContext } from "@/lib/access";
+import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
 import { jobs as demoJobs } from "@/lib/demo-data";
 
@@ -27,6 +27,7 @@ export async function GET(request: Request, context: RouteContext<"/api/v1/jobs/
 export async function PATCH(request: Request, context: RouteContext<"/api/v1/jobs/[id]">) {
   const session = await apiContext(request);
   if (!session) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  if (!canWriteWorkspace(session)) return problem(402, "workspace_read_only", "Restore billing before changing workspace records.");
   if (!canMutateOperations(session.role)) return problem(403, "forbidden", "Your role cannot change jobs.");
   const parsed = await parseBody(request, patchJob);
   if (!parsed.success) return problem(400, "invalid_request", "The requested job changes are invalid.", parsed.error.flatten());

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { apiContext } from "@/lib/access";
+import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
 import { clients as demoClients } from "@/lib/demo-data";
 import { auditEvents, clients, createDatabase } from "@fieldnote/db";
@@ -23,6 +23,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  if (!canWriteWorkspace(context)) return problem(402, "workspace_read_only", "Restore billing before changing workspace records.");
   const parsed = await parseBody(request, createClient);
   if (!parsed.success) return problem(400, "invalid_request", "The client details are invalid.", parsed.error.flatten());
   if (!canMutateOperations(context.role)) return problem(403, "forbidden", "Your role cannot create client records.");
