@@ -21,6 +21,7 @@ export type JobFormOptions = {
   clients: { id: string; name: string }[];
   properties: { id: string; clientId: string; label: string }[];
   surveyors: { id: string; name: string }[];
+  coordinators: { id: string; name: string }[];
 };
 export type OrganisationSettings = {
   name: string;
@@ -192,9 +193,9 @@ export async function loadJobs(slug: string): Promise<Job[]> {
   const db = createDatabase();
   const rows = await db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
-    return tx.select({ job: jobs, clientName: clients.displayName, address: properties.line1, city: properties.city }).from(jobs).innerJoin(clients, eq(jobs.clientId, clients.id)).innerJoin(properties, eq(jobs.propertyId, properties.id)).where(eq(jobs.organisationId, context.organisationId)).orderBy(desc(jobs.updatedAt));
+    return tx.select({ job: jobs, clientName: clients.displayName, address: properties.line1, city: properties.city, assigneeFirstName: users.firstName, assigneeLastName: users.lastName, assigneeEmail: users.email }).from(jobs).innerJoin(clients, eq(jobs.clientId, clients.id)).innerJoin(properties, eq(jobs.propertyId, properties.id)).leftJoin(users, eq(jobs.assignedSurveyorId, users.id)).where(eq(jobs.organisationId, context.organisationId)).orderBy(desc(jobs.updatedAt));
   });
-  return rows.map(({ job, clientName, address, city }) => ({ id: job.id, reference: job.reference, client: clientName, address: `${address}, ${city}`, service: job.serviceName, stage: job.stage, assignee: job.assignedSurveyorId ? "Assigned surveyor" : "Unassigned", target: job.targetDate ?? "Not scheduled", fee: Number(job.fee ?? 0), priority: job.priority === "high" ? "High" : "Normal", version: job.version }));
+  return rows.map(({ job, clientName, address, city, assigneeFirstName, assigneeLastName, assigneeEmail }) => ({ id: job.id, reference: job.reference, client: clientName, address: `${address}, ${city}`, service: job.serviceName, stage: job.stage, assignee: [assigneeFirstName, assigneeLastName].filter(Boolean).join(" ") || assigneeEmail || "Unassigned", target: formatTarget(job.targetDate), fee: Number(job.fee ?? 0), priority: job.priority === "high" ? "High" : "Normal", version: job.version }));
 }
 
 export async function loadMembers(slug: string): Promise<Member[]> {
@@ -255,6 +256,7 @@ export async function loadJobFormOptions(slug: string): Promise<JobFormOptions> 
     clients: demoClients.map((client) => ({ id: client.id, name: client.name })),
     properties: demoProperties.map((property) => ({ id: property.id, clientId: demoClients.find((client) => client.name === property.client)?.id ?? demoClients[0].id, label: `${property.address}, ${property.town}` })),
     surveyors: demoMembers.filter((member) => member.role === "owner" || member.role === "administrator" || member.role === "surveyor").map((member) => ({ id: member.id, name: member.name })),
+    coordinators: demoMembers.filter((member) => member.role === "owner" || member.role === "administrator" || member.role === "coordinator").map((member) => ({ id: member.id, name: member.name })),
   };
   const context = await requireFirmAccess(slug);
   const db = createDatabase();
@@ -267,6 +269,7 @@ export async function loadJobFormOptions(slug: string): Promise<JobFormOptions> 
       clients: clientRows,
       properties: propertyRows.map((property) => ({ id: property.id, clientId: property.clientId, label: `${property.line1}, ${property.city} · ${property.postcode}` })),
       surveyors: surveyorRows.filter((member) => member.role === "owner" || member.role === "administrator" || member.role === "surveyor").map((member) => ({ id: member.id, name: [member.firstName, member.lastName].filter(Boolean).join(" ") || member.email })),
+      coordinators: surveyorRows.filter((member) => member.role === "owner" || member.role === "administrator" || member.role === "coordinator").map((member) => ({ id: member.id, name: [member.firstName, member.lastName].filter(Boolean).join(" ") || member.email })),
     };
   });
 }
