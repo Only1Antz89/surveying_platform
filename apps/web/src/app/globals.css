@@ -250,6 +250,28 @@ a { color: inherit; text-decoration: none; }
 .job-history li small { color: #8491a4; font-size: 9px; line-height: 1.45; }
 .job-history-empty { color: var(--muted); font-size: 11px; }
 .job-loading { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 150px; color: var(--muted); font-size: 12px; }
+.client-record-modal { width: min(1040px, 100%); }
+.client-record-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, .9fr); }
+.client-record-layout > div { border-right: 1px solid var(--border); }
+.client-contacts { padding: 22px; background: var(--surface-2); }
+.client-contacts-heading { display: flex; align-items: flex-start; justify-content: space-between; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+.client-contacts-heading h3, .contact-add-form h3 { margin: 0; font-size: 13px; }
+.client-contacts-heading p { margin: 4px 0 0; color: var(--muted); font-size: 10px; }
+.client-contacts-heading svg { color: var(--blue); }
+.contact-list { display: grid; gap: 10px; margin-top: 14px; }
+.contact-card { padding: 14px; border: 1px solid var(--border); border-radius: 8px; background: white; }
+.contact-card-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.contact-card-title strong { display: block; font-size: 12px; }
+.contact-card-title span { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; color: var(--blue); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.contact-card dl { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 13px 0; }
+.contact-card dt { color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: .06em; }
+.contact-card dd { margin: 3px 0 0; overflow-wrap: anywhere; font-size: 10px; }
+.contact-preference { display: flex; align-items: end; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+.contact-preference label { display: grid; gap: 5px; color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: .06em; }
+.contact-add-form { display: grid; gap: 13px; margin-top: 16px; padding-top: 18px; border-top: 1px solid var(--border); }
+.contact-add-form .button { justify-self: end; }
+.check-field { display: flex; align-items: center; gap: 8px; align-self: end; min-height: 38px; color: var(--muted); font-size: 11px; }
+.check-field input { width: 15px; height: 15px; accent-color: var(--blue); }
 .form-error { margin: 14px 0 0; color: var(--danger); font-size: 11px; }
 .button:disabled { cursor: not-allowed; opacity: .58; }
 .mobile-overlay { display: none; }
@@ -288,6 +310,8 @@ a { color: inherit; text-decoration: none; }
   .data-table td:first-child::before { display: none; }
   .job-record-layout { grid-template-columns: 1fr; }
   .job-record-layout > .form-section { border-right: 0; border-bottom: 1px solid var(--border); }
+  .client-record-layout { grid-template-columns: 1fr; }
+  .client-record-layout > div { border-right: 0; border-bottom: 1px solid var(--border); }
   .form-grid, .settings-grid, .service-row { grid-template-columns: 1fr; }
   .service-row .icon-button { justify-self: end; }
   .billing-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

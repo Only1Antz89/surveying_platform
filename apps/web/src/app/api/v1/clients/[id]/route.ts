@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { and, eq, sql } from "drizzle-orm";
 import { canMutateOperations } from "@fieldnote/domain";
-import { auditEvents, clients, createDatabase } from "@fieldnote/db";
+import { auditEvents, clientContacts, clients, createDatabase } from "@fieldnote/db";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
+import { clients as demoClients } from "@/lib/demo-data";
 
 const patchClient = z.object({
   displayName: z.string().trim().min(2).max(160).optional(),
@@ -12,6 +13,26 @@ const patchClient = z.object({
   archived: z.boolean().optional(),
   version: z.number().int().positive(),
 }).refine((value) => Object.keys(value).some((key) => key !== "version"), "At least one change is required.");
+
+export async function GET(request: Request, route: RouteContext<"/api/v1/clients/[id]">) {
+  const context = await apiContext(request);
+  if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  const { id } = await route.params;
+  if (context.demo) {
+    const client = demoClients.find((item) => item.id === id);
+    if (!client) return problem(404, "client_not_found", "The client could not be found.");
+    return ok({ client: { id: client.id, kind: client.kind === "Company" ? "company" : "individual", displayName: client.name, email: client.email === "—" ? null : client.email, phone: client.phone === "—" ? null : client.phone, version: client.version ?? 1 }, contacts: [{ id: `contact-${client.id}`, name: client.name, email: client.email === "—" ? null : client.email, phone: client.phone === "—" ? null : client.phone, preferredChannel: "email", primary: true }] }, { demo: true });
+  }
+  const db = createDatabase();
+  const detail = await db.transaction(async (tx) => {
+    await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
+    const [client] = await tx.select().from(clients).where(and(eq(clients.id, id), eq(clients.organisationId, context.organisationId))).limit(1);
+    if (!client) return null;
+    const contacts = await tx.select().from(clientContacts).where(and(eq(clientContacts.clientId, id), eq(clientContacts.organisationId, context.organisationId)));
+    return { client, contacts };
+  });
+  return detail ? ok(detail) : problem(404, "client_not_found", "The client could not be found.");
+}
 
 export async function PATCH(request: Request, route: RouteContext<"/api/v1/clients/[id]">) {
   const context = await apiContext(request);
