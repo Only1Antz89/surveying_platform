@@ -410,6 +410,31 @@ export async function loadPlatformSupportQueue(): Promise<PlatformQueueRow[]> {
   });
 }
 
+export async function loadSupportSessionView(sessionId: string) {
+  if (!process.env.DATABASE_ADMIN_URL || !isClerkConfigured()) return null;
+  const operator = await requirePlatformAccess();
+  const db = createDatabase(process.env.DATABASE_ADMIN_URL);
+  const [record] = await db.select({ session: supportSessions, organisation: organisations }).from(supportSessions).innerJoin(organisations, eq(supportSessions.organisationId, organisations.id)).where(eq(supportSessions.id, sessionId)).limit(1);
+  if (!record || record.session.revokedAt || record.session.expiresAt <= new Date()) return null;
+  if (record.session.platformStaffId !== operator.platformStaffId && operator.role !== "super_admin") return null;
+  if (record.session.permission !== "read" && !record.session.approvedByUserId && !record.session.breakGlass) return null;
+  const [memberRows, clientRows, propertyRows, jobRows] = await Promise.all([
+    db.select({ id: organisationMemberships.id, role: organisationMemberships.role, active: organisationMemberships.active, email: users.email, firstName: users.firstName, lastName: users.lastName }).from(organisationMemberships).innerJoin(users, eq(organisationMemberships.userId, users.id)).where(eq(organisationMemberships.organisationId, record.organisation.id)),
+    db.select({ id: clients.id, displayName: clients.displayName, archivedAt: clients.archivedAt }).from(clients).where(eq(clients.organisationId, record.organisation.id)),
+    db.select({ id: properties.id, archivedAt: properties.archivedAt }).from(properties).where(eq(properties.organisationId, record.organisation.id)),
+    db.select({ id: jobs.id, reference: jobs.reference, stage: jobs.stage }).from(jobs).where(eq(jobs.organisationId, record.organisation.id)),
+  ]);
+  await db.insert(auditEvents).values({ organisationId: record.organisation.id, platformStaffId: operator.platformStaffId, supportSessionId: record.session.id, action: "support.tenant_summary_viewed", resourceType: "organisation", resourceId: record.organisation.id, metadata: { ticketReference: record.session.ticketReference, reason: record.session.reason } });
+  return {
+    session: { id: record.session.id, ticketReference: record.session.ticketReference, reason: record.session.reason, permission: record.session.permission, expiresAt: record.session.expiresAt.toISOString() },
+    organisation: { id: record.organisation.id, name: record.organisation.name, status: record.organisation.status, practiceType: record.organisation.practiceType, region: record.organisation.region },
+    members: memberRows,
+    clients: clientRows,
+    properties: propertyRows,
+    jobs: jobRows,
+  };
+}
+
 export async function loadPlatformPracticePackQueue(): Promise<PlatformQueueRow[]> {
   if (!process.env.DATABASE_ADMIN_URL || !isClerkConfigured()) return [];
   await requirePlatformAccess();
