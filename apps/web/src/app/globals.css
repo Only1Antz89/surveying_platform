@@ -251,6 +251,10 @@ a { color: inherit; text-decoration: none; }
 .job-history-empty { color: var(--muted); font-size: 11px; }
 .job-loading { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 150px; color: var(--muted); font-size: 12px; }
 .client-record-modal { width: min(1040px, 100%); }
+.property-record-modal { width: min(820px, 100%); }
+.property-record-details { padding: 0; }
+.property-jobs { border-top: 1px solid var(--border); }
+.property-jobs .panel-header h3 { margin: 0; font-size: 13px; }
 .client-record-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, .9fr); }
 .client-record-layout > div { border-right: 1px solid var(--border); }
 .client-contacts { padding: 22px; background: var(--surface-2); }

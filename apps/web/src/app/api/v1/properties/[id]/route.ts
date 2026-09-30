@@ -4,7 +4,7 @@ import { canMutateOperations } from "@fieldnote/domain";
 import { auditEvents, clients, createDatabase, jobs, properties } from "@fieldnote/db";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
-import { properties as demoProperties } from "@/lib/demo-data";
+import { jobs as demoJobs, properties as demoProperties } from "@/lib/demo-data";
 
 const patchProperty = z.object({
   line1: z.string().trim().min(2).max(180).optional(),
@@ -22,7 +22,11 @@ export async function GET(request: Request, route: RouteContext<"/api/v1/propert
   const { id } = await route.params;
   if (context.demo) {
     const property = demoProperties.find((item) => item.id === id);
-    return property ? ok({ property, jobs: [] }, { demo: true }) : problem(404, "property_not_found", "The property could not be found.");
+    return property ? ok({
+      property: { id: property.id, line1: property.address, line2: null, city: property.town, postcode: property.postcode, propertyType: property.type, version: property.version ?? 1 },
+      clientName: property.client,
+      jobs: demoJobs.filter((job) => job.address.includes(property.address)).map((job) => ({ id: job.id, reference: job.reference, serviceName: job.service, stage: job.stage, targetDate: null })),
+    }, { demo: true }) : problem(404, "property_not_found", "The property could not be found.");
   }
   const db = createDatabase();
   const detail = await db.transaction(async (tx) => {
