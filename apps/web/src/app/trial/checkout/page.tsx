@@ -1,9 +1,13 @@
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 import { Check, ShieldCheck } from "lucide-react";
 import { AuthFrame } from "@/components/auth-frame";
 import { CheckoutButton } from "@/components/checkout-button";
+import { isClerkConfigured } from "@/lib/access";
 
 export const metadata = { title: "Confirm your trial" };
 export default async function TrialCheckoutPage({ searchParams }: { searchParams: Promise<{ seats?: string }> }) {
+  if (isClerkConfigured() && !(await auth()).userId) redirect("/sign-in?redirect_url=/trial/checkout");
   const params = await searchParams;
   const requestedSeats = Number(params.seats ?? 5);
   const seats = Number.isInteger(requestedSeats) ? Math.min(250, Math.max(1, requestedSeats)) : 5;

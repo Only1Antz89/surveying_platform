@@ -1,10 +1,7 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse, type NextRequest, type NextFetchEvent } from "next/server";
 
-const isProtected = createRouteMatcher(["/app(.*)", "/platform(.*)", "/start(.*)", "/trial(.*)", "/api/v1(.*)", "/api/onboarding(.*)", "/api/billing(.*)"]);
-const clerkProxy = clerkMiddleware(async (auth, request) => {
-  if (isProtected(request)) await auth.protect();
-});
+const clerkProxy = clerkMiddleware();
 
 export default function proxy(request: NextRequest, event: NextFetchEvent) {
   if (request.nextUrl.pathname.startsWith("/app/north-star-surveying")) {
