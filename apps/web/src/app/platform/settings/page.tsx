@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/page-header";
 import { requirePlatformAccess } from "@/lib/access";
 
 export const metadata = { title: "Platform settings" };
+export const dynamic = "force-dynamic";
 
 export default async function Page() {
   await requirePlatformAccess();
