@@ -1,5 +1,5 @@
 import { and, asc, count, desc, eq, gt, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
-import { auditEvents, backgroundJobs, createDatabase, clients, invitations, jobs, onboardingSteps, organisationBranding, organisationMemberships, organisations, platformIncidentOrganisations, platformIncidents, practicePacks, practicePackVersions, properties, serviceDefinitions, subscriptions, supportSessions, users, webhookEvents } from "@fieldnote/db";
+import { auditEvents, backgroundJobs, createDatabase, clients, invitations, jobs, onboardingSteps, organisationBranding, organisationMemberships, organisations, platformIncidentOrganisations, platformIncidents, platformStaff, practicePacks, practicePackVersions, properties, serviceDefinitions, subscriptions, supportSessions, users, webhookEvents } from "@fieldnote/db";
 import type { Client, Job, Member, Property, Tenant } from "./demo-data";
 import { activities as demoActivities, clients as demoClients, jobs as demoJobs, members as demoMembers, properties as demoProperties, tenants as demoTenants } from "./demo-data";
 import { isClerkConfigured, requireFirmAccess, requirePlatformAccess } from "./access";
@@ -80,6 +80,16 @@ export type PlatformIncidentRecord = {
   startedAt: string;
   resolvedAt: string | null;
   affectedOrganisations: { id: string; name: string }[];
+};
+export type PlatformStaffRecord = {
+  id: string;
+  clerkUserId: string;
+  name: string;
+  email: string;
+  role: "super_admin" | "support" | "billing" | "compliance";
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
 };
 
 const formatTarget = (value: string | null) => value
@@ -459,6 +469,23 @@ export async function loadPlatformIncidents(): Promise<{ incidents: PlatformInci
     tenants: tenantRows,
     technicalFailures,
   };
+}
+
+export async function loadPlatformStaff(): Promise<PlatformStaffRecord[]> {
+  if (!process.env.DATABASE_ADMIN_URL || !isClerkConfigured()) return [{ id: "00000000-0000-0000-0000-000000000001", clerkUserId: "demo_platform_user", name: "Fieldnote Operator", email: "operator@fieldnote.local", role: "super_admin", active: true, createdAt: new Date("2026-09-01T09:00:00.000Z").toISOString(), updatedAt: new Date("2026-09-01T09:00:00.000Z").toISOString() }];
+  await requirePlatformAccess();
+  const db = createDatabase(process.env.DATABASE_ADMIN_URL);
+  const rows = await db.select({ staff: platformStaff, email: users.email, firstName: users.firstName, lastName: users.lastName }).from(platformStaff).leftJoin(users, eq(users.clerkUserId, platformStaff.clerkUserId)).orderBy(desc(platformStaff.active), asc(users.firstName), asc(users.email));
+  return rows.map(({ staff, email, firstName, lastName }) => ({
+    id: staff.id,
+    clerkUserId: staff.clerkUserId,
+    name: [firstName, lastName].filter(Boolean).join(" ") || email || "Unsynchronised Clerk user",
+    email: email ?? "Email not synchronised",
+    role: staff.role,
+    active: staff.active,
+    createdAt: staff.createdAt.toISOString(),
+    updatedAt: staff.updatedAt.toISOString(),
+  }));
 }
 
 export async function loadPlatformUsageQueue(): Promise<PlatformQueueRow[]> {
