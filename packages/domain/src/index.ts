@@ -142,3 +142,8 @@ export const ukCountryLabels: Record<UkCountry, string> = {
   SCT: "Scotland",
   NIR: "Northern Ireland",
 };
+
+/** Confirming which property a UPRN identifies is a professional identity decision. */
+export function canConfirmPropertyIdentity(role: OrganisationRole) {
+  return role === "owner" || role === "administrator" || role === "surveyor";
+}

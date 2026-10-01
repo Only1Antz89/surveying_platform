@@ -1,0 +1,6 @@
+export * from "./contract";
+export * from "./http/provider-fetch";
+export * from "./matching/identity";
+export * from "./registry/sources";
+export * from "./adapters/postcodes-io";
+export * from "./adapters/nominatim";

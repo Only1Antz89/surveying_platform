@@ -1,14 +1,22 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   date,
+  doublePrecision,
+  foreignKey,
+  geometry,
   index,
   integer,
   jsonb,
   numeric,
   pgEnum,
+  pgSchema,
   pgTable,
+  primaryKey,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -26,6 +34,9 @@ export const jobStage = pgEnum("job_stage", ["enquiry", "quoted", "instructed", 
 export const supportPermission = pgEnum("support_permission", ["read", "write"]);
 export const incidentSeverity = pgEnum("incident_severity", ["low", "medium", "high", "critical"]);
 export const incidentStatus = pgEnum("incident_status", ["investigating", "monitoring", "resolved"]);
+export const ukCountry = pgEnum("uk_country", ["ENG", "WLS", "SCT", "NIR"]);
+export const locationConfidence = pgEnum("location_confidence", ["unresolved", "postcode_centroid", "geocoded_address", "surveyor_confirmed"]);
+export const addressSource = pgEnum("address_source", ["manual", "postcodes_io", "nominatim"]);
 
 export const organisations = pgTable("organisations", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -168,11 +179,84 @@ export const properties = pgTable("properties", {
   propertyType: text("property_type"),
   archivedAt: timestamp("archived_at", { withTimezone: true }),
   version: integer("version").notNull().default(1),
+  // Identity (P1). Nullable so existing and manually entered records stay valid.
+  // UPRN is an external identifier, never a uniqueness key: firms may hold the
+  // same physical property independently.
+  country: ukCountry("country"),
+  uprn: text("uprn"),
+  latitude: doublePrecision("latitude"),
+  longitude: doublePrecision("longitude"),
+  location: geometry("location", { type: "point", mode: "xy", srid: 4326 }).generatedAlwaysAs(sql`case when latitude is not null and longitude is not null then st_setsrid(st_makepoint(longitude, latitude), 4326) end`),
+  addressSource: addressSource("address_source").notNull().default("manual"),
+  locationConfidence: locationConfidence("location_confidence").notNull().default("unresolved"),
+  locationResolutionMethod: text("location_resolution_method"),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  confirmedByUserId: uuid("confirmed_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  uprnConfirmedAt: timestamp("uprn_confirmed_at", { withTimezone: true }),
+  uprnEvidenceType: text("uprn_evidence_type"),
+  identityAddressFingerprint: text("identity_address_fingerprint"),
   ...timestamps,
 }, (table) => [
   index("properties_org_idx").on(table.organisationId),
   index("properties_client_idx").on(table.clientId),
+  unique("properties_org_id_uidx").on(table.organisationId, table.id),
+  index("properties_org_uprn_idx").on(table.organisationId, table.uprn),
+  index("properties_location_gix").using("gist", table.location),
+  check("properties_coordinates_pair_chk", sql`(latitude is null) = (longitude is null)`),
+  check("properties_coordinates_uk_chk", sql`latitude is null or (latitude between 49.85 and 60.95 and longitude between -8.75 and 1.8)`),
+  check("properties_uprn_format_chk", sql`uprn is null or uprn ~ '^[0-9]{1,12}$'`),
+  check("properties_location_confidence_chk", sql`(latitude is null) = (location_confidence = 'unresolved')`),
+  check("properties_uprn_confirmation_chk", sql`uprn is null or (uprn_confirmed_at is not null and uprn_evidence_type is not null)`),
 ]);
+
+/** Append-only history of identity resolutions and confirmations, with the evidence shown at the time. */
+export const propertyIdentityEvents = pgTable("property_identity_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  propertyId: uuid("property_id").notNull(),
+  actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+  action: text("action").notNull(),
+  previous: jsonb("previous").$type<Record<string, unknown>>().notNull().default({}),
+  next: jsonb("next").$type<Record<string, unknown>>().notNull().default({}),
+  evidence: jsonb("evidence").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  foreignKey({ name: "property_identity_events_property_fk", columns: [table.organisationId, table.propertyId], foreignColumns: [properties.organisationId, properties.id] }).onDelete("restrict"),
+  index("property_identity_events_property_idx").on(table.propertyId, table.createdAt),
+  index("property_identity_events_org_idx").on(table.organisationId),
+]);
+
+/** Tenant-scoped record of submitted address searches. Doubles as the tenant cache required for submitted address text. */
+export const addressLookups = pgTable("address_lookups", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+  provider: text("provider").notNull(),
+  queryHash: text("query_hash").notNull(),
+  status: text("status").notNull(),
+  results: jsonb("results").$type<Record<string, unknown>[]>().notNull().default([]),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+}, (table) => [
+  index("address_lookups_cache_idx").on(table.organisationId, table.provider, table.queryHash, table.createdAt),
+  index("address_lookups_expiry_idx").on(table.expiresAt),
+]);
+
+/** Deployment-wide request spacing for providers with usage policies (for example Nominatim). Holds no tenant data. */
+export const providerRateLimits = pgTable("provider_rate_limits", {
+  key: text("key").primaryKey(),
+  nextAvailableAt: timestamp("next_available_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Global cache for public-source responses only. Keys are hashes; rows carry no tenant identifiers or address text. */
+export const providerResponseCache = pgTable("provider_response_cache", {
+  cacheKey: text("cache_key").primaryKey(),
+  sourceKey: text("source_key").notNull(),
+  datasetVersion: text("dataset_version"),
+  response: jsonb("response").$type<Record<string, unknown>>().notNull(),
+  retrievedAt: timestamp("retrieved_at", { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+}, (table) => [index("provider_response_cache_expiry_idx").on(table.expiresAt), index("provider_response_cache_source_idx").on(table.sourceKey)]);
 
 export const jobs = pgTable("jobs", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -337,3 +421,69 @@ export const backgroundJobs = pgTable("background_jobs", {
   error: text("error"),
   ...timestamps,
 }, (table) => [index("background_jobs_org_idx").on(table.organisationId), index("background_jobs_queue_status_idx").on(table.queue, table.status)]);
+
+// Global reference data. Readable by the tenant runtime through the
+// surveynt_reference_read group role; writable only by importers
+// (surveynt_reference_write) and the owner. See docs/property-intelligence.
+export const referenceSchema = pgSchema("reference");
+
+export const dataSources = referenceSchema.table("data_sources", {
+  key: text("key").primaryKey(),
+  name: text("name").notNull(),
+  organisation: text("organisation").notNull(),
+  category: text("category").notNull(),
+  documentationUrl: text("documentation_url").notNull(),
+  accessMethod: text("access_method").notNull(),
+  coverage: text("coverage").array().notNull().default(sql`'{}'::text[]`),
+  licence: jsonb("licence").$type<Record<string, unknown>>().notNull(),
+  registerStatus: text("register_status").notNull(),
+  checkedAt: date("checked_at"),
+  definition: jsonb("definition").$type<Record<string, unknown>>().notNull(),
+  // Operator-controlled. A source runs only when enabled and verified.
+  enabled: boolean("enabled").notNull().default(false),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  verifiedBy: text("verified_by"),
+  verificationNotes: text("verification_notes"),
+  lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
+  lastFailureAt: timestamp("last_failure_at", { withTimezone: true }),
+  lastFailureCode: text("last_failure_code"),
+  ...timestamps,
+});
+
+/** One row per import attempt. Exactly one active version per source; earlier versions are kept for rollback. */
+export const datasetSyncs = referenceSchema.table("dataset_syncs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sourceKey: text("source_key").notNull().references(() => dataSources.key, { onDelete: "restrict" }),
+  datasetVersion: text("dataset_version").notNull(),
+  sourceUrl: text("source_url"),
+  checksum: text("checksum"),
+  licence: jsonb("licence").$type<Record<string, unknown>>().notNull().default({}),
+  sourceCrs: text("source_crs"),
+  extent: text("extent"),
+  status: text("status").notNull().default("staging"),
+  recordCount: integer("record_count").notNull().default(0),
+  validation: jsonb("validation").$type<Record<string, unknown>>().notNull().default({}),
+  error: text("error"),
+  previousActiveId: uuid("previous_active_id"),
+  importedBy: text("imported_by"),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  activatedAt: timestamp("activated_at", { withTimezone: true }),
+  retiredAt: timestamp("retired_at", { withTimezone: true }),
+}, (table) => [
+  uniqueIndex("dataset_syncs_one_active_uidx").on(table.sourceKey).where(sql`status = 'active'`),
+  index("dataset_syncs_source_idx").on(table.sourceKey, table.startedAt),
+  check("dataset_syncs_status_chk", sql`status in ('staging', 'active', 'retired', 'failed')`),
+]);
+
+export const osOpenUprn = referenceSchema.table("os_open_uprn", {
+  datasetSyncId: uuid("dataset_sync_id").notNull().references(() => datasetSyncs.id, { onDelete: "cascade" }),
+  uprn: text("uprn").notNull(),
+  geom: geometry("geom", { type: "point", mode: "xy", srid: 4326 }).notNull(),
+  sourceX: doublePrecision("source_x"),
+  sourceY: doublePrecision("source_y"),
+}, (table) => [
+  primaryKey({ name: "os_open_uprn_pk", columns: [table.datasetSyncId, table.uprn] }),
+  index("os_open_uprn_geog_gix").using("gist", sql`(${table.geom}::geography)`),
+  check("os_open_uprn_format_chk", sql`uprn ~ '^[0-9]{1,12}$'`),
+]);

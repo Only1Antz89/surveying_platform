@@ -8,12 +8,15 @@
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "next typegen && tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run --dir src",
+    "test:integration": "vitest run --dir test"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.0.1",
+    "@surveynt/assistant": "workspace:*",
     "@surveynt/db": "workspace:*",
     "@surveynt/domain": "workspace:*",
+    "@surveynt/property-data": "workspace:*",
     "@surveynt/ui": "workspace:*",
     "drizzle-orm": "^0.44.5",
     "geist": "^1.4.2",

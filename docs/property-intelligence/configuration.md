@@ -18,7 +18,7 @@ GRANT surveynt_reference_write TO <importer_login_role>;
 GRANT surveynt_learning_service TO <learning_login_role>;
 ```
 
-Existing operator grants on `public` (tenant tables) are unchanged. The integration harness (`packages/db/test/harness.ts`) applies the same grants to its throwaway roles.
+Grant the tenant runtime role DML on new `public` tables after each migration (or keep `ALTER DEFAULT PRIVILEGES … GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO <app_login_role>` in place). P1 adds `property_identity_events`, `address_lookups`, `provider_rate_limits` and `provider_response_cache`. Existing operator grants on `public` tenant tables are otherwise unchanged. The integration harness (`packages/db/test/harness.ts`) applies the same grants to its throwaway roles.
 
 ## PostGIS
 
@@ -52,8 +52,38 @@ Importers are operator CLIs. They do not run in Vercel functions. Each one:
 
 1. Downloads from the allowlisted official URL, or a provided local file, with a size bound.
 2. Validates the checksum, format, CRS and licence metadata.
-3. Loads into a new `dataset_version_id` partition.
+3. Loads rows under a new `dataset_syncs` id that no query reads until activation.
 4. Builds indexes and runs validation queries.
-5. Activates atomically, then records a `dataset_syncs` row.
+5. Activates atomically (the previous version is retired, not deleted).
 
 Failed runs never touch the active version. See `runbook.md` (P5).
+
+## Enabling a source
+
+Sources stay disabled until an operator has checked the official terms (see `source-register.md`) and records the verification:
+
+```sql
+-- Owner connection. Run the registry sync first:
+--   DATABASE_ADMIN_URL=… pnpm --filter @surveynt/property-data reference registry-sync
+UPDATE reference.data_sources
+SET enabled = true, verified_at = now(), verified_by = '<name>', verification_notes = '<licence/terms checked, URL, date>'
+WHERE key = 'postcodes_io';
+```
+
+A source with `register_status = 'blocked'` is always treated as disabled. The platform administration UI for this arrives in P5.
+
+## Importing OS Open UPRN (regional first)
+
+1. Download the CSV release from the OS Data Hub (see the source register) and record its version label.
+2. Import a regional extract and benchmark it before any national load:
+   ```bash
+   DATABASE_IMPORTER_URL=… pnpm --filter @surveynt/property-data reference os-open-uprn \
+     --file ./osopenuprn_202609.csv --version 2026-09 --bbox -2.75,51.38,-2.50,51.52
+   ```
+3. Activate the staged sync once the validation output is clean (`reference activate --sync <id>`). To return to the previous version, use `reference rollback --source os_open_uprn`.
+
+The importer never truncates the active version. A failed run is marked `failed` and its rows are removed.
+
+## Known schema-tool caveat
+
+drizzle-kit 0.31 emits `geometry(point)` without an SRID and orders some constraints incorrectly. The P1 migration SQL was corrected by hand (`geometry(point, 4326)`, and the unique key placed before the composite FK). The integration suite applies every migration from scratch and would fail on regressions.

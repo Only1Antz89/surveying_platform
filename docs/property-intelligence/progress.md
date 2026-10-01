@@ -33,10 +33,27 @@ Execution order: P0 → A0 → P1 → A1 → P2 → A2 → P3 → P4 → A3 → 
 | UK country enum shared in `@surveynt/domain` | ✅ | — | — | — |
 
 ## P1 — Property identity
-- [ ] Additive identity columns, PostGIS, reference schema and group roles
-- [ ] Postcode and Nominatim adapters; UPRN candidate query; matching rules
-- [ ] Address search/resolve/identity routes; UI with manual fallback
-- [ ] OS Open UPRN importer and a labelled synthetic fixture
+
+| Item | Code | Configured | Imported | Live |
+|---|---|---|---|---|
+| Migrations 0006–0008: PostGIS extension; `reference` schema; NOLOGIN group roles `surveynt_reference_read` and `surveynt_reference_write`; nullable identity columns on `properties` (country, text UPRN, lat/lon, generated `geometry(Point,4326)`, confidence, method, evidence) with UK-bounds, pair, format and confirmation CHECKs | ✅ | ❌ not applied to any Neon branch | — | — |
+| `property_identity_events` (append-only trigger, RLS, composite tenant FK); `address_lookups` (tenant cache, RLS); `provider_rate_limits`; `provider_response_cache` (public data only) | ✅ | ❌ | — | — |
+| `reference.data_sources` (operator-controlled `enabled` + `verified_at`), `reference.dataset_syncs` (one active version, rollback reference), `reference.os_open_uprn` (geography GiST) | ✅ | ❌ | — | — |
+| `@surveynt/property-data`: allowlisted fetch (HTTPS only, no redirects, size cap, timeouts, transient-only retry), contract types, matching rules, source registry | ✅ | — | — | — |
+| Postcodes.io adapter (NI disabled pending LPS terms) | ✅ fixtures | ❌ | — | ❌ blocked host |
+| Nominatim adapter: submit-only, deployment-wide DB rate gate, identifying User-Agent, tenant-scoped cache | ✅ fixtures | ❌ | — | ❌ blocked host |
+| UPRN candidate search (metre radius by confidence: 250/75/30 m), never auto-selects, flags co-located flats, GB-only coverage | ✅ | — | — | — |
+| OS Open UPRN importer CLI: checksum, header validation, regional bbox, staging, BNG↔ETRS89 cross-check, atomic activation, rollback, prune | ✅ (synthetic fixture) | ❌ | ❌ no real release imported | — |
+| `GET /api/v1/address/search`, `POST /api/v1/address/resolve`, `GET/PUT /api/v1/properties/:id/identity`, `country` on create | ✅ | — | — | — |
+| UI: optional submit-only search in "New property" (manual entry always works), property record page with Overview/Surveys tabs, identity panel with evidence-backed UPRN confirmation and history | ✅ (demo smoke-tested) | — | — | — |
+
+Acceptance:
+
+- Manual create/edit works for old and new records (the columns are nullable; the browser smoke test covered manual edit after search).
+- A postcode centroid never yields an exact UPRN (`assessUprnCandidates.autoSelectable` is always false, plus the confidence ceiling).
+- Multiple co-located flats stay ambiguous, with an explicit warning.
+- Cross-tenant identity changes and lookups fail (integration-tested).
+- Coordinate, CRS and distance validation pass (integration-tested).
 
 ## A1 — Survey, observation and evidence core
 - [ ] Survey, element, field-value, observation, media and evidence tables
@@ -66,3 +83,7 @@ Execution order: P0 → A0 → P1 → A1 → P2 → A2 → P3 → P4 → A3 → 
 | 2026-10-01 | `pnpm check` (baseline, before changes) | ❌ `@surveynt/db` lint: missing Node types |
 | 2026-10-01 | `pnpm check` (after adding `@types/node` to `@surveynt/db`) | ✅ lint, typecheck, 20 tests, build |
 | 2026-10-01 | `TEST_DATABASE_URL=… pnpm --filter @surveynt/db test:integration` | ✅ 3 tests (migrations 0000–0005 apply; cross-tenant read/update blocked; no context returns nothing) |
+| 2026-10-01 | `pnpm check` after P1 | ✅ lint, typecheck, 54 unit tests, build |
+| 2026-10-01 | `pnpm --filter @surveynt/property-data test:integration` | ✅ 9 tests: registry disabled by default, staged import and atomic activation, metre-accurate candidates, app role read-only on reference, importer denied tenant tables, failed import keeps active version, activation and rollback, property CHECKs, immutable tenant-scoped identity events |
+| 2026-10-01 | `pnpm --filter @surveynt/web test:integration` | ✅ 5 tests: cached postcode lookup and tenant-scoped lookups, centroid resolution never auto-selects, evidence-required UPRN confirmation with history and audit, cross-tenant update denied, deployment-wide rate gate |
+| 2026-10-01 | Playwright smoke (demo mode, production build) | ✅ search fills editable fields, labelled demo results, ambiguity warnings, confirmation form, Surveys tab, no console errors, no horizontal overflow at 390 px |
