@@ -20,12 +20,12 @@ Run `pnpm --filter @surveynt/db verify:property-data-spatial` after PostGIS or s
 1. Obtain the official release and record its licence, publication date and source URL.
 2. Convert source data to UTF-8 CSV. OS Open UPRN headers must include `uprn,latitude,longitude`; other layers require `source_record_id,wkt` with optional `name,properties_json`. Declare either `--source-crs EPSG:4326` or `--source-crs EPSG:27700`; unsupported or omitted CRS values are rejected and BNG geometries are transformed to WGS84 during staging.
 3. Run `pnpm --filter @surveynt/db import:property-data -- --source ... --version ... --file ... --source-url ... --source-crs ... --neon-storage-usd-per-gb-month ... --dry-run true`.
-4. Review record count, invalid rows, file bytes, estimated table bytes and projected storage cost.
-5. Import without `--activate` using `--expected-checksum ... --licence-confirmed true`. Review the measured table/index size and sample spatial-query latency printed and stored with the version.
+4. Review record count, bounded row diagnostics, duplicate or missing headers, invalid UPRNs/coordinates/geometries, file bytes, estimated table bytes and projected storage cost. Empty or semantically invalid files do not reach staging.
+5. Import without `--activate` using `--expected-checksum ... --licence-confirmed true --neon-storage-usd-per-gb-month ...`. All three gates are mandatory for a staged import. Review the measured table/index size and sample spatial-query latency printed and stored with the version.
 6. Activate the staged version with `pnpm --filter @surveynt/db activate:property-data -- --source ... --version ... --capacity-approved true`. The command rejects versions without a verified checksum, recorded licence confirmation and measured capacity report, then switches the active version atomically. An existing version is never overwritten.
 7. Confirm application-role writes fail and property-centred queries return only bounded features.
 
-The importer deletes a failed staged version and retains the previously active version. Dataset sync rows retain the safe failure reason. Roll back with `pnpm --filter @surveynt/db rollback:property-data -- --source ... --version ...`; it accepts only a previously validated, non-empty version and records a `rolled_back` sync.
+The importer deletes a failed staged version and retains the previously active version. Dataset sync rows retain the safe failure reason. Roll back with `pnpm --filter @surveynt/db rollback:property-data -- --source ... --version ...`; it accepts only a previously validated, non-empty, capacity-approved version and records a `rolled_back` sync.
 
 ## Queue operations
 

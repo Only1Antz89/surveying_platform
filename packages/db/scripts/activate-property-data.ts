@@ -15,9 +15,10 @@ async function main() {
   const db = createDatabase(process.env.DATABASE_ADMIN_URL);
   const [target] = await db.select().from(datasetVersions).where(and(eq(datasetVersions.sourceKey, source), eq(datasetVersions.version, versionName))).limit(1);
   if (!target || target.active || !target.recordCount) throw new Error("Activation target must be a non-empty, inactive staged version.");
-  const validation = target.validation as { checksumVerified?: boolean; measuredCapacity?: unknown };
+  const validation = target.validation as { checksumVerified?: boolean; measuredCapacity?: { projectedStorageUsdPerMonth?: number | null } };
   const licence = target.licenceSnapshot as { confirmedAt?: string };
   if (validation.checksumVerified !== true || !validation.measuredCapacity) throw new Error("Activation target lacks a verified checksum or measured capacity report.");
+  if (validation.measuredCapacity.projectedStorageUsdPerMonth === null || validation.measuredCapacity.projectedStorageUsdPerMonth === undefined) throw new Error("Activation target lacks a projected Neon storage cost.");
   if (!licence.confirmedAt) throw new Error("Activation target lacks recorded licence confirmation.");
 
   await db.transaction(async (tx) => {

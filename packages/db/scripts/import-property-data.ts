@@ -52,23 +52,68 @@ export function splitCsv(line: string) {
   return values;
 }
 
+export function assertImportReady(options: ImportArguments) {
+  if (options.dryRun) return;
+  if (!options.expectedChecksum) throw new Error("A verified source checksum is required before staging an import.");
+  if (!options.licenceConfirmed) throw new Error("Import requires --licence-confirmed true after reviewing the source-specific terms.");
+  if (options.neonStorageUsdPerGbMonth === undefined) throw new Error("Import requires --neon-storage-usd-per-gb-month so the activation report includes projected Neon cost.");
+}
+
+function spatialRowReasons(row: Record<string, string>) {
+  const reasons: string[] = [];
+  if (!row.source_record_id?.trim()) reasons.push("source_record_id is empty");
+  if (!/^(?:POINT|MULTIPOINT|LINESTRING|MULTILINESTRING|POLYGON|MULTIPOLYGON|GEOMETRYCOLLECTION)\s*(?:Z|M|ZM)?\s*\(/i.test(row.wkt?.trim() ?? "")) reasons.push("wkt is not a supported geometry");
+  if (row.properties_json?.trim()) {
+    try {
+      const properties = JSON.parse(row.properties_json) as unknown;
+      if (!properties || typeof properties !== "object" || Array.isArray(properties)) reasons.push("properties_json must be a JSON object");
+    } catch {
+      reasons.push("properties_json is invalid JSON");
+    }
+  }
+  return reasons;
+}
+
+function uprnRowReasons(row: Record<string, string>) {
+  const reasons: string[] = [];
+  const latitude = Number(row.latitude);
+  const longitude = Number(row.longitude);
+  if (!/^\d{1,12}$/.test(row.uprn ?? "")) reasons.push("uprn must contain 1-12 digits");
+  if (!row.latitude?.trim() || !Number.isFinite(latitude) || latitude < -90 || latitude > 90) reasons.push("latitude is outside -90 to 90");
+  if (!row.longitude?.trim() || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) reasons.push("longitude is outside -180 to 180");
+  for (const coordinate of ["x_coordinate", "y_coordinate"] as const) {
+    if (row[coordinate]?.trim() && !Number.isFinite(Number(row[coordinate]))) reasons.push(`${coordinate} is not numeric`);
+  }
+  return reasons;
+}
+
 export async function inspectImport(path: string, source: string, sourceCrs: SourceCrs, neonStorageUsdPerGbMonth?: number) {
   const file = await stat(path);
   const lines = createInterface({ input: createReadStream(path), crlfDelay: Infinity });
-  let count = -1;
+  let count = 0;
   let invalid = 0;
   let headers: string[] = [];
+  let headerRead = false;
+  const validationErrors: Array<{ row: number; reasons: string[] }> = [];
   for await (const line of lines) {
-    if (count === -1) { headers = splitCsv(line).map((value) => value.trim().toLowerCase()); count = 0; continue; }
+    if (!headerRead) { headers = splitCsv(line).map((value) => value.trim().toLowerCase().replace(/^\uFEFF/, "")); headerRead = true; continue; }
     if (!line.trim()) continue;
     count += 1;
     const values = splitCsv(line);
-    if (values.length !== headers.length) invalid += 1;
+    const row = Object.fromEntries(headers.map((header, index) => [header, values[index] ?? ""]));
+    const reasons = values.length !== headers.length
+      ? [`expected ${headers.length} columns but found ${values.length}`]
+      : source === "os_open_uprn" ? uprnRowReasons(row) : spatialRowReasons(row);
+    if (reasons.length) {
+      invalid += 1;
+      if (validationErrors.length < 10) validationErrors.push({ row: count + 1, reasons });
+    }
   }
   const required = source === "os_open_uprn" ? ["uprn", "latitude", "longitude"] : ["source_record_id", "wkt"];
   const missing = required.filter((column) => !headers.includes(column));
+  const duplicateHeaders = [...new Set(headers.filter((header, index) => headers.indexOf(header) !== index))];
   const estimatedTableBytes = Math.round(file.size * (source === "os_open_uprn" ? 1.8 : 2.5));
-  return { bytes: file.size, recordCount: count, invalidRows: invalid, headers, missingColumns: missing, sourceCrs, estimatedTableBytes, projectedStorageUsdPerMonth: neonStorageUsdPerGbMonth === undefined ? null : Number(((estimatedTableBytes / 1024 ** 3) * neonStorageUsdPerGbMonth).toFixed(4)), requiresPostgis: true };
+  return { bytes: file.size, recordCount: count, invalidRows: invalid, validationErrors, headers, duplicateHeaders, missingColumns: missing, sourceCrs, estimatedTableBytes, projectedStorageUsdPerMonth: neonStorageUsdPerGbMonth === undefined ? null : Number(((estimatedTableBytes / 1024 ** 3) * neonStorageUsdPerGbMonth).toFixed(4)), requiresPostgis: true };
 }
 
 async function databaseCapacityReport(db: ReturnType<typeof createDatabase>, source: string, versionId: string, recordCount: number, neonStorageUsdPerGbMonth?: number) {
@@ -97,10 +142,10 @@ async function main() {
   const report = await inspectImport(options.file, options.source, options.sourceCrs, options.neonStorageUsdPerGbMonth);
   const fileChecksum = await checksum(options.file);
   console.log(JSON.stringify({ source: options.source, version: options.version, checksum: fileChecksum, capacity: report }, null, 2));
-  if (report.invalidRows || report.missingColumns.length) throw new Error("Capacity validation failed; no data was imported.");
+  if (!report.recordCount || report.invalidRows || report.missingColumns.length || report.duplicateHeaders.length) throw new Error("Capacity validation failed; no data was imported.");
   if (options.expectedChecksum && options.expectedChecksum !== fileChecksum) throw new Error("Checksum verification failed; no data was imported.");
+  assertImportReady(options);
   if (options.dryRun) return;
-  if (!options.licenceConfirmed) throw new Error("Import requires --licence-confirmed true after reviewing the source-specific terms.");
   if (!process.env.DATABASE_ADMIN_URL) throw new Error("DATABASE_ADMIN_URL is required. Imports must never use the tenant application role.");
   const db = createDatabase(process.env.DATABASE_ADMIN_URL);
   await db.execute(sql`select PostGIS_Full_Version()`);

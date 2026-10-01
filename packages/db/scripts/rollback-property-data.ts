@@ -13,7 +13,7 @@ async function main() {
   if (!process.env.DATABASE_ADMIN_URL) throw new Error("DATABASE_ADMIN_URL is required for rollback.");
   const db = createDatabase(process.env.DATABASE_ADMIN_URL);
   const [target] = await db.select().from(datasetVersions).where(and(eq(datasetVersions.sourceKey, source), eq(datasetVersions.version, versionName))).limit(1);
-  if (!target || !target.recordCount || target.validation.checksumVerified !== true) throw new Error("Rollback target is missing or was not successfully validated.");
+  if (!target || !target.recordCount || target.validation.checksumVerified !== true || target.validation.capacityApproved !== true) throw new Error("Rollback target is missing or was not previously validated and capacity-approved.");
   await db.transaction(async (tx) => {
     await tx.update(datasetVersions).set({ active: false, updatedAt: new Date() }).where(and(eq(datasetVersions.sourceKey, source), eq(datasetVersions.active, true)));
     await tx.update(datasetVersions).set({ active: true, activatedAt: new Date(), updatedAt: new Date() }).where(eq(datasetVersions.id, target.id));
