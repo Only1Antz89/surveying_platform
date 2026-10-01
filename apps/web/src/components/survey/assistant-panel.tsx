@@ -55,16 +55,18 @@ export function AssistantPanel({ surveyId, pack, canEdit, canJudge, online, onCh
     await onChanged();
   }
 
-  if (!pack.proposals.length && !discrepancies.length && !canEdit) return null;
+  // Packs cached offline before the flag existed have no value; the server still enforces it.
+  const enabled = pack.assistantEnabled !== false;
+  if (!discrepancies.length && (!enabled || (!pack.proposals.length && !canEdit))) return null;
 
   return <section className="panel assistant-panel" aria-labelledby="assistant-heading">
     <div className="panel-header"><div><h2 id="assistant-heading">Suggestions and checks</h2><p>Suggestions come from cited records. They change nothing until you accept them.</p></div>
-      {canEdit ? <button type="button" className="button button-quiet" onClick={() => void refresh()} disabled={!online || busy !== null}><RefreshCw size={14} />Refresh suggestions</button> : null}
+      {canEdit && enabled ? <button type="button" className="button button-quiet" onClick={() => void refresh()} disabled={!online || busy !== null}><RefreshCw size={14} />Refresh suggestions</button> : null}
     </div>
     {!online ? <p className="identity-warning">Reviewing suggestions needs a connection, so the server can check they are still current.</p> : null}
     {message ? <p className="form-success identity-message" role="status">{message}</p> : null}
     {discrepancies.length ? <div className="assistant-group"><h3><AlertTriangle size={14} aria-hidden="true" />Discrepancies</h3><ul>{discrepancies.map((task) => <li key={task.id} className="assistant-item discrepancy"><strong>{task.title}</strong><span>{task.detail}</span>{canEdit ? <div className="row-actions"><button type="button" className="button button-secondary" disabled={!online || busy !== null} onClick={() => void closeTask(task.id, "resolved")}>Mark resolved</button><button type="button" className="button button-quiet" disabled={!online || busy !== null} onClick={() => void closeTask(task.id, "dismissed")}>Dismiss</button></div> : null}</li>)}</ul></div> : null}
-    {pack.proposals.length ? <div className="assistant-group"><h3><Lightbulb size={14} aria-hidden="true" />Suggestions</h3><ul>{pack.proposals.map((proposal) => {
+    {!enabled ? null : pack.proposals.length ? <div className="assistant-group"><h3><Lightbulb size={14} aria-hidden="true" />Suggestions</h3><ul>{pack.proposals.map((proposal) => {
       const resolved = resolveField(pack.template, proposal.fieldPath);
       const professional = resolved?.field.fieldClass === "professional_assessment";
       const value = proposal.proposedValue as unknown as FieldValue;

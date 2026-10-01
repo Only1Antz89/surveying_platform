@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, isNull, ne } from "drizzle-orm";
 import { assistantTasks, auditEvents, createDatabase, enrichmentRuns, evidenceLinks, fieldProposals, jobs, properties, propertyIntelligenceSnapshots, surveyElements, surveyFieldValues, surveys, withTenant, type TenantTransaction } from "@surveynt/db";
 import { generateSourcedProposals, resolveField, validateFieldValue, type EvidenceRef, type FieldValue, type SnapshotEvidence } from "@surveynt/assistant";
 import { propertyFingerprint } from "./fingerprint";
+import { assistantEnabled } from "./assistant-flags";
 import { canRecordProfessionalJudgement, pinnedTemplate, type SurveyContext } from "./surveys";
 
 /** Current (same identity, non-superseded run) snapshots per source and category, including "no record" results. */
@@ -28,6 +29,7 @@ async function currentSnapshots(tx: TenantTransaction, organisationId: string, p
  * proposals are never recreated.
  */
 export async function refreshSurveyProposals(context: Pick<SurveyContext, "organisationId">, surveyId: string) {
+  if (!assistantEnabled()) return { created: 0, superseded: 0, discrepancies: 0 };
   const db = createDatabase();
   return withTenant(db, context.organisationId, async (tx) => {
     const [survey] = await tx.select().from(surveys).where(and(eq(surveys.id, surveyId), eq(surveys.organisationId, context.organisationId))).limit(1);
@@ -71,6 +73,7 @@ export async function refreshSurveyProposals(context: Pick<SurveyContext, "organ
 
 /** Best-effort refresh for every open survey of a property (after enrichment completes). */
 export async function refreshProposalsForProperty(organisationId: string, propertyId: string) {
+  if (!assistantEnabled()) return 0;
   const db = createDatabase();
   const open = await withTenant(db, organisationId, (tx) => tx.select({ id: surveys.id }).from(surveys).where(and(eq(surveys.organisationId, organisationId), eq(surveys.propertyId, propertyId), eq(surveys.status, "in_progress"))));
   for (const survey of open) await refreshSurveyProposals({ organisationId }, survey.id).catch(() => undefined);

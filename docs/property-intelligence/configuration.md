@@ -42,7 +42,7 @@ The P1 migration runs `CREATE EXTENSION IF NOT EXISTS postgis` as the owner. Bef
 | `NEXT_PUBLIC_MAP_ATTRIBUTION` | P3 | Basemap attribution text required by the provider | Empty |
 | `BLOB_READ_WRITE_TOKEN` | A1 | Vercel Blob store token (private store) | Unset: uploads disabled; manual text capture continues |
 | `MEDIA_MAX_UPLOAD_MB` | A1 | Per-file upload limit | `25` |
-| `ASSISTANT_ENABLED` | A2 | Platform kill-switch for proposals and tasks | Off |
+| `ASSISTANT_ENABLED` | A2 | Platform kill-switch for suggestions and discrepancy checks: generation, listing and review (review returns 503 when off). Reinspection reminders from history are not affected | Off |
 | `AI_PROVIDER` | A2 | Model adapter key. Only `none` exists until a provider is chosen, registered and evaluated (A6) | `none`: AI features report "unavailable"; deterministic sourced suggestions still work |
 | `SHARED_LEARNING_ENABLED` | L0 | Global shared-learning gate | `false`; must stay false until the L0 gates are met |
 
@@ -83,6 +83,31 @@ A source with `register_status = 'blocked'` is always treated as disabled. The p
 3. Activate the staged sync once the validation output is clean (`reference activate --sync <id>`). To return to the previous version, use `reference rollback --source os_open_uprn`.
 
 The importer never truncates the active version. A failed run is marked `failed` and its rows are removed.
+
+## Importing spatial reference layers (P2/P3)
+
+Historic England, INSPIRE, flood zones, surface water, BGS geology and Natural England layers all load through one importer into `reference.spatial_features`. Each `--source/--layer` pair is versioned and activated on its own, so a failed flood-zone import never touches geology.
+
+```bash
+# Convert the official download to EPSG:4326 GeoJSONSeq with GDAL (operator machine only), then stage and validate.
+DATABASE_IMPORTER_URL=… pnpm --filter @surveynt/property-data reference spatial-layer \
+  --source ea_flood_zones --layer flood_zone_3 --file ./FZ3.gpkg --convert --version 2026-09
+# Activate when the output is clean, or pass --activate on the import.
+DATABASE_IMPORTER_URL=… pnpm --filter @surveynt/property-data reference activate --sync <id>
+# Return to the previous version of one layer.
+DATABASE_IMPORTER_URL=… pnpm --filter @surveynt/property-data reference rollback --source ea_flood_zones --layer flood_zone_3
+```
+
+- Each layer has an attribute allowlist (`layerPresets` in `packages/property-data/src/importers/spatial-layer.ts`). Anything not on it is dropped; INSPIRE keeps only `INSPIREID`, never title numbers or owners.
+- The preset field names were written before the official downloads could be inspected (the build environment cannot reach them). Check the real column names first, and override them with `--id-property`, `--name-property` and `--attributes a,b` if they differ.
+- Import rejects features outside the UK extent or with invalid geometry. Rows from a failed import are deleted; the active version stays.
+- Layers that are not imported, or whose source is not enabled, show as "Not checked" in the Intelligence and Land & Map tabs, never as "no record".
+
+## Basemap
+
+The map draws imported layers on a plain background until `NEXT_PUBLIC_MAP_STYLE_URL` points at a MapLibre style from a contracted or self-hosted tile provider. Public OpenStreetMap tiles are not used: their usage policy rules out this kind of production traffic. Set `NEXT_PUBLIC_MAP_ATTRIBUTION` to the provider's required attribution. Layer attribution comes from the source register automatically.
+
+MapLibre's worker is copied from `node_modules` into `apps/web/public/vendor/maplibre-gl/<version>/` by `apps/web/scripts/copy-maplibre-worker.mjs` during `dev` and `build`. The copy is gitignored and listed in the turbo build outputs.
 
 ## Known schema-tool caveat
 

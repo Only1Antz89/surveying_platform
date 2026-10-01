@@ -8,12 +8,14 @@ import { StatusDot } from "@surveynt/ui";
 import type { PropertyWorkspaceData } from "@/lib/property-workspace";
 import { PropertyIdentityPanel } from "./property-identity-panel";
 import { IntelligencePanel, PropertySourcesTab } from "./intelligence-panel";
+import { PropertyMap } from "./property-map";
 
 // Tabs appear only once the phase that powers them is complete.
 const tabs = [
   { key: "overview", label: "Overview" },
   { key: "intelligence", label: "Intelligence" },
   { key: "planning", label: "Planning" },
+  { key: "land", label: "Land & Map" },
   { key: "surveys", label: "Surveys" },
   { key: "sources", label: "Sources" },
 ] as const;
@@ -45,6 +47,7 @@ export function PropertyWorkspace({ slug, data, canEdit, canConfirm }: { slug: s
       </> : null}
       {tab === "intelligence" ? <IntelligencePanel propertyId={property.id} canRefresh={canEdit} title="Property intelligence" /> : null}
       {tab === "planning" ? <IntelligencePanel propertyId={property.id} canRefresh={canEdit} groups={["planning", "heritage"]} title="Planning and heritage" /> : null}
+      {tab === "land" ? <><PropertyMap propertyId={property.id} /><IntelligencePanel propertyId={property.id} canRefresh={canEdit} groups={["land", "flood", "geology", "environment", "mining"]} title="Land and environmental context" /></> : null}
       {tab === "sources" ? <PropertySourcesTab propertyId={property.id} /> : null}
       {tab === "surveys" ? <section className="panel"><div className="panel-header"><div><h2>Linked jobs</h2><p>{data.jobs.length} recorded {data.jobs.length === 1 ? "instruction" : "instructions"}</p></div></div>
         {data.jobs.length ? <div className="data-table-wrap"><table className="data-table"><thead><tr><th>Reference</th><th>Service</th><th>Stage</th><th>Target</th></tr></thead><tbody>{data.jobs.map((job) => <tr key={job.id}><td data-label="Reference"><strong>{job.reference}</strong></td><td data-label="Service">{job.serviceName}</td><td data-label="Stage"><StatusDot tone={job.stage === "paid" || job.stage === "issued" ? "green" : job.stage === "archived" ? "slate" : "blue"}>{jobStageLabels[job.stage]}</StatusDot></td><td data-label="Target">{job.targetDate ? new Date(`${job.targetDate}T12:00:00.000Z`).toLocaleDateString("en-GB", { dateStyle: "medium", timeZone: "Europe/London" }) : "Not scheduled"}</td></tr>)}</tbody></table></div> : <div className="empty-state compact"><strong>No linked jobs</strong><span>New instructions for this property will appear here.</span></div>}

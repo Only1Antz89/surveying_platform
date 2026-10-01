@@ -114,6 +114,25 @@ Acceptance:
 - Historical defects stay as reinspection reminders (A1), never findings.
 - A stale suggestion cannot overwrite a surveyor's edit (integration-tested).
 ## P3 — Land and environmental context
+
+| Item | Code | Configured | Imported | Live |
+|---|---|---|---|---|
+| Reference-layer providers over `reference.spatial_features`: INSPIRE (indicative extent, England & Wales), EA Flood Zones 2 and 3 (planning), EA surface water (high/medium/low, kept separate), BGS Geology 625k (bedrock and superficial, Great Britain), Natural England designations (SSSI, SAC, SPA, Ramsar, National Landscape, National Park, ancient woodland; nearby context for SSSI and ancient woodland) | ✅ synthetic layers | ❌ sources not enabled | ❌ no real release imported | — |
+| Per-layer attribute allowlists (INSPIRE keeps `INSPIREID` only); CLI overrides for real column names; independent per-layer versions, activation and rollback | ✅ | — | — | — |
+| Spatial query service: point-in-polygon on the active version; geography distances for nearby context; approximate locations (postcode centroid) and uncovered countries return `unsupported` | ✅ | — | — | — |
+| Bounded, simplified GeoJSON for the map (`featuresNear`: 300 m, max 500 features per layer, simplified geometry) and `GET /api/v1/properties/:id/map` | ✅ | — | — | — |
+| Land & Map tab: MapLibre with layer toggles, per-layer attribution and caveats, a "Not checked" list (source not enabled, not imported, no coverage in the country, country not set), WebGL-failure fallback | ✅ (demo smoke-tested) | ❌ no basemap provider | — | — |
+| Basemap: `NEXT_PUBLIC_MAP_STYLE_URL`; unset shows "Basemap not configured" over a plain background (no public OSM tiles) | ✅ | ❌ **blocked: needs a contracted or self-hosted tile provider** | — | — |
+| MapLibre worker served from `public/vendor/maplibre-gl/<version>/` (copied at build) | ✅ | — | — | — |
+| `ASSISTANT_ENABLED` kill-switch, documented in A2, now enforced (generation, listing, review) | ✅ | ❌ | — | — |
+
+Acceptance:
+
+- Known inside, outside and boundary points give the expected flood-zone answers (integration-tested on synthetic squares).
+- INSPIRE is labelled indicative ("not a legal title boundary"), and no title number reaches stored attributes.
+- A failed import (coordinates outside the UK) keeps both active flood-zone layers.
+- England-only layers return `unsupported`/`not_covered` for Wales, and postcode-centroid locations are refused.
+- An unimported layer is `null` for the map and "not configured" in intelligence, never "no record".
 ## P4 — Property history
 ## A3 — Adaptive rules and completion checks
 ## A4 — Photo and document proposals
@@ -138,3 +157,7 @@ Acceptance:
 | 2026-10-01 | `pnpm --filter @surveynt/web test:integration` (P2 additions) | ✅ 5 intelligence tests: idempotent refresh, a single concurrent claim, partial run with EPC 503, imported layer match/nearby/not-imported, attribute allowlist, snapshot immutability, stale identity, superseded run without provider calls, expired-lease reclaim, cross-tenant denial |
 | 2026-10-01 | `pnpm --filter @surveynt/web test:integration` (A2 additions) | ✅ 6 proposal tests: generation from real enrichment snapshots, idempotent refresh, accept/edit/reject provenance and evidence links, no recreation after rejection, stale suggestion blocked after edit with discrepancy raised, professional confirmation, immutability, identity change supersedes, cross-tenant denial |
 | 2026-10-01 | Playwright offline test (demo mode, production build) | ✅ element status synced online; offline observation and field edit saved on device; offline reload restored both via service worker shell + IndexedDB; back online → "All changes synced"; no console errors; no overflow at 390 px |
+| 2026-10-01 | `pnpm --filter @surveynt/property-data test:integration` (P3) | ✅ 14 tests, including 5 spatial tests: inside/outside/boundary flood-zone answers, INSPIRE indicative with id-only attributes, unsupported country and centroid refusal, failed import keeps active layers, bounded map features and unimported layer |
+| 2026-10-01 | `pnpm --filter @surveynt/web test:integration` (P3) | ✅ 24 tests, including the new assistant kill-switch test |
+| 2026-10-01 | `pnpm check` (P3) | ✅ lint, typecheck, 76 unit tests, build |
+| 2026-10-01 | Playwright Land & Map smoke (demo mode, production build) | ✅ first run found MapLibre's worker failing to load from the bundle (fixed by serving it from `public/vendor`); rerun: labelled demo polygon drawn, marker, attribution shown, toggle works, "Basemap not configured" and "Not checked" shown, no external hosts contacted, no console errors, no overflow at 390 px |

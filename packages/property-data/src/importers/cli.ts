@@ -39,7 +39,7 @@ function parseBbox(value: string | undefined): Bbox | undefined {
 async function main() {
   const [command, ...rest] = process.argv.slice(2);
   const { values } = parseArgs({ args: rest, options: {
-    file: { type: "string" }, version: { type: "string" }, "source-url": { type: "string" }, bbox: { type: "string" }, layer: { type: "string" }, convert: { type: "boolean", default: false }, "source-crs": { type: "string" },
+    file: { type: "string" }, version: { type: "string" }, "source-url": { type: "string" }, bbox: { type: "string" }, layer: { type: "string" }, convert: { type: "boolean", default: false }, "source-crs": { type: "string" }, "id-property": { type: "string" }, "name-property": { type: "string" }, attributes: { type: "string" },
     activate: { type: "boolean", default: false }, sync: { type: "string" }, source: { type: "string" }, keep: { type: "string" },
   } });
   switch (command) {
@@ -60,7 +60,9 @@ async function main() {
       if (!values.source || !values.layer || !values.file || !values.version) throw new Error("--source, --layer, --file and --version are required.");
       const db = createDatabase(requireEnv("DATABASE_IMPORTER_URL"));
       const filePath = values.convert ? await convertWithOgr(values.file) : values.file;
-      const outcome = await importSpatialLayer(db, { sourceKey: values.source, layer: values.layer, filePath, datasetVersion: values.version, sourceUrl: values["source-url"], sourceCrs: values["source-crs"], activate: values.activate, importedBy: process.env.USER ?? "operator" });
+      // Attribute names differ between releases: an operator may override the preset after inspecting the file.
+      const preset = values["id-property"] ? { idProperty: values["id-property"], nameProperty: values["name-property"], keepProperties: (values.attributes ?? "").split(",").map((item) => item.trim()).filter(Boolean) } : undefined;
+      const outcome = await importSpatialLayer(db, { sourceKey: values.source, layer: values.layer, filePath, datasetVersion: values.version, sourceUrl: values["source-url"], sourceCrs: values["source-crs"], preset, activate: values.activate, importedBy: process.env.USER ?? "operator" });
       console.log(JSON.stringify(outcome, null, 2));
       if (outcome.status === "failed") process.exitCode = 1;
       break;
@@ -84,7 +86,7 @@ async function main() {
       break;
     }
     default:
-      throw new Error("Commands: registry-sync | os-open-uprn --file --version [--bbox] [--activate] | spatial-layer --source --layer --file --version [--convert] [--activate] | activate --sync | rollback --source [--layer] | prune --source [--layer] [--keep]");
+      throw new Error("Commands: registry-sync | os-open-uprn --file --version [--bbox] [--activate] | spatial-layer --source --layer --file --version [--convert] [--activate] | activate --sync | rollback --source [--layer] | prune --source [--layer] [--keep N]. spatial-layer also accepts --id-property --name-property --attributes a,b");
   }
 }
 

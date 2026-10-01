@@ -16,6 +16,7 @@ export function demoSurveyPack(jobId: string) {
     observations: [],
     media: [],
     evidence: [],
+    assistantEnabled: true,
     proposals: [{ id: "demo-proposal-1", fieldPath: "about.property.construction_period", proposedValue: { state: "provided", value: "1900_1929" }, originClass: "external_record", evidenceRefs: [{ type: "intelligence_snapshot", id: "demo", label: "DEMO energy certificate lodged 2023-06-12" }], limitations: ["DEMO DATA.", "EPC record: verify during inspection."], baseValueId: null, createdAt: new Date().toISOString() }],
     tasks: [{ id: "demo-task-1", kind: "reinspect", status: "open", title: "Reinspect: roof coverings (Rear slope)", detail: "DEMO · An earlier survey recorded slipped slates. This is historical context only. Record what you see now.", elementKey: "roof_coverings", fieldPath: null, evidence: {} }],
   };

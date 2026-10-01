@@ -18,6 +18,22 @@ export const layerPresets: Record<string, LayerPreset> = {
   "historic_england_nhle:registered_park_garden": { idProperty: "ListEntry", nameProperty: "Name", keepProperties: ["ListEntry", "Name", "Grade", "RegDate", "AmendDate"] },
   "historic_england_nhle:registered_battlefield": { idProperty: "ListEntry", nameProperty: "Name", keepProperties: ["ListEntry", "Name", "RegDate", "AmendDate"] },
   "historic_england_nhle:world_heritage_site": { idProperty: "ListEntry", nameProperty: "Name", keepProperties: ["ListEntry", "Name", "InscrDate"] },
+  // INSPIRE polygons: keep the INSPIRE id only. No title or owner data is stored.
+  "hmlr_inspire:index_polygons": { idProperty: "INSPIREID", keepProperties: ["INSPIREID"] },
+  "ea_flood_zones:flood_zone_2": { idProperty: "fid", keepProperties: ["flood_zone", "type"] },
+  "ea_flood_zones:flood_zone_3": { idProperty: "fid", keepProperties: ["flood_zone", "type"] },
+  "ea_rofsw:rofsw_high": { idProperty: "fid", keepProperties: ["risk_band"] },
+  "ea_rofsw:rofsw_medium": { idProperty: "fid", keepProperties: ["risk_band"] },
+  "ea_rofsw:rofsw_low": { idProperty: "fid", keepProperties: ["risk_band"] },
+  "bgs_geology_625k:bedrock": { idProperty: "fid", nameProperty: "LEX_RCS_D", keepProperties: ["LEX_D", "RCS_D", "LEX_RCS_D", "MAX_PERIOD", "MIN_PERIOD"] },
+  "bgs_geology_625k:superficial": { idProperty: "fid", nameProperty: "LEX_RCS_D", keepProperties: ["LEX_D", "RCS_D", "LEX_RCS_D"] },
+  "ne_designations:sssi": { idProperty: "ref_code", nameProperty: "name", keepProperties: ["name", "ref_code"] },
+  "ne_designations:sac": { idProperty: "code", nameProperty: "name", keepProperties: ["name", "code"] },
+  "ne_designations:spa": { idProperty: "code", nameProperty: "name", keepProperties: ["name", "code"] },
+  "ne_designations:ramsar": { idProperty: "code", nameProperty: "name", keepProperties: ["name", "code"] },
+  "ne_designations:national_landscape": { idProperty: "code", nameProperty: "name", keepProperties: ["name", "code"] },
+  "ne_designations:national_park": { idProperty: "code", nameProperty: "name", keepProperties: ["name", "code"] },
+  "ne_designations:ancient_woodland": { idProperty: "fid", nameProperty: "name", keepProperties: ["name", "themname"] },
 };
 
 export type SpatialLayerImportOptions = {

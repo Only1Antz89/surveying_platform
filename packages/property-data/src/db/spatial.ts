@@ -42,3 +42,23 @@ export function databaseSpatialQuery(db: Executor): SpatialQuery {
     },
   };
 }
+
+/** Bounded, simplified GeoJSON features around a point for map display (active version only). */
+export async function featuresNear(db: Executor, input: { sourceKey: string; layer: string; latitude: number; longitude: number; radiusMetres: number; limit?: number }) {
+  const [sync] = await db.select().from(datasetSyncs).where(and(eq(datasetSyncs.sourceKey, input.sourceKey), eq(datasetSyncs.layer, input.layer), eq(datasetSyncs.status, "active"))).limit(1);
+  if (!sync) return null;
+  const radius = Math.max(10, Math.min(input.radiusMetres, 1000));
+  const latDegrees = radius / 111_000;
+  const lonDegrees = radius / (111_000 * Math.cos((input.latitude * Math.PI) / 180));
+  const rows = await db.execute(sql`
+    select f.feature_id, f.name, f.attributes, st_asgeojson(st_simplifypreservetopology(f.geom, 0.000005), 6) as geometry
+    from reference.spatial_features f
+    where f.dataset_sync_id = ${sync.id}
+      and f.geom && st_makeenvelope(${input.longitude - lonDegrees}, ${input.latitude - latDegrees}, ${input.longitude + lonDegrees}, ${input.latitude + latDegrees}, 4326)
+    limit ${Math.max(1, Math.min(input.limit ?? 200, 500))}`);
+  const features = (rows as unknown as { rows: { feature_id: string; name: string | null; attributes: Record<string, unknown>; geometry: string }[] }).rows;
+  return {
+    datasetVersion: sync.datasetVersion,
+    featureCollection: { type: "FeatureCollection" as const, features: features.map((row) => ({ type: "Feature" as const, id: row.feature_id, properties: { name: row.name, ...row.attributes }, geometry: JSON.parse(row.geometry) as Record<string, unknown> })) },
+  };
+}

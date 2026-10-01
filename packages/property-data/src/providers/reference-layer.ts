@@ -25,11 +25,14 @@ export type ReferenceLayerDefinition = {
  * active dataset versions; an unimported layer reports "not configured", never
  * "no record found".
  */
-export function referenceLayerProvider(definition: ReferenceLayerDefinition): IntelligenceProvider {
+export type ReferenceLayerProvider = IntelligenceProvider & { definition: ReferenceLayerDefinition };
+
+export function referenceLayerProvider(definition: ReferenceLayerDefinition): ReferenceLayerProvider {
   const nearbyCategory = (layer: LayerDefinition) => `${layer.category}_nearby`;
   const categories = definition.layers.flatMap((layer) => layer.nearbyMetres ? [layer.category, nearbyCategory(layer)] : [layer.category]);
   return {
     key: definition.sourceKey,
+    definition,
     categories,
     applicability(location, context) {
       if (!location.country || !definition.countries.includes(location.country)) return { ok: false, status: "unsupported", message: location.country ? "This source does not cover the property's country." : "Set the property's country to check this source.", coverage: location.country ? "not_covered" : "unknown" };
@@ -82,5 +85,61 @@ export const historicEnglandProvider = referenceLayerProvider({
     { layer: "registered_park_garden", category: "registered_park_garden_nhle", label: "Registered park and garden", caveat: "Check the list entry for the registered area.", evidenceUrl: nhleEntry },
     { layer: "registered_battlefield", category: "registered_battlefield_nhle", label: "Registered battlefield", caveat: "Check the list entry for the registered area.", evidenceUrl: nhleEntry },
     { layer: "world_heritage_site", category: "world_heritage_site_nhle", label: "World Heritage Site", caveat: "Check the World Heritage Site boundary and buffer zone with the local authority.", evidenceUrl: nhleEntry },
+  ],
+});
+
+// Land and environmental context (P3). Each layer must be imported and the
+// source enabled after verification; otherwise it reports "not checked".
+
+export const inspireProvider = referenceLayerProvider({
+  sourceKey: "hmlr_inspire",
+  countries: ["ENG", "WLS"],
+  informationClass: "indicative_external",
+  layers: [
+    { layer: "index_polygons", category: "inspire_indicative_extent", label: "Registered freehold (indicative extent)", caveat: "Indicative registered extent: not a legal title boundary, ownership record or title search. Leasehold titles are not shown.", evidenceUrl: () => "https://use-land-property-data.service.gov.uk/datasets/inspire/#conditions" },
+  ],
+});
+
+export const floodZonesProvider = referenceLayerProvider({
+  sourceKey: "ea_flood_zones",
+  countries: ["ENG"],
+  layers: [
+    { layer: "flood_zone_3", category: "planning_flood_zone_3", label: "Flood Zone 3 (planning)", caveat: "Planning flood zone, not a property flood risk assessment. Defences and surface water are not reflected." },
+    { layer: "flood_zone_2", category: "planning_flood_zone_2", label: "Flood Zone 2 (planning)", caveat: "Planning flood zone, not a property flood risk assessment. Not intersecting a zone is not proof of no flood risk." },
+  ],
+});
+
+export const surfaceWaterProvider = referenceLayerProvider({
+  sourceKey: "ea_rofsw",
+  countries: ["ENG"],
+  informationClass: "indicative_external",
+  layers: [
+    { layer: "rofsw_high", category: "surface_water_high", label: "Surface water flood risk: high", caveat: "Modelled surface water risk; kept separate from planning zones and river or sea risk." },
+    { layer: "rofsw_medium", category: "surface_water_medium", label: "Surface water flood risk: medium", caveat: "Modelled surface water risk; kept separate from planning zones and river or sea risk." },
+    { layer: "rofsw_low", category: "surface_water_low", label: "Surface water flood risk: low", caveat: "Modelled surface water risk; kept separate from planning zones and river or sea risk." },
+  ],
+});
+
+export const geologyProvider = referenceLayerProvider({
+  sourceKey: "bgs_geology_625k",
+  countries: ["ENG", "WLS", "SCT"],
+  informationClass: "indicative_external",
+  layers: [
+    { layer: "bedrock", category: "bedrock_geology", label: "Bedrock geology (1:625 000)", caveat: "Mapped geology at a regional scale requires interpretation. It is not a site investigation and says nothing about structural safety." },
+    { layer: "superficial", category: "superficial_deposits", label: "Superficial deposits (1:625 000)", caveat: "Regional-scale mapping; absence of a mapped deposit is not proof of absence on site." },
+  ],
+});
+
+export const naturalEnglandProvider = referenceLayerProvider({
+  sourceKey: "ne_designations",
+  countries: ["ENG"],
+  layers: [
+    { layer: "sssi", category: "sssi", label: "Site of Special Scientific Interest", nearbyMetres: 250, caveat: "Check Natural England's citation and any consultation requirements." },
+    { layer: "sac", category: "special_area_of_conservation", label: "Special Area of Conservation", caveat: "Check the designation documents." },
+    { layer: "spa", category: "special_protection_area", label: "Special Protection Area", caveat: "Check the designation documents." },
+    { layer: "ramsar", category: "ramsar_site", label: "Ramsar site", caveat: "Check the designation documents." },
+    { layer: "national_landscape", category: "national_landscape", label: "National Landscape", caveat: "Planning policy applies; check with the local planning authority." },
+    { layer: "national_park", category: "national_park", label: "National Park", caveat: "The National Park Authority is the planning authority." },
+    { layer: "ancient_woodland", category: "ancient_woodland", label: "Ancient woodland", nearbyMetres: 50, caveat: "The inventory is indicative and incomplete for small sites." },
   ],
 });

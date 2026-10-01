@@ -39,7 +39,7 @@ describe.skipIf(!integrationEnabled)("assistant proposals", () => {
 
   beforeAll(async () => {
     database = await createTestDatabase();
-    Object.assign(process.env, { DATABASE_APP_URL: database.appUrl, DATABASE_ADMIN_URL: database.adminUrl, PROPERTY_INTELLIGENCE_ENABLED: "true", EPC_API_BASE_URL: "https://epc.example.test", EPC_API_TOKEN: "test-token" });
+    Object.assign(process.env, { DATABASE_APP_URL: database.appUrl, DATABASE_ADMIN_URL: database.adminUrl, PROPERTY_INTELLIGENCE_ENABLED: "true", ASSISTANT_ENABLED: "true", EPC_API_BASE_URL: "https://epc.example.test", EPC_API_TOKEN: "test-token" });
     const admin = database.connect(database.adminUrl);
     await syncSourceRegistry(admin);
     await admin.update(dataSources).set({ enabled: true, verifiedAt: new Date(), verifiedBy: "integration-test" }).where(sql`${dataSources.key} in ('planning_data', 'epc_england_wales', 'historic_england_nhle')`);
@@ -147,5 +147,16 @@ describe.skipIf(!integrationEnabled)("assistant proposals", () => {
     const remaining = await pending();
     expect(await reviewProposal({ organisationId: firmB, internalUserId: null, role: "owner" }, surveyId, remaining[0].id, { decision: "accept" })).toEqual({ kind: "missing" });
     expect(await listSurveyProposals({ organisationId: firmB }, surveyId)).toHaveLength(0);
+  });
+
+  it("generates nothing when the assistant kill-switch is off", async () => {
+    const admin = database.connect(database.adminUrl);
+    await admin.update(properties).set({ latitude: 51.456, version: sql`${properties.version} + 1` }).where(eq(properties.id, propertyId));
+    process.env.ASSISTANT_ENABLED = "false";
+    try {
+      expect(await refreshSurveyProposals(surveyor, surveyId)).toEqual({ created: 0, superseded: 0, discrepancies: 0 });
+    } finally {
+      process.env.ASSISTANT_ENABLED = "true";
+    }
   });
 });

@@ -3,6 +3,7 @@ import { fieldValueSchema } from "@surveynt/assistant";
 import { canMutateOperations } from "@surveynt/domain";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
+import { assistantEnabled } from "@/lib/assistant-flags";
 import { reviewProposal } from "@/lib/proposals";
 
 export const runtime = "nodejs";
@@ -25,6 +26,7 @@ export async function POST(request: Request, route: RouteContext<"/api/v1/survey
   const { id, proposalId } = await route.params;
   if (context.demo) return ok({ status: parsed.data.decision === "reject" ? "rejected" : parsed.data.decision === "edit" ? "edited" : "accepted" }, { demo: true, persisted: false });
   if (!z.uuid().safeParse(id).success || !z.uuid().safeParse(proposalId).success) return problem(404, "proposal_not_found", "The suggestion could not be found.");
+  if (!assistantEnabled()) return problem(503, "assistant_disabled", "Suggestions are turned off for this deployment.");
   const result = await reviewProposal({ organisationId: context.organisationId, internalUserId: context.internalUserId, role: context.role }, id, proposalId, parsed.data);
   if (result.kind === "missing") return problem(404, "proposal_not_found", "The suggestion could not be found.");
   if (result.kind === "conflict") return problem(409, "proposal_stale", result.message);

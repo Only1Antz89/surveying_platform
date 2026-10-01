@@ -35,6 +35,7 @@ import {
   type SyncResult,
 } from "@surveynt/assistant";
 import { canConfirmPropertyIdentity, type OrganisationRole, type UkCountry } from "@surveynt/domain";
+import { assistantEnabled } from "./assistant-flags";
 import { getObjectStorage, maxUploadBytes } from "./storage";
 
 export type SurveyContext = { organisationId: string; internalUserId: string | null; role: OrganisationRole };
@@ -142,7 +143,7 @@ export async function loadSurveyPack(context: Pick<SurveyContext, "organisationI
       tx.select().from(evidenceLinks).where(and(eq(evidenceLinks.surveyId, surveyId), eq(evidenceLinks.organisationId, context.organisationId), isNull(evidenceLinks.removedAt))),
       tx.select().from(assistantTasks).where(and(eq(assistantTasks.surveyId, surveyId), eq(assistantTasks.organisationId, context.organisationId))).orderBy(asc(assistantTasks.createdAt)),
     ]);
-    const proposals = await tx.select().from(fieldProposals).where(and(eq(fieldProposals.surveyId, surveyId), eq(fieldProposals.organisationId, context.organisationId), eq(fieldProposals.reviewStatus, "pending"))).orderBy(asc(fieldProposals.createdAt));
+    const proposals = assistantEnabled() ? await tx.select().from(fieldProposals).where(and(eq(fieldProposals.surveyId, surveyId), eq(fieldProposals.organisationId, context.organisationId), eq(fieldProposals.reviewStatus, "pending"))).orderBy(asc(fieldProposals.createdAt)) : [];
     return {
       survey: { id: row.survey.id, jobId: row.survey.jobId, propertyId: row.survey.propertyId, status: row.survey.status, serviceLevel: row.survey.serviceLevel as ServiceLevel, jurisdiction: row.survey.jurisdiction, templateKey: row.survey.templateKey, templateVersion: row.survey.templateVersion, version: row.survey.version, createdAt: row.survey.createdAt.toISOString() },
       job: { reference: row.jobReference, serviceName: row.serviceName },
@@ -154,6 +155,7 @@ export async function loadSurveyPack(context: Pick<SurveyContext, "organisationI
       media: media.map((item) => ({ ...item, capturedAt: item.capturedAt?.toISOString() ?? null, createdAt: item.createdAt.toISOString() })),
       evidence: evidence.map((item) => ({ id: item.id, targetType: item.targetType, targetId: item.targetId, evidenceType: item.evidenceType, evidenceId: item.evidenceId, region: item.region, note: item.note })),
       tasks: tasks.map((item) => ({ id: item.id, kind: item.kind, status: item.status, title: item.title, detail: item.detail, elementKey: item.elementKey, fieldPath: item.fieldPath, evidence: item.evidence })),
+      assistantEnabled: assistantEnabled(),
       proposals: proposals.map((item) => ({ id: item.id, fieldPath: item.fieldPath, proposedValue: item.proposedValue, originClass: item.originClass, evidenceRefs: item.evidenceRefs, limitations: item.limitations, baseValueId: item.baseValueId, createdAt: item.createdAt.toISOString() })),
     };
   });
