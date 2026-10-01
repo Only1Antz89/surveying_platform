@@ -13,7 +13,10 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "check:property-data-capabilities": "tsx scripts/check-property-data-capabilities.ts",
+    "import:property-data": "tsx scripts/import-property-data.ts",
+    "rollback:property-data": "tsx scripts/rollback-property-data.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",

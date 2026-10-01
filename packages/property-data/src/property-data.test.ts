@@ -1,0 +1,49 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { locationFingerprint, propertyLocationSchema, searchNominatim, searchPostcode, sourceRegistry } from "./index";
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe("property intelligence contracts", () => {
+  it("validates UK property identity without converting UPRNs to numbers", () => {
+    const value = propertyLocationSchema.parse({ propertyId: crypto.randomUUID(), country: "ENG", uprn: "000123456789", latitude: 51.45, longitude: -2.58, address: "14 Clifton Park, Bristol", propertyVersion: 2 });
+    expect(value.uprn).toBe("000123456789");
+  });
+
+  it("rejects invalid coordinates and UPRNs", () => {
+    expect(() => propertyLocationSchema.parse({ propertyId: crypto.randomUUID(), country: "ENG", uprn: "12A", latitude: 100, longitude: -2.58, address: "Test address", propertyVersion: 1 })).toThrow();
+  });
+
+  it("changes the fingerprint when identity changes", () => {
+    const base = { country: "ENG" as const, uprn: "123", latitude: 51.45, longitude: -2.58, propertyVersion: 1 };
+    expect(locationFingerprint(base)).not.toBe(locationFingerprint({ ...base, propertyVersion: 2 }));
+  });
+
+  it("keeps flood zones as distinct sources", () => {
+    expect(sourceRegistry.some((source) => source.key === "ea_flood_zone_2")).toBe(true);
+    expect(sourceRegistry.some((source) => source.key === "ea_flood_zone_3")).toBe(true);
+  });
+
+  it("labels postcode results as approximate centroids", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ status: 200, result: { postcode: "BS8 4JX", admin_district: "Bristol, City of", latitude: 51.46, longitude: -2.62, country: "England" } }), { status: 200 })));
+    const [result] = await searchPostcode("BS8 4JX");
+    expect(result.precision).toBe("postcode");
+    expect(result.providerKey).toBe("postcodes_io");
+  });
+
+  it("does not call Nominatim until deployment identification is configured", async () => {
+    const providerFetch = vi.fn();
+    vi.stubGlobal("fetch", providerFetch);
+    expect(await searchNominatim("14 Clifton Park", {})).toEqual([]);
+    expect(providerFetch).not.toHaveBeenCalled();
+  });
+
+  it("filters configured geocoder results to England", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([
+      { place_id: 1, display_name: "14 Clifton Park, Bristol", lat: "51.46", lon: "-2.62", address: { house_number: "14", road: "Clifton Park", city: "Bristol", postcode: "BS8 3BY", country_code: "gb", state: "England" } },
+      { place_id: 2, display_name: "Cardiff", lat: "51.48", lon: "-3.18", address: { city: "Cardiff", country_code: "gb", state: "Wales" } },
+    ]), { status: 200 })));
+    const results = await searchNominatim("14 Clifton Park", { baseUrl: "https://example.test/", userAgent: "Surveynt/1.0 (contact: support@example.test)" });
+    expect(results).toHaveLength(1);
+    expect(results[0].line1).toBe("14 Clifton Park");
+  });
+});

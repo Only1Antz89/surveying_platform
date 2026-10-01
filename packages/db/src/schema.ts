@@ -1,6 +1,10 @@
 import {
   boolean,
+  check,
+  customType,
   date,
+  doublePrecision,
+  geometry,
   index,
   integer,
   jsonb,
@@ -12,6 +16,13 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+
+const geometryFeature4326 = customType<{ data: string; driverData: string }>({
+  dataType() {
+    return "geometry(Geometry,4326)";
+  },
+});
 
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -26,6 +37,13 @@ export const jobStage = pgEnum("job_stage", ["enquiry", "quoted", "instructed", 
 export const supportPermission = pgEnum("support_permission", ["read", "write"]);
 export const incidentSeverity = pgEnum("incident_severity", ["low", "medium", "high", "critical"]);
 export const incidentStatus = pgEnum("incident_status", ["investigating", "monitoring", "resolved"]);
+export const propertyCountry = pgEnum("property_country", ["ENG", "WLS", "SCT", "NIR"]);
+export const locationConfidence = pgEnum("location_confidence", ["unresolved", "approximate", "confirmed", "exact"]);
+export const enrichmentStatus = pgEnum("enrichment_status", ["queued", "running", "completed", "partial", "failed"]);
+export const providerResultStatus = pgEnum("provider_result_status", ["matched", "no_match", "unsupported", "not_configured", "unavailable", "error"]);
+export const informationClass = pgEnum("information_class", ["surveyor_verified", "authoritative_external", "indicative_external_context"]);
+export const coverageStatus = pgEnum("coverage_status", ["covered", "partial", "outside_coverage", "unknown"]);
+export const datasetSyncStatus = pgEnum("dataset_sync_status", ["queued", "downloading", "validating", "staged", "active", "failed", "rolled_back"]);
 
 export const organisations = pgTable("organisations", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -166,12 +184,28 @@ export const properties = pgTable("properties", {
   city: text("city").notNull(),
   postcode: text("postcode").notNull(),
   propertyType: text("property_type"),
+  country: propertyCountry("country"),
+  uprn: text("uprn"),
+  latitude: doublePrecision("latitude"),
+  longitude: doublePrecision("longitude"),
+  location: geometry("location", { type: "point", mode: "xy", srid: 4326 }),
+  addressSource: text("address_source"),
+  locationConfidence: locationConfidence("location_confidence").notNull().default("unresolved"),
+  locationResolutionMethod: text("location_resolution_method"),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  confirmedByUserId: uuid("confirmed_by_user_id").references(() => users.id, { onDelete: "set null" }),
   archivedAt: timestamp("archived_at", { withTimezone: true }),
   version: integer("version").notNull().default(1),
   ...timestamps,
 }, (table) => [
   index("properties_org_idx").on(table.organisationId),
   index("properties_client_idx").on(table.clientId),
+  index("properties_org_uprn_idx").on(table.organisationId, table.uprn),
+  index("properties_location_gix").using("gist", table.location),
+  check("properties_coordinates_pair_check", sql`(${table.latitude} is null and ${table.longitude} is null) or (${table.latitude} is not null and ${table.longitude} is not null)`),
+  check("properties_latitude_check", sql`${table.latitude} is null or ${table.latitude} between -90 and 90`),
+  check("properties_longitude_check", sql`${table.longitude} is null or ${table.longitude} between -180 and 180`),
+  check("properties_uprn_check", sql`${table.uprn} is null or ${table.uprn} ~ '^[0-9]{1,12}$'`),
 ]);
 
 export const jobs = pgTable("jobs", {
@@ -337,3 +371,130 @@ export const backgroundJobs = pgTable("background_jobs", {
   error: text("error"),
   ...timestamps,
 }, (table) => [index("background_jobs_org_idx").on(table.organisationId), index("background_jobs_queue_status_idx").on(table.queue, table.status)]);
+
+export const dataSources = pgTable("data_sources", {
+  key: text("key").primaryKey(),
+  name: text("name").notNull(),
+  organisation: text("organisation").notNull(),
+  category: text("category").notNull(),
+  documentationUrl: text("documentation_url").notNull(),
+  accessUrl: text("access_url"),
+  licence: text("licence").notNull(),
+  licenceUrl: text("licence_url"),
+  attribution: text("attribution").notNull(),
+  coverageCountries: text("coverage_countries").array().notNull().default(sql`'{}'::text[]`),
+  limitations: text("limitations"),
+  accessRequirements: text("access_requirements"),
+  enabled: boolean("enabled").notNull().default(false),
+  refreshPolicy: text("refresh_policy"),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  latestSuccessfulSyncAt: timestamp("latest_successful_sync_at", { withTimezone: true }),
+  ...timestamps,
+});
+
+export const datasetVersions = pgTable("dataset_versions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sourceKey: text("source_key").notNull().references(() => dataSources.key, { onDelete: "restrict" }),
+  version: text("version").notNull(),
+  checksum: text("checksum").notNull(),
+  sourceUrl: text("source_url").notNull(),
+  licenceSnapshot: jsonb("licence_snapshot").$type<Record<string, unknown>>().notNull().default({}),
+  recordCount: integer("record_count").notNull().default(0),
+  validation: jsonb("validation").$type<Record<string, unknown>>().notNull().default({}),
+  active: boolean("active").notNull().default(false),
+  activatedAt: timestamp("activated_at", { withTimezone: true }),
+  ...timestamps,
+}, (table) => [
+  uniqueIndex("dataset_versions_source_version_uidx").on(table.sourceKey, table.version),
+  index("dataset_versions_source_active_idx").on(table.sourceKey, table.active),
+]);
+
+export const datasetSyncs = pgTable("dataset_syncs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sourceKey: text("source_key").notNull().references(() => dataSources.key, { onDelete: "restrict" }),
+  datasetVersionId: uuid("dataset_version_id").references(() => datasetVersions.id, { onDelete: "set null" }),
+  status: datasetSyncStatus("status").notNull().default("queued"),
+  sourceUrl: text("source_url").notNull(),
+  checksum: text("checksum"),
+  recordCount: integer("record_count"),
+  validation: jsonb("validation").$type<Record<string, unknown>>().notNull().default({}),
+  safeError: text("safe_error"),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [index("dataset_syncs_source_time_idx").on(table.sourceKey, table.createdAt)]);
+
+export const osUprnPoints = pgTable("os_uprn_points", {
+  datasetVersionId: uuid("dataset_version_id").notNull().references(() => datasetVersions.id, { onDelete: "cascade" }),
+  uprn: text("uprn").notNull(),
+  location: geometry("location", { type: "point", mode: "xy", srid: 4326 }).notNull(),
+  sourceEasting: doublePrecision("source_easting"),
+  sourceNorthing: doublePrecision("source_northing"),
+}, (table) => [
+  uniqueIndex("os_uprn_points_version_uprn_uidx").on(table.datasetVersionId, table.uprn),
+  index("os_uprn_points_location_gix").using("gist", table.location),
+  check("os_uprn_points_uprn_check", sql`${table.uprn} ~ '^[0-9]{1,12}$'`),
+]);
+
+export const spatialReferenceFeatures = pgTable("spatial_reference_features", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  datasetVersionId: uuid("dataset_version_id").notNull().references(() => datasetVersions.id, { onDelete: "cascade" }),
+  sourceKey: text("source_key").notNull().references(() => dataSources.key, { onDelete: "restrict" }),
+  sourceRecordId: text("source_record_id").notNull(),
+  name: text("name"),
+  geometry: geometryFeature4326("geometry").notNull(),
+  properties: jsonb("properties").$type<Record<string, unknown>>().notNull().default({}),
+}, (table) => [
+  uniqueIndex("spatial_reference_version_record_uidx").on(table.datasetVersionId, table.sourceRecordId),
+  index("spatial_reference_source_idx").on(table.sourceKey),
+  index("spatial_reference_geometry_gix").using("gist", table.geometry),
+]);
+
+export const enrichmentRuns = pgTable("enrichment_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  propertyId: uuid("property_id").notNull().references(() => properties.id, { onDelete: "restrict" }),
+  actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+  idempotencyKey: text("idempotency_key").notNull(),
+  status: enrichmentStatus("status").notNull().default("queued"),
+  providerStatuses: jsonb("provider_statuses").$type<Record<string, string>>().notNull().default({}),
+  safeErrors: jsonb("safe_errors").$type<Record<string, string>>().notNull().default({}),
+  propertyVersion: integer("property_version").notNull(),
+  locationFingerprint: text("location_fingerprint").notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  ...timestamps,
+}, (table) => [
+  uniqueIndex("enrichment_runs_org_idempotency_uidx").on(table.organisationId, table.idempotencyKey),
+  index("enrichment_runs_property_time_idx").on(table.propertyId, table.createdAt),
+  index("enrichment_runs_org_status_idx").on(table.organisationId, table.status),
+]);
+
+export const propertyIntelligenceSnapshots = pgTable("property_intelligence_snapshots", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  propertyId: uuid("property_id").notNull().references(() => properties.id, { onDelete: "restrict" }),
+  enrichmentRunId: uuid("enrichment_run_id").notNull().references(() => enrichmentRuns.id, { onDelete: "restrict" }),
+  sourceKey: text("source_key").notNull().references(() => dataSources.key, { onDelete: "restrict" }),
+  datasetVersion: text("dataset_version"),
+  sourceRecordId: text("source_record_id"),
+  category: text("category").notNull(),
+  schemaVersion: integer("schema_version").notNull().default(1),
+  data: jsonb("data").$type<Record<string, unknown>>().notNull().default({}),
+  evidence: jsonb("evidence").$type<Array<{ label: string; url: string }>>().notNull().default([]),
+  matchMethod: text("match_method").notNull(),
+  retrievedAt: timestamp("retrieved_at", { withTimezone: true }).notNull(),
+  sourceUpdatedAt: timestamp("source_updated_at", { withTimezone: true }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  confidence: doublePrecision("confidence").notNull(),
+  informationClass: informationClass("information_class").notNull(),
+  coverageStatus: coverageStatus("coverage_status").notNull(),
+  resultStatus: providerResultStatus("result_status").notNull(),
+  licenceSnapshot: jsonb("licence_snapshot").$type<Record<string, unknown>>().notNull().default({}),
+  attribution: text("attribution").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("property_intelligence_property_source_time_idx").on(table.propertyId, table.sourceKey, table.createdAt),
+  index("property_intelligence_org_idx").on(table.organisationId),
+  check("property_intelligence_confidence_check", sql`${table.confidence} between 0 and 1`),
+]);

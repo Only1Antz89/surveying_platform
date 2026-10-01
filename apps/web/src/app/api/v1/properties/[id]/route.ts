@@ -54,6 +54,10 @@ export async function PATCH(request: Request, route: RouteContext<"/api/v1/prope
     const [current] = await tx.select().from(properties).where(and(eq(properties.id, id), eq(properties.organisationId, context.organisationId))).limit(1);
     if (!current) return { kind: "missing" as const };
     if (current.version !== parsed.data.version) return { kind: "conflict" as const };
+    const identityChanged = (parsed.data.line1 !== undefined && parsed.data.line1 !== current.line1)
+      || (parsed.data.line2 !== undefined && parsed.data.line2 !== current.line2)
+      || (parsed.data.city !== undefined && parsed.data.city !== current.city)
+      || (parsed.data.postcode !== undefined && parsed.data.postcode !== current.postcode);
     const [updated] = await tx.update(properties).set({
       line1: parsed.data.line1,
       line2: parsed.data.line2,
@@ -61,11 +65,12 @@ export async function PATCH(request: Request, route: RouteContext<"/api/v1/prope
       postcode: parsed.data.postcode,
       propertyType: parsed.data.propertyType,
       ...(parsed.data.archived !== undefined ? { archivedAt: parsed.data.archived ? new Date() : null } : {}),
+      ...(identityChanged ? { country: null, uprn: null, latitude: null, longitude: null, addressSource: null, locationConfidence: "unresolved" as const, locationResolutionMethod: null, resolvedAt: null, confirmedByUserId: null } : {}),
       version: current.version + 1,
       updatedAt: new Date(),
     }).where(and(eq(properties.id, id), eq(properties.organisationId, context.organisationId), eq(properties.version, current.version))).returning();
     if (!updated) return { kind: "conflict" as const };
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: parsed.data.archived ? "property.archived" : "property.updated", resourceType: "property", resourceId: id, metadata: { fromVersion: current.version, toVersion: updated.version } });
+    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: parsed.data.archived ? "property.archived" : "property.updated", resourceType: "property", resourceId: id, metadata: { fromVersion: current.version, toVersion: updated.version, identityCleared: identityChanged } });
     return { kind: "updated" as const, property: updated };
   });
   if (result.kind === "missing") return problem(404, "property_not_found", "The property could not be found.");
