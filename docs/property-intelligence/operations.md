@@ -31,6 +31,8 @@ The importer deletes a failed staged version and retains the previously active v
 
 Refresh requests return `202` and a run ID. Schedule the protected worker endpoint at a deployment-supported interval. Jobs use exponential backoff up to five attempts. Identity changes are terminal for the old run; request a new refresh after reviewing the property.
 
+Run `pnpm --filter @surveynt/web verify:property-worker` with the repository environment loaded to verify that the deployed route rejects an invalid token and can process the current queue using the configured worker secret.
+
 ## Provider smoke checks
 
 Run `pnpm --filter @surveynt/property-data verify:providers` to validate the public Postcodes.io and Planning Data adapters against the labelled Bristol development fixture. It does not persist results and treats Planning Data `no_match` only as an empty response from the queried datasets. Nominatim and EPC require their deployment configuration before separate live verification.

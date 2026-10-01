@@ -15,6 +15,7 @@
 - [x] Recheck application-role spatial functions, reference-table write denial and tenant RLS after migration
 - [x] Verify metre-distance candidates, inside/outside/boundary intersections and BNG-to-WGS84 transformation in PostGIS
 - [x] Live-verify Postcodes.io and Planning Data response validation against a labelled development fixture
+- [x] Verify protected worker authentication and empty-queue processing against non-production Neon
 - [ ] Import and validate national datasets
 - [ ] Live-test EPC after credentials/licence acceptance
 - [ ] Configure production geocoder and basemap providers
