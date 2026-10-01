@@ -10,13 +10,15 @@
     "build": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "verify:providers": "tsx scripts/verify-live-providers.ts"
   },
   "dependencies": {
     "zod": "^4.1.8"
   },
   "devDependencies": {
     "typescript": "^5.9.3",
+    "tsx": "^4.23.15",
     "vitest": "^3.2.4"
   }
 }
