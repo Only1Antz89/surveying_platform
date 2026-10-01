@@ -13,7 +13,7 @@
 
 Run the read-only database gate first with `pnpm --filter @surveynt/db check:property-data-capabilities`. It reports PostGIS availability, role separation and whether the property-intelligence tables already exist without installing extensions or changing schema.
 
-The 1 October 2026 audit of the configured Neon project found PostgreSQL 18.6, PostGIS 3.6.4 available but not installed, separate application and administrator roles, and no property-intelligence tables applied. Spatial-function privileges therefore remain an explicit post-migration check.
+The 1 October 2026 non-production migration installed PostGIS 3.6.4 on PostgreSQL 18.6. The post-migration audit confirmed separate application and administrator roles, application-role spatial-function access, readable source metadata, denied reference-table writes, tenant isolation against a guessed organisation ID, all required RLS policies, and the immutable-snapshot trigger. Run `pnpm --filter @surveynt/db verify:property-data-security` after future permission or migration changes.
 
 1. Obtain the official release and record its licence, publication date and source URL.
 2. Convert source data to UTF-8 CSV. OS Open UPRN headers must include `uprn,latitude,longitude`; other layers require `source_record_id,wkt` with optional `name,properties_json`. Declare either `--source-crs EPSG:4326` or `--source-crs EPSG:27700`; unsupported or omitted CRS values are rejected and BNG geometries are transformed to WGS84 during staging.

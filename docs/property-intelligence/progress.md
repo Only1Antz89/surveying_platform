@@ -11,8 +11,8 @@
 - [x] Idempotent durable enrichment queue and protected worker
 - [x] Intelligence, filtered planning/environment and bounded map APIs
 - [x] Read-only target Neon audit: PostGIS 3.6.4 is available and application/admin roles are separate
-- [ ] Apply PostGIS migration to an authorised non-production database
-- [ ] Recheck spatial-function access for the application role after PostGIS is installed
+- [x] Apply PostGIS migration to the authorised non-production Neon database
+- [x] Recheck application-role spatial functions, reference-table write denial and tenant RLS after migration
 - [ ] Import and validate national datasets
 - [ ] Live-test EPC after credentials/licence acceptance
 - [ ] Configure production geocoder and basemap providers
