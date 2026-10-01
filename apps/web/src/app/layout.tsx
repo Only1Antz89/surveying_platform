@@ -5,8 +5,8 @@ import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: { default: "FIELDNOTE", template: "%s · FIELDNOTE" },
-  description: "The operating system for modern surveying practices.",
+  title: { default: "Surveynt", template: "%s · Surveynt" },
+  description: "Survey intelligence, from site to report.",
 };
 
 function Document({ children }: { children: React.ReactNode }) {
@@ -19,5 +19,5 @@ function Document({ children }: { children: React.ReactNode }) {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) return <Document>{children}</Document>;
-  return <ClerkProvider><Document>{children}</Document></ClerkProvider>;
+  return <ClerkProvider appearance={{ variables: { colorPrimary: "#3b82f6", colorForeground: "#0f1b2d", colorMutedForeground: "#64748b", colorBackground: "#ffffff", colorBorder: "#e5e7eb", borderRadius: "8px", fontFamily: "var(--font-geist-sans)" } }}><Document>{children}</Document></ClerkProvider>;
 }

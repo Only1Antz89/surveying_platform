@@ -1,7 +1,7 @@
 import Stripe from "stripe";
 import { eq } from "drizzle-orm";
-import { canManageBilling } from "@fieldnote/domain";
-import { createDatabase, organisations, subscriptions } from "@fieldnote/db";
+import { canManageBilling } from "@surveynt/domain";
+import { createDatabase, organisations, subscriptions } from "@surveynt/db";
 import { apiContext } from "@/lib/access";
 import { ok, problem } from "@/lib/api";
 

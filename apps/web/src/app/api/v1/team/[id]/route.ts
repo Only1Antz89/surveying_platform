@@ -1,7 +1,7 @@
 import { clerkClient } from "@clerk/nextjs/server";
 import { and, count, eq, sql } from "drizzle-orm";
-import { membershipChangeBlocker, organisationRoles } from "@fieldnote/domain";
-import { auditEvents, createDatabase, organisationMemberships, users } from "@fieldnote/db";
+import { membershipChangeBlocker, organisationRoles } from "@surveynt/domain";
+import { auditEvents, createDatabase, organisationMemberships, users } from "@surveynt/db";
 import { z } from "zod";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
@@ -40,7 +40,7 @@ export async function PATCH(request: Request, route: RouteContext<"/api/v1/team/
   const clerk = await clerkClient();
   const clerkRole = parsed.data.role === "owner" || parsed.data.role === "administrator" ? "org:admin" : "org:member";
   await clerk.organizations.updateOrganizationMembership({ organizationId: context.clerkOrganisationId, userId: target.membership.clerkUserId, role: clerkRole });
-  await clerk.organizations.updateOrganizationMembershipMetadata({ organizationId: context.clerkOrganisationId, userId: target.membership.clerkUserId, publicMetadata: { fieldnoteRole: parsed.data.role } });
+  await clerk.organizations.updateOrganizationMembershipMetadata({ organizationId: context.clerkOrganisationId, userId: target.membership.clerkUserId, publicMetadata: { surveyntRole: parsed.data.role } });
   const db = createDatabase();
   await db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);

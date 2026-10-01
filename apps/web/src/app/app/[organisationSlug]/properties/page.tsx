@@ -1,7 +1,7 @@
 import { PageHeader } from "@/components/page-header";
 import { PropertyRegister } from "@/components/property-register";
 import { loadClients, loadProperties } from "@/lib/data";
-import { canMutateOperations } from "@fieldnote/domain";
+import { canMutateOperations } from "@surveynt/domain";
 import { requireFirmAccess } from "@/lib/access";
 
 export const metadata = { title: "Properties" };

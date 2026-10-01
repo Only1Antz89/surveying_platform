@@ -2,8 +2,8 @@
 
 import { type FormEvent, useState } from "react";
 import { MailPlus, RotateCcw, Trash2, X } from "lucide-react";
-import { organisationRoles, roleLabels, type OrganisationRole } from "@fieldnote/domain";
-import { StatusDot } from "@fieldnote/ui";
+import { organisationRoles, roleLabels, type OrganisationRole } from "@surveynt/domain";
+import { StatusDot } from "@surveynt/ui";
 import type { Member } from "@/lib/demo-data";
 
 type ApiInvitation = { id: string; email: string; role: OrganisationRole; expiresAt: string };

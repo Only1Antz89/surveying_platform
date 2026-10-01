@@ -1,5 +1,5 @@
 import { and, asc, count, desc, eq, gt, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
-import { auditEvents, backgroundJobs, createDatabase, clients, invitations, jobs, onboardingSteps, organisationBranding, organisationMemberships, organisations, platformIncidentOrganisations, platformIncidents, platformStaff, practicePacks, practicePackVersions, properties, serviceDefinitions, subscriptions, supportSessions, users, webhookEvents } from "@fieldnote/db";
+import { auditEvents, backgroundJobs, createDatabase, clients, invitations, jobs, onboardingSteps, organisationBranding, organisationMemberships, organisations, platformIncidentOrganisations, platformIncidents, platformStaff, practicePacks, practicePackVersions, properties, serviceDefinitions, subscriptions, supportSessions, users, webhookEvents } from "@surveynt/db";
 import type { Client, Job, Member, Property, Tenant } from "./demo-data";
 import { activities as demoActivities, clients as demoClients, jobs as demoJobs, members as demoMembers, properties as demoProperties, tenants as demoTenants } from "./demo-data";
 import { isClerkConfigured, requireFirmAccess, requirePlatformAccess } from "./access";
@@ -308,7 +308,7 @@ export async function loadOrganisationSettings(slug: string): Promise<Organisati
     region: "South West England",
     tradingName: "North Star Surveying",
     supportEmail: "hello@northstarsurveying.co.uk",
-    accentColour: "#2563eb",
+    accentColour: "#3b82f6",
     services: [{ id: "service-1", name: "Level 2 Home Survey", defaultFee: "895.00" }, { id: "service-2", name: "Level 3 Building Survey", defaultFee: "1295.00" }],
   };
   const context = await requireFirmAccess(slug);
@@ -323,7 +323,7 @@ export async function loadOrganisationSettings(slug: string): Promise<Organisati
       region: organisation.region,
       tradingName: branding?.tradingName ?? organisation.name,
       supportEmail: branding?.supportEmail ?? "",
-      accentColour: branding?.accentColour ?? "#2563eb",
+      accentColour: branding?.accentColour ?? "#3b82f6",
       services: services.map((service) => ({ id: service.id, name: service.name, defaultFee: service.defaultFee ?? "" })),
     };
   });
@@ -385,7 +385,7 @@ export async function loadTenantDetail(tenantId: string): Promise<PlatformTenant
   if (!process.env.DATABASE_ADMIN_URL || !isClerkConfigured()) {
     const tenant = demoTenants.find((item) => item.id === tenantId);
     if (!tenant) return null;
-    return { tenant, region: "United Kingdom", practiceType: "multi-disciplinary", createdAt: "26 September 2026", branding: { tradingName: tenant.name, supportEmail: "", accentColour: "#2563eb", logoUrl: null }, subscription: { status: tenant.subscription, planKey: tenant.plan, seats: tenant.seats, trialEndsAt: null, currentPeriodEndsAt: null, graceEndsAt: null, cancelAtPeriodEnd: false }, members: demoMembers.map((member) => ({ id: member.id, name: member.name, email: member.email, role: member.role, active: member.status === "Active" })), invitations: [], usage: { clients: demoClients.length, properties: demoProperties.length, jobs: demoJobs.length, activeJobs: demoJobs.filter((job) => job.stage !== "paid" && job.stage !== "archived").length }, onboarding: [], audit: demoActivities.map((activity, index) => ({ id: String(index), action: activity.text, resourceType: "demo", occurredAt: activity.time, actor: "Demo operator" })) };
+    return { tenant, region: "United Kingdom", practiceType: "multi-disciplinary", createdAt: "26 September 2026", branding: { tradingName: tenant.name, supportEmail: "", accentColour: "#3b82f6", logoUrl: null }, subscription: { status: tenant.subscription, planKey: tenant.plan, seats: tenant.seats, trialEndsAt: null, currentPeriodEndsAt: null, graceEndsAt: null, cancelAtPeriodEnd: false }, members: demoMembers.map((member) => ({ id: member.id, name: member.name, email: member.email, role: member.role, active: member.status === "Active" })), invitations: [], usage: { clients: demoClients.length, properties: demoProperties.length, jobs: demoJobs.length, activeJobs: demoJobs.filter((job) => job.stage !== "paid" && job.stage !== "archived").length }, onboarding: [], audit: demoActivities.map((activity, index) => ({ id: String(index), action: activity.text, resourceType: "demo", occurredAt: activity.time, actor: "Demo operator" })) };
   }
   await requirePlatformAccess();
   const db = createDatabase(process.env.DATABASE_ADMIN_URL);
@@ -420,7 +420,7 @@ export async function loadTenantDetail(tenantId: string): Promise<PlatformTenant
     region: record.organisation.region,
     practiceType: record.organisation.practiceType,
     createdAt: record.organisation.createdAt.toLocaleString("en-GB", { dateStyle: "long", timeZone: "Europe/London" }),
-    branding: { tradingName: record.branding?.tradingName ?? record.organisation.name, supportEmail: record.branding?.supportEmail ?? "", accentColour: record.branding?.accentColour ?? "#2563eb", logoUrl: record.branding?.logoUrl ?? null },
+    branding: { tradingName: record.branding?.tradingName ?? record.organisation.name, supportEmail: record.branding?.supportEmail ?? "", accentColour: record.branding?.accentColour ?? "#3b82f6", logoUrl: record.branding?.logoUrl ?? null },
     subscription: record.subscription ? { status: record.subscription.status, planKey: record.subscription.planKey, seats: record.subscription.seats, trialEndsAt: record.subscription.trialEndsAt?.toISOString() ?? null, currentPeriodEndsAt: record.subscription.currentPeriodEndsAt?.toISOString() ?? null, graceEndsAt: record.subscription.graceEndsAt?.toISOString() ?? null, cancelAtPeriodEnd: record.subscription.cancelAtPeriodEnd } : null,
     members: memberRows.map((member) => ({ id: member.id, name: [member.firstName, member.lastName].filter(Boolean).join(" ") || member.email, email: member.email, role: member.role, active: member.active })),
     invitations: invitationRows.map((invitation) => ({ ...invitation, expiresAt: invitation.expiresAt.toISOString() })),
@@ -472,7 +472,7 @@ export async function loadPlatformIncidents(): Promise<{ incidents: PlatformInci
 }
 
 export async function loadPlatformStaff(): Promise<PlatformStaffRecord[]> {
-  if (!process.env.DATABASE_ADMIN_URL || !isClerkConfigured()) return [{ id: "00000000-0000-0000-0000-000000000001", clerkUserId: "demo_platform_user", name: "Fieldnote Operator", email: "operator@fieldnote.local", role: "super_admin", active: true, createdAt: new Date("2026-09-01T09:00:00.000Z").toISOString(), updatedAt: new Date("2026-09-01T09:00:00.000Z").toISOString() }];
+  if (!process.env.DATABASE_ADMIN_URL || !isClerkConfigured()) return [{ id: "00000000-0000-0000-0000-000000000001", clerkUserId: "demo_platform_user", name: "Surveynt Operator", email: "operator@surveynt.local", role: "super_admin", active: true, createdAt: new Date("2026-09-01T09:00:00.000Z").toISOString(), updatedAt: new Date("2026-09-01T09:00:00.000Z").toISOString() }];
   await requirePlatformAccess();
   const db = createDatabase(process.env.DATABASE_ADMIN_URL);
   const rows = await db.select({ staff: platformStaff, email: users.email, firstName: users.firstName, lastName: users.lastName }).from(platformStaff).leftJoin(users, eq(users.clerkUserId, platformStaff.clerkUserId)).orderBy(desc(platformStaff.active), asc(users.firstName), asc(users.email));

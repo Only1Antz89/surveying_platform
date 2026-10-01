@@ -2,8 +2,8 @@
 
 import { type FormEvent, useMemo, useState } from "react";
 import { Clock3, Download, Eye, Pencil, Plus, Search, X } from "lucide-react";
-import { canTransitionJob, jobStageLabels, jobStages, type JobStage } from "@fieldnote/domain";
-import { StatusDot } from "@fieldnote/ui";
+import { canTransitionJob, jobStageLabels, jobStages, type JobStage } from "@surveynt/domain";
+import { StatusDot } from "@surveynt/ui";
 import type { Job } from "@/lib/demo-data";
 import type { JobFormOptions } from "@/lib/data";
 
@@ -104,7 +104,7 @@ export function JobsRegister({ jobs: initialJobs, options, canEdit = true }: { j
       <div className="toolbar">
         <div className="search"><Search /><input className="input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search reference, client or address" aria-label="Search jobs" /></div>
         <select className="select" value={stage} onChange={(event) => setStage(event.target.value)} aria-label="Job stage"><option>All stages</option>{Object.entries(jobStageLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-        <a className="button button-secondary" href={`data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`} download="fieldnote-jobs.csv"><Download size={15} />Export</a>
+        <a className="button button-secondary" href={`data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`} download="surveynt-jobs.csv"><Download size={15} />Export</a>
         <button className="button button-primary" onClick={() => { setError(null); setCreating(true); }} disabled={!canCreate || !canEdit}><Plus size={15} />New job</button>
       </div>
       {error && !creating && !detail && !detailLoading ? <div className="form-section"><p className="form-error" role="alert">{error}</p></div> : null}

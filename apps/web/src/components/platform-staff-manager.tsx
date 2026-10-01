@@ -3,7 +3,7 @@
 import { type FormEvent, useState } from "react";
 import { Pencil, ShieldCheck, UserPlus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { StatusDot } from "@fieldnote/ui";
+import { StatusDot } from "@surveynt/ui";
 import type { PlatformStaffRecord } from "@/lib/data";
 
 const roles = ["super_admin", "support", "billing", "compliance"] as const;
@@ -41,9 +41,9 @@ export function PlatformStaffManager({ staff, currentStaffId, canManage }: { sta
     finally { setSaving(false); }
   }
 
-  return <section className="panel"><div className="panel-header"><div><h2>Platform staff access</h2><p>Independent privileged access for FIELDNOTE operations staff</p></div>{canManage ? <button className="button button-secondary" onClick={() => { setError(null); setCreating(true); }}><UserPlus size={15} />Add operator</button> : <ShieldCheck size={17} color="#2563eb" />}</div>
+  return <section className="panel"><div className="panel-header"><div><h2>Platform staff access</h2><p>Independent privileged access for Surveynt operations staff</p></div>{canManage ? <button className="button button-secondary" onClick={() => { setError(null); setCreating(true); }}><UserPlus size={15} />Add operator</button> : <ShieldCheck size={17} color="#3b82f6" />}</div>
     <div className="data-table-wrap"><table className="data-table"><thead><tr><th>Operator</th><th>Role</th><th>Status</th><th>Last changed</th>{canManage ? <th>Action</th> : null}</tr></thead><tbody>{staff.map((operator) => <tr key={operator.id}><td data-label="Operator"><strong>{operator.name}{operator.id === currentStaffId ? " (you)" : ""}</strong><span className="cell-sub">{operator.email}</span></td><td data-label="Role">{roleLabel(operator.role)}</td><td data-label="Status"><StatusDot tone={operator.active ? "green" : "slate"}>{operator.active ? "Active" : "Access revoked"}</StatusDot></td><td data-label="Last changed">{new Date(operator.updatedAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/London" })}</td>{canManage ? <td data-label="Action"><button className="button button-quiet" onClick={() => { setError(null); setEditing(operator); }}><Pencil size={14} />Manage</button></td> : null}</tr>)}</tbody></table></div>
-    {creating ? <StaffModal title="Add platform operator" description="The person must already have a verified FIELDNOTE account." saving={saving} error={error} onClose={() => setCreating(false)} onSubmit={createOperator} /> : null}
+    {creating ? <StaffModal title="Add platform operator" description="The person must already have a verified Surveynt account." saving={saving} error={error} onClose={() => setCreating(false)} onSubmit={createOperator} /> : null}
     {editing ? <StaffModal title={editing.name} description={editing.id === currentStaffId ? "Your current super-administrator access is protected against self-lockout." : "Change the operator role or revoke their platform access."} staff={editing} protectAccess={editing.id === currentStaffId} saving={saving} error={error} onClose={() => setEditing(null)} onSubmit={updateOperator} /> : null}
   </section>;
 }

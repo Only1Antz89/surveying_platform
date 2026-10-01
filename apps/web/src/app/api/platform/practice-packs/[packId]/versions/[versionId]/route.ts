@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
-import { auditEvents, createDatabase, practicePackVersions } from "@fieldnote/db";
+import { auditEvents, createDatabase, practicePackVersions } from "@surveynt/db";
 import { platformApiContext } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
 

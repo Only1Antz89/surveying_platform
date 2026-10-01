@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { auditEvents, createDatabase, practicePacks, practicePackVersions } from "@fieldnote/db";
+import { auditEvents, createDatabase, practicePacks, practicePackVersions } from "@surveynt/db";
 import { platformApiContext } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
 

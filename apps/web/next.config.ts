@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  transpilePackages: ["@fieldnote/domain", "@fieldnote/ui", "@fieldnote/db"],
+  transpilePackages: ["@surveynt/domain", "@surveynt/ui", "@surveynt/db"],
   serverExternalPackages: ["@neondatabase/serverless"],
 };
 

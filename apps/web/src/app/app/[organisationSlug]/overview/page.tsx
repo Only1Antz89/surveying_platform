@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { BriefcaseBusiness, CalendarDays, CirclePoundSterling, Users } from "lucide-react";
-import { StatusDot } from "@fieldnote/ui";
-import { jobStageLabels } from "@fieldnote/domain";
+import { StatusDot } from "@surveynt/ui";
+import { jobStageLabels } from "@surveynt/domain";
 import { PageHeader } from "@/components/page-header";
 import { loadOverview } from "@/lib/data";
 import { requireFirmAccess } from "@/lib/access";

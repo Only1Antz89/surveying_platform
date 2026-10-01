@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
-import { resolveAccess } from "@fieldnote/domain";
-import { createDatabase, entitlements, organisationMemberships, organisations, platformStaff, subscriptions, users } from "@fieldnote/db";
+import { resolveAccess } from "@surveynt/domain";
+import { createDatabase, entitlements, organisationMemberships, organisations, platformStaff, subscriptions, users } from "@surveynt/db";
 import { and, eq, sql } from "drizzle-orm";
 import { notFound, redirect } from "next/navigation";
 import { cache } from "react";
@@ -87,14 +87,14 @@ export function canWriteWorkspace(context: { accessLevel: "full" | "billing_only
 }
 
 export async function requirePlatformAccess() {
-  if (!isClerkConfigured()) return { userId: "demo_platform_user", platformStaffId: "00000000-0000-0000-0000-000000000001", userName: "Fieldnote Operator", userEmail: "operator@fieldnote.local", role: "super_admin" as const };
+  if (!isClerkConfigured()) return { userId: "demo_platform_user", platformStaffId: "00000000-0000-0000-0000-000000000001", userName: "Surveynt Operator", userEmail: "operator@surveynt.local", role: "super_admin" as const };
   const session = await auth();
   if (!session.userId) redirect("/sign-in");
   if (!process.env.DATABASE_ADMIN_URL) throw new Error("DATABASE_ADMIN_URL is required for platform administration");
   const db = createDatabase(process.env.DATABASE_ADMIN_URL);
   const [operator] = await db.select({ id: platformStaff.id, role: platformStaff.role, email: users.email, firstName: users.firstName, lastName: users.lastName }).from(platformStaff).leftJoin(users, eq(users.clerkUserId, platformStaff.clerkUserId)).where(and(eq(platformStaff.clerkUserId, session.userId), eq(platformStaff.active, true))).limit(1);
   if (!operator) notFound();
-  const userEmail = operator.email ?? "platform-operator@fieldnote.local";
+  const userEmail = operator.email ?? "platform-operator@surveynt.local";
   const userName = [operator.firstName, operator.lastName].filter(Boolean).join(" ") || userEmail;
   return { userId: session.userId, platformStaffId: operator.id, userName, userEmail, role: operator.role };
 }

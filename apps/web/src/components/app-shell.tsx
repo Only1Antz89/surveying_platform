@@ -3,13 +3,13 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BrandMark } from "@fieldnote/ui";
+import { BrandMark } from "@surveynt/ui";
 import {
   Activity, Bell, BookOpenCheck, BriefcaseBusiness, Building2, ChevronDown,
   CircleDollarSign, ClipboardCheck, FileClock, Headphones, House, Menu, Settings,
   ShieldCheck, SlidersHorizontal, Users, X, type LucideIcon,
 } from "lucide-react";
-import { platformRoleLabels, roleLabels, type OrganisationRole, type PlatformRole } from "@fieldnote/domain";
+import { platformRoleLabels, roleLabels, type OrganisationRole, type PlatformRole } from "@surveynt/domain";
 
 type Item = { label: string; href: string; icon: LucideIcon };
 
@@ -78,8 +78,8 @@ export function AppShell({ children, mode, slug = "north-star-surveying", worksp
         <header className="topbar">
           <button className="menu-button" aria-label="Open navigation" onClick={() => setOpen(true)}><Menu size={18} /></button>
           <div className="workspace-switcher">
-            <div className="avatar">{mode === "firm" ? initials(workspace?.name ?? "Practice") : "FN"}</div>
-            <div>{mode === "firm" ? workspace?.name ?? "Practice workspace" : "FIELDNOTE Platform"}<small>{mode === "firm" ? workspace?.region ?? "United Kingdom" : "Production operations"}</small></div>
+            {mode === "firm" ? <div className="avatar">{initials(workspace?.name ?? "Practice")}</div> : <span className="platform-brand-icon"><BrandMark compact variant="primary" /></span>}
+            <div>{mode === "firm" ? workspace?.name ?? "Practice workspace" : "Surveynt Platform"}<small>{mode === "firm" ? workspace?.region ?? "United Kingdom" : "Production operations"}</small></div>
           </div>
           <div className="topbar-actions">
             {mode === "firm" && workspace?.trialEnds ? <div className="trial-label"><span>Trial ends</span><b>{workspace.trialEnds}</b></div> : null}

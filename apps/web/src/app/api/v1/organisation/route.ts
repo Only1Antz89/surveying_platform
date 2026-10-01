@@ -1,8 +1,8 @@
 import { clerkClient } from "@clerk/nextjs/server";
 import { z } from "zod";
 import { and, eq, sql } from "drizzle-orm";
-import { canManageTeam } from "@fieldnote/domain";
-import { auditEvents, createDatabase, onboardingSteps, organisationBranding, organisations, serviceDefinitions } from "@fieldnote/db";
+import { canManageTeam } from "@surveynt/domain";
+import { auditEvents, createDatabase, onboardingSteps, organisationBranding, organisations, serviceDefinitions } from "@surveynt/db";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
 
@@ -18,7 +18,7 @@ const settingsSchema = z.object({
 export async function GET(request: Request) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
-  if (context.demo) return ok({ id: context.organisationId, name: "North Star Surveying", slug: "north-star-surveying", status: "active", region: "South West England", branding: { tradingName: "North Star Surveying", supportEmail: "hello@northstarsurveying.co.uk", accentColour: "#2563eb" }, services: [] }, { demo: true });
+  if (context.demo) return ok({ id: context.organisationId, name: "North Star Surveying", slug: "north-star-surveying", status: "active", region: "South West England", branding: { tradingName: "North Star Surveying", supportEmail: "hello@northstarsurveying.co.uk", accentColour: "#3b82f6" }, services: [] }, { demo: true });
   const db = createDatabase();
   const data = await db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import Stripe from "stripe";
-import { createDatabase, onboardingSteps, organisations, subscriptionEvents, subscriptions, webhookEvents } from "@fieldnote/db";
+import { createDatabase, onboardingSteps, organisations, subscriptionEvents, subscriptions, webhookEvents } from "@surveynt/db";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { queueSubscriptionEmail } from "@/lib/email-queue";
 
@@ -28,7 +28,8 @@ async function synchroniseSubscription(
 ) {
   const subscription = await stripe.subscriptions.retrieve(stripeSubscriptionId);
   const [local] = await db.select().from(subscriptions).where(eq(subscriptions.stripeSubscriptionId, subscription.id)).limit(1);
-  const organisationId = subscription.metadata.fieldnoteOrganisationId || local?.organisationId;
+  // Read the former key so already-created Stripe subscriptions remain linked.
+  const organisationId = subscription.metadata.surveyntOrganisationId || subscription.metadata.fieldnoteOrganisationId || local?.organisationId;
   if (!organisationId) return;
 
   const status = mappedStatus(subscription.status);
@@ -94,7 +95,7 @@ export async function POST(request: Request) {
   try {
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
-      const organisationId = session.client_reference_id ?? session.metadata?.fieldnoteOrganisationId;
+      const organisationId = session.client_reference_id ?? session.metadata?.surveyntOrganisationId ?? session.metadata?.fieldnoteOrganisationId;
       const customerId = typeof session.customer === "string" ? session.customer : session.customer?.id;
       const subscriptionId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
       if (organisationId && customerId) {

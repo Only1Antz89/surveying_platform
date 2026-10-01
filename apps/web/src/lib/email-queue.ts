@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, lt, lte } from "drizzle-orm";
-import { auditEvents, backgroundJobs, createDatabase, organisationMemberships, organisations, subscriptions, users } from "@fieldnote/db";
+import { auditEvents, backgroundJobs, createDatabase, organisationMemberships, organisations, subscriptions, users } from "@surveynt/db";
 import { applicationUrl, emailDeliveryConfigured, type EmailJobType, emailJobTypes, renderEmail, sendEmail } from "./email";
 
 const maximumAttempts = 5;

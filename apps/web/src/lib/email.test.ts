@@ -48,7 +48,7 @@ describe("email templates", () => {
 describe("SMTP2GO delivery", () => {
   it("uses the authenticated standard email endpoint and records the provider id", async () => {
     process.env.SMTP2GO_API_KEY = "api-test";
-    process.env.SMTP2GO_SENDER = "FIELDNOTE <notifications@example.com>";
+    process.env.SMTP2GO_SENDER = "Surveynt <notifications@example.com>";
     const requests: Array<{ input: string | URL | Request; init?: RequestInit }> = [];
     const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       requests.push({ input, init });
@@ -59,7 +59,7 @@ describe("SMTP2GO delivery", () => {
     expect(fetcher).toHaveBeenCalledOnce();
     expect(requests[0].input).toBe("https://api.smtp2go.com/v3/email/send");
     expect(requests[0].init?.headers).toMatchObject({ "X-Smtp2go-Api-Key": "api-test" });
-    expect(JSON.parse(String(requests[0].init?.body))).toMatchObject({ sender: "FIELDNOTE <notifications@example.com>", to: ["owner@example.com"], subject: "Test" });
+    expect(JSON.parse(String(requests[0].init?.body))).toMatchObject({ sender: "Surveynt <notifications@example.com>", to: ["owner@example.com"], subject: "Test" });
   });
 
   it("rejects an unconfirmed provider response", async () => {

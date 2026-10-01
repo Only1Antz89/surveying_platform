@@ -2,7 +2,7 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import { Archive, ContactRound, Download, Pencil, Plus, Star, Trash2, Search, X } from "lucide-react";
-import { StatusDot } from "@fieldnote/ui";
+import { StatusDot } from "@surveynt/ui";
 import type { Client } from "@/lib/demo-data";
 
 type ApiClient = { id: string; kind: "individual" | "company"; displayName: string; email: string | null; phone: string | null; version: number };
@@ -121,7 +121,7 @@ export function ClientRegister({ clients: initialClients, canEdit = true }: { cl
 
   return <>
     <section className="panel">
-      <div className="toolbar"><div className="search"><Search /><input className="input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search clients or email" aria-label="Search clients" /></div><select className="select" value={kind} onChange={(event) => setKind(event.target.value)} aria-label="Client type"><option>All clients</option><option>Individual</option><option>Company</option></select><a className="button button-secondary" href={`data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`} download="fieldnote-clients.csv"><Download size={15} />Export</a><button className="button button-primary" onClick={() => setCreating(true)} disabled={!canEdit}><Plus size={15} />New client</button></div>
+      <div className="toolbar"><div className="search"><Search /><input className="input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search clients or email" aria-label="Search clients" /></div><select className="select" value={kind} onChange={(event) => setKind(event.target.value)} aria-label="Client type"><option>All clients</option><option>Individual</option><option>Company</option></select><a className="button button-secondary" href={`data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`} download="surveynt-clients.csv"><Download size={15} />Export</a><button className="button button-primary" onClick={() => setCreating(true)} disabled={!canEdit}><Plus size={15} />New client</button></div>
       {error && !creating && !editing ? <div className="form-section"><p className="form-error" role="alert">{error}</p></div> : null}
       <div className="data-table-wrap"><table className="data-table"><thead><tr><th>Client</th><th>Type</th><th>Phone</th><th>Properties</th><th>Last activity</th><th>Record</th></tr></thead><tbody>{visible.map((client) => <tr key={client.id}><td data-label="Client"><button className="table-link-button" onClick={() => openClient(client)}><strong>{client.name}</strong><span className="cell-sub">{client.email}</span></button></td><td data-label="Type"><StatusDot tone={client.kind === "Company" ? "blue" : "slate"}>{client.kind}</StatusDot></td><td data-label="Phone">{client.phone}</td><td data-label="Properties">{client.properties}</td><td data-label="Last activity">{client.lastActivity}</td><td data-label="Record"><div className="row-actions"><button className="button button-quiet" onClick={() => openClient(client)}><ContactRound size={14} />Open</button>{canEdit ? <button className="button button-quiet danger" onClick={() => archiveClient(client)}><Archive size={14} />Archive</button> : null}</div></td></tr>)}</tbody></table></div>
       {visible.length === 0 ? <div className="empty-state"><strong>No clients found</strong><span>{clients.length ? "Adjust your search or filter." : "Create your first client to begin."}</span></div> : null}

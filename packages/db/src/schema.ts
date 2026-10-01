@@ -43,7 +43,7 @@ export const organisationBranding = pgTable("organisation_branding", {
   id: uuid("id").primaryKey().defaultRandom(),
   organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "cascade" }),
   logoUrl: text("logo_url"),
-  accentColour: text("accent_colour").notNull().default("#2563eb"),
+  accentColour: text("accent_colour").notNull().default("#3b82f6"),
   tradingName: text("trading_name"),
   supportEmail: text("support_email"),
   ...timestamps,

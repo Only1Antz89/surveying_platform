@@ -1,6 +1,6 @@
 import Stripe from "stripe";
 import { currentUser } from "@clerk/nextjs/server";
-import { createDatabase, organisations, subscriptions } from "@fieldnote/db";
+import { createDatabase, organisations, subscriptions } from "@surveynt/db";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { apiContext } from "@/lib/access";
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
   let customerId = existing?.stripeCustomerId;
   if (!customerId) {
-    const customer = await stripe.customers.create({ name: organisation.name, email, metadata: { fieldnoteOrganisationId: organisation.id, clerkOrganisationId: organisation.clerkOrganisationId } });
+    const customer = await stripe.customers.create({ name: organisation.name, email, metadata: { surveyntOrganisationId: organisation.id, clerkOrganisationId: organisation.clerkOrganisationId } });
     customerId = customer.id;
     await db.insert(subscriptions).values({ organisationId: organisation.id, stripeCustomerId: customerId, status: "incomplete", seats: parsed.data.seats }).onConflictDoNothing();
   } else {
@@ -43,8 +43,8 @@ export async function POST(request: Request) {
     line_items: lineItems,
     payment_method_collection: "always",
     automatic_tax: { enabled: true },
-    subscription_data: { trial_period_days: 14, metadata: { fieldnoteOrganisationId: organisation.id } },
-    metadata: { fieldnoteOrganisationId: organisation.id, seats: String(parsed.data.seats) },
+    subscription_data: { trial_period_days: 14, metadata: { surveyntOrganisationId: organisation.id } },
+    metadata: { surveyntOrganisationId: organisation.id, seats: String(parsed.data.seats) },
     success_url: `${appUrl}/app/${organisation.slug}/overview?trial=started`,
     cancel_url: `${appUrl}/trial/checkout?checkout=cancelled`,
   });

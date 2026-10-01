@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { auditEvents, backgroundJobs, createDatabase } from "@fieldnote/db";
+import { auditEvents, backgroundJobs, createDatabase } from "@surveynt/db";
 import { platformApiContext } from "@/lib/access";
 import { ok, problem } from "@/lib/api";
 

@@ -1,5 +1,5 @@
 {
-  "name": "@fieldnote/web",
+  "name": "@surveynt/web",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -12,9 +12,9 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^7.0.1",
-    "@fieldnote/db": "workspace:*",
-    "@fieldnote/domain": "workspace:*",
-    "@fieldnote/ui": "workspace:*",
+    "@surveynt/db": "workspace:*",
+    "@surveynt/domain": "workspace:*",
+    "@surveynt/ui": "workspace:*",
     "drizzle-orm": "^0.44.5",
     "geist": "^1.4.2",
     "lucide-react": "^0.544.0",

@@ -2,8 +2,8 @@ import { z } from "zod";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
 import { properties as demoProperties } from "@/lib/demo-data";
-import { auditEvents, clients, createDatabase, properties } from "@fieldnote/db";
-import { canMutateOperations } from "@fieldnote/domain";
+import { auditEvents, clients, createDatabase, properties } from "@surveynt/db";
+import { canMutateOperations } from "@surveynt/domain";
 import { and, asc, eq, sql } from "drizzle-orm";
 
 const createProperty = z.object({ clientId: z.uuid(), line1: z.string().trim().min(2).max(180), line2: z.string().trim().max(180).optional(), city: z.string().trim().min(2).max(100), postcode: z.string().trim().min(5).max(10), propertyType: z.string().trim().max(100).optional() });

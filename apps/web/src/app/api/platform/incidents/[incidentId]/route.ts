@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { and, eq, inArray } from "drizzle-orm";
-import { auditEvents, createDatabase, organisations, platformIncidentOrganisations, platformIncidents } from "@fieldnote/db";
+import { auditEvents, createDatabase, organisations, platformIncidentOrganisations, platformIncidents } from "@surveynt/db";
 import { platformApiContext } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
 

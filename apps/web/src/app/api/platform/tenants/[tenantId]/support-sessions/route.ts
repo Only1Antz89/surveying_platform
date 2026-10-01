@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { auditEvents, backgroundJobs, createDatabase, organisationMemberships, organisations, platformStaff, supportSessions, users } from "@fieldnote/db";
+import { auditEvents, backgroundJobs, createDatabase, organisationMemberships, organisations, platformStaff, supportSessions, users } from "@surveynt/db";
 import { and, eq } from "drizzle-orm";
 import { platformApiContext } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";

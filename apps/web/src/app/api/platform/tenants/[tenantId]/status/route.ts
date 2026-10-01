@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { eq } from "drizzle-orm";
-import { canManageTenants } from "@fieldnote/domain";
-import { auditEvents, createDatabase, organisations } from "@fieldnote/db";
+import { canManageTenants } from "@surveynt/domain";
+import { auditEvents, createDatabase, organisations } from "@surveynt/db";
 import { platformApiContext } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
 

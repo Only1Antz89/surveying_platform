@@ -1,7 +1,7 @@
 import { clerkClient } from "@clerk/nextjs/server";
 import { z } from "zod";
-import { canManageTeam, organisationRoles } from "@fieldnote/domain";
-import { auditEvents, createDatabase, invitations, onboardingSteps } from "@fieldnote/db";
+import { canManageTeam, organisationRoles } from "@surveynt/domain";
+import { auditEvents, createDatabase, invitations, onboardingSteps } from "@surveynt/db";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   if (existing) return problem(409, "invitation_exists", "A pending invitation already exists for that email address.");
   const clerk = await clerkClient();
   const role = parsed.data.role === "owner" || parsed.data.role === "administrator" ? "org:admin" : "org:member";
-  const invitation = await clerk.organizations.createOrganizationInvitation({ organizationId: context.clerkOrganisationId, emailAddress: email, role, inviterUserId: context.userId, expiresInDays: 14, publicMetadata: { fieldnoteRole: parsed.data.role } });
+  const invitation = await clerk.organizations.createOrganizationInvitation({ organizationId: context.clerkOrganisationId, emailAddress: email, role, inviterUserId: context.userId, expiresInDays: 14, publicMetadata: { surveyntRole: parsed.data.role } });
   const [created] = await db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
     const [record] = await tx.insert(invitations).values({ organisationId: context.organisationId, clerkInvitationId: invitation.id, email, role: parsed.data.role, expiresAt: new Date(invitation.expiresAt) }).returning();

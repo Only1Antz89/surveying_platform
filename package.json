@@ -1,10 +1,10 @@
 {
-  "name": "fieldnote-platform",
+  "name": "surveynt-platform",
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@11.19.0",
   "scripts": {
-    "dev": "turbo dev --filter=@fieldnote/web",
+    "dev": "turbo dev --filter=@surveynt/web",
     "build": "turbo build",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",

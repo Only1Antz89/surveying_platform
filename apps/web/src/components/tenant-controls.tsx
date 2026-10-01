@@ -2,7 +2,7 @@
 
 import { type FormEvent, useState } from "react";
 import { Ban, CheckCircle2, Headphones, ShieldAlert, ShieldCheck, X } from "lucide-react";
-import type { OrganisationStatus } from "@fieldnote/domain";
+import type { OrganisationStatus } from "@surveynt/domain";
 
 export function TenantControls({ tenantId, initialStatus, canManage, canSupport, canBreakGlass }: { tenantId: string; initialStatus: OrganisationStatus; canManage: boolean; canSupport: boolean; canBreakGlass: boolean }) {
   const [status, setStatus] = useState(initialStatus);

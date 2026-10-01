@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, gt, isNull, sql } from "drizzle-orm";
-import { createDatabase, invitations, organisationMemberships, users } from "@fieldnote/db";
+import { createDatabase, invitations, organisationMemberships, users } from "@surveynt/db";
 import { apiContext } from "@/lib/access";
 import { ok, problem } from "@/lib/api";
 import { members } from "@/lib/demo-data";

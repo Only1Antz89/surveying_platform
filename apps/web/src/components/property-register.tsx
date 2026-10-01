@@ -2,8 +2,8 @@
 
 import { FormEvent, useState } from "react";
 import { Archive, Building2, Clock3, Eye, Pencil, Plus, X } from "lucide-react";
-import { jobStageLabels, type JobStage } from "@fieldnote/domain";
-import { StatusDot } from "@fieldnote/ui";
+import { jobStageLabels, type JobStage } from "@surveynt/domain";
+import { StatusDot } from "@surveynt/ui";
 import type { Client, Property } from "@/lib/demo-data";
 
 type ApiProperty = { id: string; clientId: string; line1: string; city: string; postcode: string; propertyType: string | null; version: number };
@@ -71,7 +71,7 @@ export function PropertyRegister({ properties: initialProperties, clients, canEd
 
   return <>
     <section className="panel">
-      <div className="panel-header"><div><h2>Property register</h2><p>{properties.length} properties in this workspace</p></div><div className="header-actions"><Building2 size={17} color="#2563eb" /><button className="button button-primary" onClick={() => setCreating(true)} disabled={!clients.length || !canEdit}><Plus size={15} />New property</button></div></div>
+      <div className="panel-header"><div><h2>Property register</h2><p>{properties.length} properties in this workspace</p></div><div className="header-actions"><Building2 size={17} color="#3b82f6" /><button className="button button-primary" onClick={() => setCreating(true)} disabled={!clients.length || !canEdit}><Plus size={15} />New property</button></div></div>
       {error && !creating && !editing && !detail && !detailLoading ? <div className="form-section"><p className="form-error" role="alert">{error}</p></div> : null}
       {properties.length ? <div className="data-table-wrap"><table className="data-table"><thead><tr><th>Address</th><th>Property type</th><th>Client</th><th>Active jobs</th><th>Record</th>{canEdit ? <th>Actions</th> : null}</tr></thead><tbody>{properties.map((property) => <tr key={property.id}><td data-label="Address"><button className="table-link-button" onClick={() => openProperty(property)}><strong>{property.address}</strong><span className="cell-sub">{property.town} · {property.postcode}</span></button></td><td data-label="Property type">{property.type}</td><td data-label="Client">{property.client}</td><td data-label="Active jobs">{property.activeJobs}</td><td data-label="Record"><button className="button button-quiet" onClick={() => openProperty(property)}><Eye size={14} />Open</button></td>{canEdit ? <td data-label="Actions"><div className="row-actions"><button className="button button-quiet" onClick={() => { setError(null); setEditing(property); }}><Pencil size={14} />Edit</button><button className="button button-quiet danger" onClick={() => archiveProperty(property)}><Archive size={14} />Archive</button></div></td> : null}</tr>)}</tbody></table></div> : <div className="empty-state"><strong>No properties yet</strong><span>{clients.length ? "Add the first property linked to a client." : "Create a client before adding a property."}</span></div>}
     </section>

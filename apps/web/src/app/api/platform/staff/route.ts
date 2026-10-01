@@ -1,7 +1,7 @@
 import { clerkClient } from "@clerk/nextjs/server";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
-import { auditEvents, createDatabase, platformStaff, users } from "@fieldnote/db";
+import { auditEvents, createDatabase, platformStaff, users } from "@surveynt/db";
 import { platformApiContext } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
 
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
   const matches = await clerk.users.getUserList({ emailAddress: [email], limit: 10 });
   const clerkUser = matches.data.find((candidate) => candidate.emailAddresses.some((address) => address.emailAddress.toLowerCase() === email));
   const verifiedAddress = clerkUser?.emailAddresses.find((address) => address.emailAddress.toLowerCase() === email && address.verification?.status === "verified");
-  if (!clerkUser || !verifiedAddress) return problem(404, "verified_user_not_found", "That email does not belong to an existing verified FIELDNOTE account.");
+  if (!clerkUser || !verifiedAddress) return problem(404, "verified_user_not_found", "That email does not belong to an existing verified Surveynt account.");
 
   const db = createDatabase(process.env.DATABASE_ADMIN_URL);
   const [existing] = await db.select({ id: platformStaff.id, active: platformStaff.active }).from(platformStaff).where(eq(platformStaff.clerkUserId, clerkUser.id)).limit(1);

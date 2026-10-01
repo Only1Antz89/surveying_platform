@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { and, eq, sql } from "drizzle-orm";
-import { canMutateOperations } from "@fieldnote/domain";
-import { auditEvents, clients, createDatabase, jobs, properties } from "@fieldnote/db";
+import { canMutateOperations } from "@surveynt/domain";
+import { auditEvents, clients, createDatabase, jobs, properties } from "@surveynt/db";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
 import { jobs as demoJobs, properties as demoProperties } from "@/lib/demo-data";

@@ -1,7 +1,7 @@
 import { PageHeader } from "@/components/page-header";
 import { JobsRegister } from "@/components/jobs-register";
 import { loadJobFormOptions, loadJobs } from "@/lib/data";
-import { canMutateOperations } from "@fieldnote/domain";
+import { canMutateOperations } from "@surveynt/domain";
 import { requireFirmAccess } from "@/lib/access";
 
 export const metadata = { title: "Jobs" };

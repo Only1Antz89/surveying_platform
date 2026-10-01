@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { canManageTeam } from "@fieldnote/domain";
+import { canManageTeam } from "@surveynt/domain";
 import { PageHeader } from "@/components/page-header";
 import { PracticeSettingsForm } from "@/components/practice-settings-form";
 import { requireFirmAccess } from "@/lib/access";

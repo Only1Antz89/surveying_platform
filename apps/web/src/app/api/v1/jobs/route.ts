@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { canMutateOperations, jobStages } from "@fieldnote/domain";
-import { auditEvents, clients, createDatabase, jobAssignments, jobs, jobStageEvents, organisationMemberships, properties } from "@fieldnote/db";
+import { canMutateOperations, jobStages } from "@surveynt/domain";
+import { auditEvents, clients, createDatabase, jobAssignments, jobs, jobStageEvents, organisationMemberships, properties } from "@surveynt/db";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";

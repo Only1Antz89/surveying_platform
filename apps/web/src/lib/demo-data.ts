@@ -1,4 +1,4 @@
-import type { JobStage, OrganisationRole, OrganisationStatus, SubscriptionStatus } from "@fieldnote/domain";
+import type { JobStage, OrganisationRole, OrganisationStatus, SubscriptionStatus } from "@surveynt/domain";
 
 export type Client = { id: string; name: string; kind: "Individual" | "Company"; email: string; phone: string; properties: number; lastActivity: string; version?: number };
 export type Property = { id: string; address: string; town: string; postcode: string; type: string; client: string; activeJobs: number; version?: number };
@@ -23,11 +23,11 @@ export const properties: Property[] = [
 ];
 
 export const jobs: Job[] = [
-  { id: "job_01", reference: "FN-1048", client: "Elizabeth Harrington", address: "18 Royal York Crescent, Bristol", service: "Level 3 Building Survey", stage: "scheduled", assignee: "Maya Patel", target: "Today, 13:30", fee: 1450, priority: "High" },
-  { id: "job_02", reference: "FN-1047", client: "Whitmore Property Group", address: "Westgate House, Bristol", service: "Commercial Survey", stage: "internal_review", assignee: "Oliver Grant", target: "Today, 16:00", fee: 3200, priority: "High" },
-  { id: "job_03", reference: "FN-1046", client: "Daniel Okafor", address: "42 Sydenham Road, Bath", service: "Level 2 Home Survey", stage: "report_drafting", assignee: "Maya Patel", target: "30 Sep 2026", fee: 895, priority: "Normal" },
-  { id: "job_04", reference: "FN-1045", client: "Alder & Stone Developments", address: "The Old Granary, Frome", service: "Defect Investigation", stage: "quoted", assignee: "Unassigned", target: "02 Oct 2026", fee: 1100, priority: "Normal" },
-  { id: "job_05", reference: "FN-1044", client: "Sophie Bennett", address: "7 Willowbank Close, Portishead", service: "Level 3 Building Survey", stage: "instructed", assignee: "Amara Lewis", target: "04 Oct 2026", fee: 1295, priority: "Normal" },
+  { id: "job_01", reference: "SVY-1048", client: "Elizabeth Harrington", address: "18 Royal York Crescent, Bristol", service: "Level 3 Building Survey", stage: "scheduled", assignee: "Maya Patel", target: "Today, 13:30", fee: 1450, priority: "High" },
+  { id: "job_02", reference: "SVY-1047", client: "Whitmore Property Group", address: "Westgate House, Bristol", service: "Commercial Survey", stage: "internal_review", assignee: "Oliver Grant", target: "Today, 16:00", fee: 3200, priority: "High" },
+  { id: "job_03", reference: "SVY-1046", client: "Daniel Okafor", address: "42 Sydenham Road, Bath", service: "Level 2 Home Survey", stage: "report_drafting", assignee: "Maya Patel", target: "30 Sep 2026", fee: 895, priority: "Normal" },
+  { id: "job_04", reference: "SVY-1045", client: "Alder & Stone Developments", address: "The Old Granary, Frome", service: "Defect Investigation", stage: "quoted", assignee: "Unassigned", target: "02 Oct 2026", fee: 1100, priority: "Normal" },
+  { id: "job_05", reference: "SVY-1044", client: "Sophie Bennett", address: "7 Willowbank Close, Portishead", service: "Level 3 Building Survey", stage: "instructed", assignee: "Amara Lewis", target: "04 Oct 2026", fee: 1295, priority: "Normal" },
 ];
 
 export const members: Member[] = [
@@ -47,8 +47,8 @@ export const tenants: Tenant[] = [
 ];
 
 export const activities = [
-  { text: "Oliver moved FN-1047 to internal review", time: "18 minutes ago" },
-  { text: "Maya scheduled FN-1048 for inspection", time: "1 hour ago" },
+  { text: "Oliver moved SVY-1047 to internal review", time: "18 minutes ago" },
+  { text: "Maya scheduled SVY-1048 for inspection", time: "1 hour ago" },
   { text: "James added Whitmore Property Group", time: "Yesterday at 16:42" },
   { text: "Amara accepted her team invitation", time: "Yesterday at 10:11" },
 ];

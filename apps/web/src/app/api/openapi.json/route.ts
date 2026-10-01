@@ -1,6 +1,6 @@
 const document = {
   openapi: "3.1.0",
-  info: { title: "FIELDNOTE API", version: "1.0.0", description: "Tenant-scoped operational API for FIELDNOTE web and mobile clients." },
+  info: { title: "Surveynt API", version: "1.0.0", description: "Tenant-scoped operational API for Surveynt web and mobile clients." },
   servers: [{ url: "/api/v1" }],
   security: [{ clerkBearer: [] }],
   components: { securitySchemes: { clerkBearer: { type: "http", scheme: "bearer", bearerFormat: "JWT" } } },

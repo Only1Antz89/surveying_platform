@@ -2,8 +2,8 @@ import { z } from "zod";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
 import { clients as demoClients } from "@/lib/demo-data";
-import { auditEvents, clients, createDatabase } from "@fieldnote/db";
-import { canMutateOperations } from "@fieldnote/domain";
+import { auditEvents, clients, createDatabase } from "@surveynt/db";
+import { canMutateOperations } from "@surveynt/domain";
 import { asc, eq, sql } from "drizzle-orm";
 
 const createClient = z.object({ kind: z.enum(["individual", "company"]), displayName: z.string().trim().min(2).max(160), email: z.email().optional(), phone: z.string().trim().max(40).optional() });

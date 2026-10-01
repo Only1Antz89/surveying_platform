@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { Webhook } from "svix";
 import { z } from "zod";
-import { organisationRoles, type OrganisationRole } from "@fieldnote/domain";
-import { auditEvents, createDatabase, invitations, organisationMemberships, organisations, platformStaff, users, webhookEvents } from "@fieldnote/db";
+import { organisationRoles, type OrganisationRole } from "@surveynt/domain";
+import { auditEvents, createDatabase, invitations, organisationMemberships, organisations, platformStaff, users, webhookEvents } from "@surveynt/db";
 import { and, eq } from "drizzle-orm";
 
 export const runtime = "nodejs";
@@ -11,7 +11,8 @@ const eventSchema = z.object({ type: z.string(), data: z.record(z.string(), z.un
 const organisationRoleSchema = z.enum(organisationRoles);
 
 function membershipRole(clerkRole: string, metadata: Record<string, unknown>, current?: OrganisationRole): OrganisationRole {
-  const configured = organisationRoleSchema.safeParse(metadata.fieldnoteRole);
+  // Read the former key so existing Clerk memberships keep their assigned role.
+  const configured = organisationRoleSchema.safeParse(metadata.surveyntRole ?? metadata.fieldnoteRole);
   if (configured.success) return configured.data;
   if (current === "owner") return current;
   return clerkRole === "org:admin" ? "administrator" : "surveyor";
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
         })).default([]),
         primary_email_address_id: z.string().nullable().optional(),
       }).parse(parsed.data.data);
-      const email = data.email_addresses.find((item) => item.id === data.primary_email_address_id)?.email_address ?? data.email_addresses[0]?.email_address ?? "unknown@fieldnote.invalid";
+      const email = data.email_addresses.find((item) => item.id === data.primary_email_address_id)?.email_address ?? data.email_addresses[0]?.email_address ?? "unknown@surveynt.invalid";
       await db.insert(users).values({ clerkUserId: data.id, email, firstName: data.first_name, lastName: data.last_name }).onConflictDoUpdate({ target: users.clerkUserId, set: { email, firstName: data.first_name, lastName: data.last_name, updatedAt: new Date() } });
       const verifiedEmail = data.email_addresses.find((item) => item.email_address.toLowerCase() === email.toLowerCase() && item.verification?.status === "verified");
       if (verifiedEmail && isBootstrapSuperAdmin(verifiedEmail.email_address)) {

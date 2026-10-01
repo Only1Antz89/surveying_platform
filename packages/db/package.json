@@ -1,5 +1,5 @@
 {
-  "name": "@fieldnote/db",
+  "name": "@surveynt/db",
   "version": "0.1.0",
   "private": true,
   "type": "module",

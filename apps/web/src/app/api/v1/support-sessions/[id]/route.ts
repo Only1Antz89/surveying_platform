@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
-import { canApproveSupportAccess } from "@fieldnote/domain";
-import { auditEvents, createDatabase, supportSessions } from "@fieldnote/db";
+import { canApproveSupportAccess } from "@surveynt/domain";
+import { auditEvents, createDatabase, supportSessions } from "@surveynt/db";
 import { apiContext } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
 

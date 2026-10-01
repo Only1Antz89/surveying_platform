@@ -1,7 +1,7 @@
 import { clerkClient } from "@clerk/nextjs/server";
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { canManageTeam } from "@fieldnote/domain";
-import { auditEvents, createDatabase, invitations } from "@fieldnote/db";
+import { canManageTeam } from "@surveynt/domain";
+import { auditEvents, createDatabase, invitations } from "@surveynt/db";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { ok, problem } from "@/lib/api";
 
@@ -50,7 +50,7 @@ export async function POST(request: Request, route: RouteContext<"/api/v1/team/i
     await clerk.organizations.revokeOrganizationInvitation({ organizationId: context.clerkOrganisationId, invitationId: invitation.clerkInvitationId, requestingUserId: context.userId });
   }
   const clerkRole = invitation.role === "owner" || invitation.role === "administrator" ? "org:admin" : "org:member";
-  const replacement = await clerk.organizations.createOrganizationInvitation({ organizationId: context.clerkOrganisationId, emailAddress: invitation.email, role: clerkRole, inviterUserId: context.userId, expiresInDays: 14, publicMetadata: { fieldnoteRole: invitation.role } });
+  const replacement = await clerk.organizations.createOrganizationInvitation({ organizationId: context.clerkOrganisationId, emailAddress: invitation.email, role: clerkRole, inviterUserId: context.userId, expiresInDays: 14, publicMetadata: { surveyntRole: invitation.role } });
   const db = createDatabase();
   const [created] = await db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);

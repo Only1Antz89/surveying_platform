@@ -1,4 +1,4 @@
-import { canManageTeam } from "@fieldnote/domain";
+import { canManageTeam } from "@surveynt/domain";
 import { PageHeader } from "@/components/page-header";
 import { SupportApprovalPanel } from "@/components/support-approval-panel";
 import { TeamManager } from "@/components/team-manager";
