@@ -92,6 +92,20 @@
       "when": 1790894411735,
       "tag": "0012_property_intelligence_security",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790895224199,
+      "tag": "0013_field_proposals",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790895225712,
+      "tag": "0014_field_proposals_security",
+      "breakpoints": true
     }
   ]
 }

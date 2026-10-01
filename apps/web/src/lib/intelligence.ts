@@ -1,9 +1,13 @@
 import { and, asc, desc, eq, lte, or, sql } from "drizzle-orm";
 import { auditEvents, backgroundJobs, createDatabase, enrichmentRuns, properties, propertyIntelligenceSnapshots, withTenant, type TenantTransaction } from "@surveynt/db";
-import { intelligenceProviders, locationFingerprint, runProviders, sourceCoversCountry, sourceDefinitions, type IntelligenceProvider, type PropertyLocation, type ProviderResult } from "@surveynt/property-data";
+import { intelligenceProviders, runProviders, sourceCoversCountry, sourceDefinitions, type IntelligenceProvider, type ProviderResult } from "@surveynt/property-data";
 import { databaseSpatialQuery, getSourceStates } from "@surveynt/property-data/importers";
 import { intelligenceEnabled } from "./property-identity";
 import { databasePublicCache } from "./provider-cache";
+import { propertyFingerprint, toLocation } from "./fingerprint";
+import { refreshProposalsForProperty } from "./proposals";
+
+export { propertyFingerprint };
 
 const QUEUE = "property_intelligence";
 const LEASE_MS = 2 * 60_000;
@@ -12,13 +16,6 @@ const REUSE_WINDOW_MS = 10 * 60_000;
 
 type TenantContext = { organisationId: string; internalUserId: string | null };
 
-function toLocation(property: typeof properties.$inferSelect): PropertyLocation {
-  return { propertyId: property.id, country: property.country, uprn: property.uprn, latitude: property.latitude, longitude: property.longitude, locationConfidence: property.locationConfidence, postcode: property.postcode };
-}
-
-export async function propertyFingerprint(property: typeof properties.$inferSelect) {
-  return locationFingerprint(toLocation(property));
-}
 
 export type RefreshOutcome =
   | { kind: "disabled" }
@@ -135,6 +132,8 @@ export async function processIntelligenceRun(organisationId: string, runId: stri
       return finalStatus;
     });
     await finishJob("completed");
+    // Event-driven assistant refresh: new or changed records may create proposals or discrepancies.
+    if (status !== "superseded") await refreshProposalsForProperty(organisationId, property.id).catch(() => 0);
     return { processed: true as const, status };
   } catch (reason) {
     const message = reason instanceof Error ? reason.message.slice(0, 500) : "Unexpected error";

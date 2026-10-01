@@ -97,6 +97,22 @@ Acceptance:
 - Refresh is permission-checked, rate-limited and idempotent; surveyor observations are never written by enrichment.
 
 ## A2 — Proposals and discrepancies
+
+| Item | Code | Configured | Imported | Live |
+|---|---|---|---|---|
+| Migrations 0013–0014: `field_proposals` with every contract field (id, organisation_id, survey_id, element_id, field_path, proposed_value, value_type, evidence_refs, origin_class, limitations, review_status, input_version, model/prompt/knowledge versions, created_at), plus base value, generator and dedupe key; RLS; trigger keeps content immutable and review one-way | ✅ | ❌ | — | — |
+| Deterministic sourced generator (`sourced-records-v1`): EPC → type, form, period, rating; heritage → listed status and grade (agreement required); planning → conservation area; job → clerical inspection date. Per-field source allowlists; "no record found" carries a not-proof limitation | ✅ | — | — | — |
+| Discrepancy tasks instead of silent replacement (surveyor value vs source; disagreeing sources) | ✅ | — | — | — |
+| Review service: accept/edit/reject; stale proposals refused and superseded; professional assessments need a surveyor role plus explicit confirmation; accepted values carry origin, source ids, event date, retrieval date and evidence links; rejections kept as evaluation feedback | ✅ | — | — | — |
+| Event triggers: survey creation, sync with field edits (`after()`), enrichment completion | ✅ | — | — | — |
+| `AssistantModel` interface, `noProviderModel` (unavailable), untrusted-content envelope, post-call validation (requested fields only, permitted values, citations limited to supplied evidence, no photo-only professional assessments) | ✅ | ❌ no provider (by decision) | — | — |
+| APIs and survey panel for suggestions and discrepancies | ✅ | — | — | — |
+
+Acceptance:
+
+- Every material suggested fact carries an evidence reference to an immutable snapshot or job record.
+- Historical defects stay as reinspection reminders (A1), never findings.
+- A stale suggestion cannot overwrite a surveyor's edit (integration-tested).
 ## P3 — Land and environmental context
 ## P4 — Property history
 ## A3 — Adaptive rules and completion checks
@@ -120,4 +136,5 @@ Acceptance:
 | 2026-10-01 | Playwright smoke (demo mode, production build) | ✅ search fills editable fields, labelled demo results, ambiguity warnings, confirmation form, Surveys tab, no console errors, no horizontal overflow at 390 px |
 | 2026-10-01 | `pnpm --filter @surveynt/web test:integration` (A1) | ✅ 12 tests, including 7 survey tests: jurisdiction and template pinning, tenant- and UPRN-scoped history reminders, idempotent replay, conflict instead of overwrite, append-only history, professional-judgement restriction, evidence carried on revision, media idempotency, immutability, cross-tenant denial, template integrity stop |
 | 2026-10-01 | `pnpm --filter @surveynt/web test:integration` (P2 additions) | ✅ 5 intelligence tests: idempotent refresh, a single concurrent claim, partial run with EPC 503, imported layer match/nearby/not-imported, attribute allowlist, snapshot immutability, stale identity, superseded run without provider calls, expired-lease reclaim, cross-tenant denial |
+| 2026-10-01 | `pnpm --filter @surveynt/web test:integration` (A2 additions) | ✅ 6 proposal tests: generation from real enrichment snapshots, idempotent refresh, accept/edit/reject provenance and evidence links, no recreation after rejection, stale suggestion blocked after edit with discrepancy raised, professional confirmation, immutability, identity change supersedes, cross-tenant denial |
 | 2026-10-01 | Playwright offline test (demo mode, production build) | ✅ element status synced online; offline observation and field edit saved on device; offline reload restored both via service worker shell + IndexedDB; back online → "All changes synced"; no console errors; no overflow at 390 px |

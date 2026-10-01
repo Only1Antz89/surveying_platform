@@ -4,6 +4,7 @@ import {
   auditEvents,
   createDatabase,
   evidenceLinks,
+  fieldProposals,
   jobs,
   mediaAssets,
   observations,
@@ -55,7 +56,7 @@ async function resolveTemplate(tx: TenantTransaction, key: string, version: stri
 }
 
 /** Loads the pinned template and refuses to continue if it no longer matches the recorded fingerprint. */
-async function pinnedTemplate(tx: TenantTransaction, survey: Pick<typeof surveys.$inferSelect, "templateKey" | "templateVersion" | "templateFingerprint">) {
+export async function pinnedTemplate(tx: TenantTransaction, survey: Pick<typeof surveys.$inferSelect, "templateKey" | "templateVersion" | "templateFingerprint">) {
   const template = await resolveTemplate(tx, survey.templateKey, survey.templateVersion);
   if (!template) throw new TemplateIntegrityError(`Template ${survey.templateKey}@${survey.templateVersion} is no longer available.`);
   if (await templateFingerprint(template) !== survey.templateFingerprint) throw new TemplateIntegrityError(`Template ${survey.templateKey}@${survey.templateVersion} has changed since this survey started.`);
@@ -141,6 +142,7 @@ export async function loadSurveyPack(context: Pick<SurveyContext, "organisationI
       tx.select().from(evidenceLinks).where(and(eq(evidenceLinks.surveyId, surveyId), eq(evidenceLinks.organisationId, context.organisationId), isNull(evidenceLinks.removedAt))),
       tx.select().from(assistantTasks).where(and(eq(assistantTasks.surveyId, surveyId), eq(assistantTasks.organisationId, context.organisationId))).orderBy(asc(assistantTasks.createdAt)),
     ]);
+    const proposals = await tx.select().from(fieldProposals).where(and(eq(fieldProposals.surveyId, surveyId), eq(fieldProposals.organisationId, context.organisationId), eq(fieldProposals.reviewStatus, "pending"))).orderBy(asc(fieldProposals.createdAt));
     return {
       survey: { id: row.survey.id, jobId: row.survey.jobId, propertyId: row.survey.propertyId, status: row.survey.status, serviceLevel: row.survey.serviceLevel as ServiceLevel, jurisdiction: row.survey.jurisdiction, templateKey: row.survey.templateKey, templateVersion: row.survey.templateVersion, version: row.survey.version, createdAt: row.survey.createdAt.toISOString() },
       job: { reference: row.jobReference, serviceName: row.serviceName },
@@ -152,6 +154,7 @@ export async function loadSurveyPack(context: Pick<SurveyContext, "organisationI
       media: media.map((item) => ({ ...item, capturedAt: item.capturedAt?.toISOString() ?? null, createdAt: item.createdAt.toISOString() })),
       evidence: evidence.map((item) => ({ id: item.id, targetType: item.targetType, targetId: item.targetId, evidenceType: item.evidenceType, evidenceId: item.evidenceId, region: item.region, note: item.note })),
       tasks: tasks.map((item) => ({ id: item.id, kind: item.kind, status: item.status, title: item.title, detail: item.detail, elementKey: item.elementKey, fieldPath: item.fieldPath, evidence: item.evidence })),
+      proposals: proposals.map((item) => ({ id: item.id, fieldPath: item.fieldPath, proposedValue: item.proposedValue, originClass: item.originClass, evidenceRefs: item.evidenceRefs, limitations: item.limitations, baseValueId: item.baseValueId, createdAt: item.createdAt.toISOString() })),
     };
   });
 }

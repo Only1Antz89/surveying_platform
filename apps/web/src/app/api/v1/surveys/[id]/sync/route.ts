@@ -3,7 +3,9 @@ import { syncRequestSchema } from "@surveynt/assistant";
 import { canMutateOperations } from "@surveynt/domain";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
+import { after } from "next/server";
 import { applySyncOperations, TemplateIntegrityError } from "@/lib/surveys";
+import { refreshSurveyProposals } from "@/lib/proposals";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -20,7 +22,10 @@ export async function POST(request: Request, route: RouteContext<"/api/v1/survey
   if (context.demo) return ok({ results: parsed.data.operations.map((operation) => ({ operationId: operation.operationId, status: "applied", record: { demo: true } })) }, { demo: true, persisted: false });
   if (!z.uuid().safeParse(id).success) return problem(404, "survey_not_found", "The survey could not be found.");
   try {
-    return ok({ results: await applySyncOperations({ organisationId: context.organisationId, internalUserId: context.internalUserId, role: context.role }, id, parsed.data.operations) });
+    const results = await applySyncOperations({ organisationId: context.organisationId, internalUserId: context.internalUserId, role: context.role }, id, parsed.data.operations);
+    // Field edits can supersede suggestions or reveal discrepancies; refresh after responding.
+    if (results.some((result, index) => result.status === "applied" && parsed.data.operations[index].type === "set_field")) after(() => refreshSurveyProposals(context, id).then(() => undefined, () => undefined));
+    return ok({ results });
   } catch (reason) {
     if (reason instanceof TemplateIntegrityError) return problem(409, "template_integrity", reason.message);
     throw reason;

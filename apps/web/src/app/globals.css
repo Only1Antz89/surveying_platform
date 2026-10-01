@@ -399,6 +399,21 @@ a { color: inherit; text-decoration: none; }
 .intel-caveat { margin: 0; padding: 7px 9px; border-radius: 6px; background: var(--surface-2); color: var(--muted); font-size: 11px; }
 .intel-card footer { font-size: 10px; }
 
+/* Assistant suggestions (A2) */
+.assistant-group { padding: 14px 20px; border-top: 1px solid var(--border); }
+.assistant-group:first-of-type { border-top: 0; }
+.assistant-group h3 { display: flex; gap: 6px; align-items: center; margin: 0 0 10px; font-size: 13px; }
+.assistant-group > ul { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.assistant-item { display: grid; gap: 6px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
+.assistant-item.discrepancy { border-color: #efdba9; background: var(--warning-soft); }
+.assistant-item-head { display: flex; gap: 8px; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; }
+.assistant-value { margin: 0; }
+.assistant-evidence, .assistant-limitations { margin: 0; padding-left: 18px; font-size: 12px; }
+.assistant-limitations { color: var(--muted); }
+.assistant-edit { display: flex; gap: 8px; flex-wrap: wrap; }
+.assistant-edit .select, .assistant-edit .input { max-width: 260px; }
+.assistant-empty { padding: 0 20px 16px; }
+
 @media (max-width: 1050px) {
   .metric-grid { grid-template-columns: repeat(2, 1fr); }
   .metric:nth-child(2) { border-right: 0; }

@@ -780,3 +780,42 @@ export const propertyIntelligenceSnapshots = pgTable("property_intelligence_snap
   check("property_intelligence_snapshots_class_chk", sql`information_class in ('surveyor_verified', 'authoritative_external', 'indicative_external')`),
   check("property_intelligence_snapshots_coverage_chk", sql`coverage_status in ('covered', 'partial', 'not_covered', 'unknown')`),
 ]);
+
+/**
+ * Assistant field proposals. A proposal is never a finding: it changes the
+ * form only through an authorised review decision, which records the
+ * resulting field value and keeps the evidence chain.
+ */
+export const fieldProposals = pgTable("field_proposals", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  surveyId: uuid("survey_id").notNull(),
+  elementId: uuid("element_id"),
+  fieldPath: text("field_path").notNull(),
+  proposedValue: jsonb("proposed_value").$type<Record<string, unknown>>().notNull(),
+  valueType: text("value_type").notNull(),
+  evidenceRefs: jsonb("evidence_refs").$type<Record<string, unknown>[]>().notNull().default([]),
+  originClass: text("origin_class").notNull(),
+  limitations: jsonb("limitations").$type<string[]>().notNull().default([]),
+  reviewStatus: text("review_status").notNull().default("pending"),
+  /** Hash of the inputs (evidence ids and the field value it was proposed against). Acceptance fails if they moved on. */
+  inputVersion: text("input_version").notNull(),
+  baseValueId: uuid("base_value_id"),
+  generator: text("generator").notNull(),
+  modelVersion: text("model_version").notNull().default("none"),
+  promptVersion: text("prompt_version").notNull().default("none"),
+  knowledgeVersion: text("knowledge_version").notNull().default("none"),
+  dedupeKey: text("dedupe_key").notNull(),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  reviewedByUserId: uuid("reviewed_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  reviewNote: text("review_note"),
+  acceptedValueId: uuid("accepted_value_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  foreignKey({ name: "field_proposals_survey_fk", columns: [table.organisationId, table.surveyId], foreignColumns: [surveys.organisationId, surveys.id] }).onDelete("restrict"),
+  foreignKey({ name: "field_proposals_element_fk", columns: [table.organisationId, table.elementId], foreignColumns: [surveyElements.organisationId, surveyElements.id] }).onDelete("restrict"),
+  uniqueIndex("field_proposals_dedupe_uidx").on(table.surveyId, table.dedupeKey),
+  index("field_proposals_pending_idx").on(table.surveyId, table.reviewStatus),
+  check("field_proposals_status_chk", sql`review_status in ('pending', 'accepted', 'edited', 'rejected', 'superseded')`),
+  check("field_proposals_origin_chk", sql`origin_class in ('external_record', 'job_record', 'prior_survey', 'document_extraction', 'image_analysis', 'model_draft')`),
+]);

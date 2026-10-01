@@ -7,6 +7,7 @@ import type { SurveyPack } from "@/lib/surveys";
 import { newOperationId, offlineStore, type OutboxEntry, type UploadEntry } from "@/lib/offline-store";
 import { SurveyElementCard, type ElementView, type ObservationView, type PhotoView } from "./survey-element-card";
 import type { FieldDisplay } from "./survey-field";
+import { AssistantPanel } from "./assistant-panel";
 
 const elementKey = (section: string, element: string, location = "") => `${section}.${element}.${location}`;
 
@@ -164,7 +165,7 @@ export function SurveyWorkspace({ surveyId, canEdit, canJudge }: { surveyId: str
   if (!pack) return <section className="panel"><div className="empty-state">{loadError ? <><AlertTriangle size={22} /><strong>{loadError}</strong></> : <><RefreshCw size={22} /><strong>Loading survey…</strong><span>If you are offline, open a survey you have already opened on this device.</span></>}</div></section>;
 
   const attention = outbox.filter((entry) => entry.status !== "pending");
-  const openTasks = pack.tasks.filter((task) => task.status === "open");
+  const openTasks = pack.tasks.filter((task) => task.status === "open" && task.kind === "reinspect");
   const activeSection = pack.template.sections.find((item) => item.key === section) ?? pack.template.sections[0];
 
   async function resolveConflict(entry: OutboxEntry, keepMine: boolean) {
@@ -198,6 +199,7 @@ export function SurveyWorkspace({ surveyId, canEdit, canJudge }: { surveyId: str
     {notice ? <p className="form-success" role="status">{notice}</p> : null}
     {attention.length ? <section className="panel attention-panel" aria-labelledby="attention-heading"><div className="panel-header"><div><h2 id="attention-heading">Changes needing attention</h2><p>Nothing is overwritten silently. Choose which value to keep.</p></div></div><ul>{attention.map((entry) => <li key={entry.operationId}><strong>{entry.operation.type === "set_field" ? entry.operation.fieldPath : entry.operation.type.replace(/_/g, " ")}</strong><span>{entry.message}</span>{entry.status === "conflict" && entry.operation.type === "set_field" ? <span className="cell-sub">Yours: {describeValue(entry.operation.value)} · Current: {describeValue(entry.current?.value)}</span> : null}<div className="row-actions">{entry.status === "conflict" ? <><button type="button" className="button button-secondary" onClick={() => void resolveConflict(entry, true)}>Keep mine</button><button type="button" className="button button-quiet" onClick={() => void resolveConflict(entry, false)}>Use current</button></> : <button type="button" className="button button-quiet danger" onClick={() => void resolveConflict(entry, false)}>Discard</button>}</div></li>)}</ul></section> : null}
     {openTasks.length ? <section className="panel tasks-panel" aria-labelledby="tasks-heading"><div className="panel-header"><div><h2 id="tasks-heading">Reminders from earlier surveys</h2><p>Historical context only. These are not current findings.</p></div><History size={17} color="#3b82f6" aria-hidden="true" /></div><ul>{openTasks.map((task) => <li key={task.id}><strong>{task.title}</strong><span>{task.detail}</span></li>)}</ul></section> : null}
+    <AssistantPanel surveyId={surveyId} pack={pack} canEdit={canEdit && pack.survey.status === "in_progress"} canJudge={canJudge} online={online} onChanged={fetchPack} />
     <nav className="workspace-tabs survey-sections" role="tablist" aria-label="Survey sections">
       {pack.template.sections.map((item) => <button key={item.key} type="button" role="tab" aria-selected={item.key === activeSection.key} className={`workspace-tab ${item.key === activeSection.key ? "active" : ""}`} onClick={() => setSection(item.key)}>{item.label}</button>)}
     </nav>

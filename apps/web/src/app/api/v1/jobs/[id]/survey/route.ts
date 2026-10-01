@@ -6,6 +6,7 @@ import { canMutateOperations, ukCountries } from "@surveynt/domain";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
 import { createSurvey } from "@/lib/surveys";
+import { refreshSurveyProposals } from "@/lib/proposals";
 
 export const runtime = "nodejs";
 
@@ -41,5 +42,6 @@ export async function POST(request: Request, route: RouteContext<"/api/v1/jobs/[
   const result = await createSurvey({ organisationId: context.organisationId, internalUserId: context.internalUserId, role: context.role }, id, parsed.data);
   if (result.kind === "missing") return problem(404, "job_not_found", "The job could not be found.");
   if (result.kind === "invalid") return problem(422, "survey_rejected", result.message);
+  if (result.kind === "created") await refreshSurveyProposals(context, result.survey.id).catch(() => undefined);
   return ok({ surveyId: result.survey.id, created: result.kind === "created" });
 }

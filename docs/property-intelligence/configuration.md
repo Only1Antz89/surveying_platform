@@ -43,7 +43,7 @@ The P1 migration runs `CREATE EXTENSION IF NOT EXISTS postgis` as the owner. Bef
 | `BLOB_READ_WRITE_TOKEN` | A1 | Vercel Blob store token (private store) | Unset: uploads disabled; manual text capture continues |
 | `MEDIA_MAX_UPLOAD_MB` | A1 | Per-file upload limit | `25` |
 | `ASSISTANT_ENABLED` | A2 | Platform kill-switch for proposals and tasks | Off |
-| `AI_PROVIDER` | A2 | Model adapter key | `none`: AI features report "unavailable" |
+| `AI_PROVIDER` | A2 | Model adapter key. Only `none` exists until a provider is chosen, registered and evaluated (A6) | `none`: AI features report "unavailable"; deterministic sourced suggestions still work |
 | `SHARED_LEARNING_ENABLED` | L0 | Global shared-learning gate | `false`; must stay false until the L0 gates are met |
 
 ## Importers
