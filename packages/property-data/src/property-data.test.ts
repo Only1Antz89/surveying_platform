@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { locationFingerprint, providerCacheKey, ProviderHttpError, propertyLocationSchema, retryClassification, searchNominatim, searchPostcode, sourceRegistry, validateProviderResult } from "./index";
+import { epcProvider, locationFingerprint, providerCacheKey, ProviderHttpError, propertyLocationSchema, retryClassification, searchNominatim, searchPostcode, sourceRegistry, validateProviderResult } from "./index";
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("property intelligence contracts", () => {
+  const location = { propertyId: crypto.randomUUID(), country: "ENG" as const, uprn: "123456789", latitude: 51.45, longitude: -2.58, address: "14 Clifton Park, Bristol", propertyVersion: 1 };
+
   it("validates UK property identity without converting UPRNs to numbers", () => {
     const value = propertyLocationSchema.parse({ propertyId: crypto.randomUUID(), country: "ENG", uprn: "000123456789", latitude: 51.45, longitude: -2.58, address: "14 Clifton Park, Bristol", propertyVersion: 2 });
     expect(value.uprn).toBe("000123456789");
@@ -75,5 +77,38 @@ describe("property intelligence contracts", () => {
     const results = await searchNominatim("14 Clifton Park", { baseUrl: "https://example.test/", userAgent: "Surveynt/1.0 (contact: support@example.test)" });
     expect(results).toHaveLength(1);
     expect(results[0].line1).toBe("14 Clifton Park");
+  });
+
+  it("keeps EPC disabled until credentials are configured", async () => {
+    const providerFetch = vi.fn();
+    vi.stubGlobal("fetch", providerFetch);
+    const result = await epcProvider({}).fetch(location, new AbortController().signal);
+    expect(result.status).toBe("not_configured");
+    expect(result.coverage).toBe("unknown");
+    expect(providerFetch).not.toHaveBeenCalled();
+  });
+
+  it("does not imply an EPC absence when a UPRN has not been confirmed", async () => {
+    const result = await epcProvider({ email: "developer@example.test", apiKey: "secret" }).fetch({ ...location, uprn: undefined }, new AbortController().signal);
+    expect(result.status).toBe("not_configured");
+    expect(result.matchMethod).toBe("uprn_required");
+    expect(result.coverage).toBe("unknown");
+    expect(result.safeError).toMatch(/not checked/i);
+  });
+
+  it("normalises configured EPC records by UPRN", async () => {
+    const providerFetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ rows: [{ "lmk-key": "epc-1", "current-energy-rating": "C", "lodgement-date": "2026-09-01" }] }), { status: 200 }));
+    vi.stubGlobal("fetch", providerFetch);
+    const result = await epcProvider({ email: "developer@example.test", apiKey: "secret", baseUrl: "https://example.test/" }).fetch(location, new AbortController().signal);
+    expect(result.status).toBe("matched");
+    expect(result.matchMethod).toBe("uprn");
+    expect(result.records[0]?.sourceRecordId).toBe("epc-1");
+    expect(providerFetch).toHaveBeenCalledOnce();
+  });
+
+  it("reports unsupported EPC countries before configuration state", async () => {
+    const result = await epcProvider({}).fetch({ ...location, country: "SCT" }, new AbortController().signal);
+    expect(result.status).toBe("unsupported");
+    expect(result.coverage).toBe("outside_coverage");
   });
 });

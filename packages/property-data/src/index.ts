@@ -259,8 +259,9 @@ export function epcProvider(configuration: { email?: string; apiKey?: string; ba
     key: "epc",
     supports: (country) => country === "ENG" || country === "WLS",
     async fetch(location, signal) {
+      if (location.country !== "ENG" && location.country !== "WLS") return { ...baseResult("epc", "energy"), status: "unsupported", records: [], matchMethod: "country", confidence: 1, coverage: "outside_coverage", informationClass: "authoritative_external", licence: "Provider terms and address restrictions apply", attribution: "Energy Performance of Buildings Data" };
       if (!configuration.email || !configuration.apiKey) return { ...baseResult("epc", "energy"), status: "not_configured", records: [], matchMethod: "uprn", confidence: 0, coverage: "unknown", informationClass: "authoritative_external", licence: "Provider terms and address restrictions apply", attribution: "Energy Performance of Buildings Data" };
-      if (!location.uprn) return { ...baseResult("epc", "energy"), status: "no_match", records: [], matchMethod: "uprn_required", confidence: 0, coverage: "partial", informationClass: "authoritative_external", licence: "Provider terms and address restrictions apply", attribution: "Energy Performance of Buildings Data" };
+      if (!location.uprn) return { ...baseResult("epc", "energy"), status: "not_configured", records: [], matchMethod: "uprn_required", confidence: 0, coverage: "unknown", informationClass: "authoritative_external", licence: "Provider terms and address restrictions apply", attribution: "Energy Performance of Buildings Data", safeError: "EPC was not checked because the property has no confirmed UPRN." };
       const url = new URL("api/v1/domestic/search", configuration.baseUrl ?? "https://epc.opendatacommunities.org/");
       url.searchParams.set("uprn", location.uprn);
       try {
