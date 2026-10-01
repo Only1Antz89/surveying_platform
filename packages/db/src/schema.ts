@@ -37,6 +37,12 @@ export const incidentStatus = pgEnum("incident_status", ["investigating", "monit
 export const ukCountry = pgEnum("uk_country", ["ENG", "WLS", "SCT", "NIR"]);
 export const locationConfidence = pgEnum("location_confidence", ["unresolved", "postcode_centroid", "geocoded_address", "surveyor_confirmed"]);
 export const addressSource = pgEnum("address_source", ["manual", "postcodes_io", "nominatim"]);
+export const inspectionStatus = pgEnum("inspection_status", ["inspected", "partially_inspected", "not_inspected", "inaccessible", "not_applicable"]);
+export const surveyStatus = pgEnum("survey_status", ["in_progress", "in_review", "approved", "issued", "withdrawn"]);
+export const observationKind = pgEnum("observation_kind", ["current_observation", "measurement", "client_claim", "historical_reference", "external_record"]);
+export const observationStatus = pgEnum("observation_status", ["recorded", "superseded", "withdrawn"]);
+export const valueOrigin = pgEnum("value_origin", ["surveyor_entry", "accepted_proposal", "edited_proposal", "clerical_prefill"]);
+export const mediaKind = pgEnum("media_kind", ["photo", "document"]);
 
 export const organisations = pgTable("organisations", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -274,6 +280,7 @@ export const jobs = pgTable("jobs", {
   version: integer("version").notNull().default(1),
   ...timestamps,
 }, (table) => [
+  unique("jobs_org_id_uidx").on(table.organisationId, table.id),
   uniqueIndex("jobs_org_reference_uidx").on(table.organisationId, table.reference),
   index("jobs_org_stage_idx").on(table.organisationId, table.stage),
   index("jobs_client_idx").on(table.clientId),
@@ -486,4 +493,206 @@ export const osOpenUprn = referenceSchema.table("os_open_uprn", {
   primaryKey({ name: "os_open_uprn_pk", columns: [table.datasetSyncId, table.uprn] }),
   index("os_open_uprn_geog_gix").using("gist", sql`(${table.geom}::geography)`),
   check("os_open_uprn_format_chk", sql`uprn ~ '^[0-9]{1,12}$'`),
+]);
+
+// Survey capture (A1). Every table is tenant-scoped with RLS and composite
+// foreign keys so a child row can never point at another firm's record.
+
+/** One inspection record for a job, pinned to the exact form template it was captured against. */
+export const surveys = pgTable("surveys", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  jobId: uuid("job_id").notNull(),
+  propertyId: uuid("property_id").notNull(),
+  templateKey: text("template_key").notNull(),
+  templateVersion: text("template_version").notNull(),
+  templateFingerprint: text("template_fingerprint").notNull(),
+  serviceLevel: text("service_level").notNull(),
+  jurisdiction: ukCountry("jurisdiction").notNull(),
+  status: surveyStatus("status").notNull().default("in_progress"),
+  clientGeneratedId: text("client_generated_id"),
+  createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  version: integer("version").notNull().default(1),
+  ...timestamps,
+}, (table) => [
+  unique("surveys_org_id_uidx").on(table.organisationId, table.id),
+  foreignKey({ name: "surveys_job_fk", columns: [table.organisationId, table.jobId], foreignColumns: [jobs.organisationId, jobs.id] }).onDelete("restrict"),
+  foreignKey({ name: "surveys_property_fk", columns: [table.organisationId, table.propertyId], foreignColumns: [properties.organisationId, properties.id] }).onDelete("restrict"),
+  uniqueIndex("surveys_active_job_uidx").on(table.organisationId, table.jobId).where(sql`status <> 'withdrawn'`),
+  uniqueIndex("surveys_client_id_uidx").on(table.organisationId, table.clientGeneratedId),
+  index("surveys_property_idx").on(table.organisationId, table.propertyId),
+  check("surveys_service_level_chk", sql`service_level in ('level_1', 'level_2', 'level_3', 'bespoke')`),
+]);
+
+export const surveyElements = pgTable("survey_elements", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  surveyId: uuid("survey_id").notNull(),
+  sectionKey: text("section_key").notNull(),
+  elementKey: text("element_key").notNull(),
+  locationLabel: text("location_label").notNull().default(""),
+  inspectionStatus: inspectionStatus("inspection_status"),
+  limitationReason: text("limitation_reason"),
+  updatedByUserId: uuid("updated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  version: integer("version").notNull().default(1),
+  ...timestamps,
+}, (table) => [
+  unique("survey_elements_org_id_uidx").on(table.organisationId, table.id),
+  foreignKey({ name: "survey_elements_survey_fk", columns: [table.organisationId, table.surveyId], foreignColumns: [surveys.organisationId, surveys.id] }).onDelete("restrict"),
+  uniqueIndex("survey_elements_location_uidx").on(table.surveyId, table.sectionKey, table.elementKey, table.locationLabel),
+]);
+
+/**
+ * Append-only field value history. A change inserts a new row that supersedes
+ * the previous one; the current value is the row with superseded_at null.
+ */
+export const surveyFieldValues = pgTable("survey_field_values", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  surveyId: uuid("survey_id").notNull(),
+  fieldPath: text("field_path").notNull(),
+  value: jsonb("value").$type<Record<string, unknown>>().notNull(),
+  origin: valueOrigin("origin").notNull().default("surveyor_entry"),
+  sourceKind: text("source_kind").notNull().default("manual"),
+  sourceRef: text("source_ref"),
+  sourceEventDate: date("source_event_date"),
+  retrievedAt: timestamp("retrieved_at", { withTimezone: true }),
+  authorUserId: uuid("author_user_id").references(() => users.id, { onDelete: "set null" }),
+  supersedesId: uuid("supersedes_id"),
+  supersededAt: timestamp("superseded_at", { withTimezone: true }),
+  correctionReason: text("correction_reason"),
+  clientGeneratedId: text("client_generated_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  foreignKey({ name: "survey_field_values_survey_fk", columns: [table.organisationId, table.surveyId], foreignColumns: [surveys.organisationId, surveys.id] }).onDelete("restrict"),
+  uniqueIndex("survey_field_values_current_uidx").on(table.surveyId, table.fieldPath).where(sql`superseded_at is null`),
+  uniqueIndex("survey_field_values_client_id_uidx").on(table.organisationId, table.clientGeneratedId),
+  index("survey_field_values_history_idx").on(table.surveyId, table.fieldPath, table.createdAt),
+  check("survey_field_values_path_chk", sql`field_path ~ '^[a-z][a-z0-9_]*[.][a-z][a-z0-9_]*[.][a-z][a-z0-9_]*$'`),
+]);
+
+export const observations = pgTable("observations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  surveyId: uuid("survey_id").notNull(),
+  elementId: uuid("element_id"),
+  kind: observationKind("kind").notNull(),
+  text: text("text").notNull(),
+  structured: jsonb("structured").$type<Record<string, unknown>>().notNull().default({}),
+  locationLabel: text("location_label"),
+  status: observationStatus("status").notNull().default("recorded"),
+  origin: valueOrigin("origin").notNull().default("surveyor_entry"),
+  sourceKind: text("source_kind").notNull().default("manual"),
+  sourceRef: text("source_ref"),
+  sourceEventDate: date("source_event_date"),
+  observedAt: timestamp("observed_at", { withTimezone: true }),
+  authorUserId: uuid("author_user_id").references(() => users.id, { onDelete: "set null" }),
+  supersedesId: uuid("supersedes_id"),
+  clientGeneratedId: text("client_generated_id").notNull(),
+  version: integer("version").notNull().default(1),
+  ...timestamps,
+}, (table) => [
+  unique("observations_org_id_uidx").on(table.organisationId, table.id),
+  foreignKey({ name: "observations_survey_fk", columns: [table.organisationId, table.surveyId], foreignColumns: [surveys.organisationId, surveys.id] }).onDelete("restrict"),
+  foreignKey({ name: "observations_element_fk", columns: [table.organisationId, table.elementId], foreignColumns: [surveyElements.organisationId, surveyElements.id] }).onDelete("restrict"),
+  uniqueIndex("observations_client_id_uidx").on(table.organisationId, table.clientGeneratedId),
+  index("observations_survey_idx").on(table.surveyId, table.status),
+]);
+
+/** Original files are immutable. Annotated, thumbnail or redacted versions are separate rows derived from the original. */
+export const mediaAssets = pgTable("media_assets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  propertyId: uuid("property_id").notNull(),
+  surveyId: uuid("survey_id"),
+  kind: mediaKind("kind").notNull(),
+  storageKey: text("storage_key").notNull(),
+  contentType: text("content_type").notNull(),
+  byteSize: integer("byte_size").notNull(),
+  sha256: text("sha256").notNull(),
+  width: integer("width"),
+  height: integer("height"),
+  originalFilename: text("original_filename"),
+  capturedAt: timestamp("captured_at", { withTimezone: true }),
+  captureContext: jsonb("capture_context").$type<Record<string, unknown>>().notNull().default({}),
+  derivedFromId: uuid("derived_from_id"),
+  derivation: text("derivation").notNull().default("original"),
+  status: text("status").notNull().default("stored"),
+  uploadedByUserId: uuid("uploaded_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  clientGeneratedId: text("client_generated_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+}, (table) => [
+  unique("media_assets_org_id_uidx").on(table.organisationId, table.id),
+  foreignKey({ name: "media_assets_property_fk", columns: [table.organisationId, table.propertyId], foreignColumns: [properties.organisationId, properties.id] }).onDelete("restrict"),
+  foreignKey({ name: "media_assets_survey_fk", columns: [table.organisationId, table.surveyId], foreignColumns: [surveys.organisationId, surveys.id] }).onDelete("restrict"),
+  foreignKey({ name: "media_assets_derived_fk", columns: [table.organisationId, table.derivedFromId], foreignColumns: [table.organisationId, table.id] }).onDelete("restrict"),
+  uniqueIndex("media_assets_client_id_uidx").on(table.organisationId, table.clientGeneratedId),
+  index("media_assets_survey_idx").on(table.surveyId),
+  check("media_assets_derivation_chk", sql`derivation in ('original', 'annotated', 'thumbnail', 'redacted', 'processed') and ((derivation = 'original') = (derived_from_id is null))`),
+  check("media_assets_status_chk", sql`status in ('stored', 'deleted')`),
+]);
+
+/** Explicit links between a finding (field value, observation or element) and the evidence that supports it. */
+export const evidenceLinks = pgTable("evidence_links", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  surveyId: uuid("survey_id").notNull(),
+  targetType: text("target_type").notNull(),
+  targetId: uuid("target_id").notNull(),
+  evidenceType: text("evidence_type").notNull(),
+  evidenceId: text("evidence_id").notNull(),
+  region: jsonb("region").$type<Record<string, unknown>>(),
+  note: text("note"),
+  createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  clientGeneratedId: text("client_generated_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  removedAt: timestamp("removed_at", { withTimezone: true }),
+}, (table) => [
+  foreignKey({ name: "evidence_links_survey_fk", columns: [table.organisationId, table.surveyId], foreignColumns: [surveys.organisationId, surveys.id] }).onDelete("restrict"),
+  uniqueIndex("evidence_links_client_id_uidx").on(table.organisationId, table.clientGeneratedId),
+  index("evidence_links_target_idx").on(table.surveyId, table.targetType, table.targetId),
+  check("evidence_links_target_chk", sql`target_type in ('field_value', 'observation', 'element')`),
+  check("evidence_links_evidence_chk", sql`evidence_type in ('media', 'observation', 'intelligence_snapshot', 'document_span', 'prior_survey', 'external_record')`),
+]);
+
+/** Persistent assistant work list per survey. Deduplicated so re-running derivation never duplicates tasks. */
+export const assistantTasks = pgTable("assistant_tasks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  surveyId: uuid("survey_id").notNull(),
+  kind: text("kind").notNull(),
+  status: text("status").notNull().default("open"),
+  dedupeKey: text("dedupe_key").notNull(),
+  fieldPath: text("field_path"),
+  elementKey: text("element_key"),
+  title: text("title").notNull(),
+  detail: text("detail"),
+  evidence: jsonb("evidence").$type<Record<string, unknown>>().notNull().default({}),
+  inputVersion: text("input_version"),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  resolvedByUserId: uuid("resolved_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  resolutionNote: text("resolution_note"),
+  ...timestamps,
+}, (table) => [
+  foreignKey({ name: "assistant_tasks_survey_fk", columns: [table.organisationId, table.surveyId], foreignColumns: [surveys.organisationId, surveys.id] }).onDelete("restrict"),
+  uniqueIndex("assistant_tasks_dedupe_uidx").on(table.surveyId, table.dedupeKey),
+  index("assistant_tasks_open_idx").on(table.surveyId, table.status),
+  check("assistant_tasks_status_chk", sql`status in ('open', 'resolved', 'dismissed')`),
+  check("assistant_tasks_kind_chk", sql`kind in ('missing_field', 'pending_verification', 'discrepancy', 'reinspect', 'limitation_required', 'draft_section', 'review_ai_text')`),
+]);
+
+/** Idempotency ledger for offline sync. Replaying an operation returns its stored result instead of applying it twice. */
+export const syncOperations = pgTable("sync_operations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  surveyId: uuid("survey_id").notNull(),
+  operationId: text("operation_id").notNull(),
+  operationType: text("operation_type").notNull(),
+  result: jsonb("result").$type<Record<string, unknown>>().notNull().default({}),
+  appliedByUserId: uuid("applied_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  foreignKey({ name: "sync_operations_survey_fk", columns: [table.organisationId, table.surveyId], foreignColumns: [surveys.organisationId, surveys.id] }).onDelete("restrict"),
+  uniqueIndex("sync_operations_operation_uidx").on(table.organisationId, table.operationId),
 ]);

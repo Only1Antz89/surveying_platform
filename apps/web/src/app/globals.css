@@ -337,6 +337,48 @@ a { color: inherit; text-decoration: none; }
 .identity-history li { display: grid; gap: 2px; }
 .compact-select { max-width: 220px; }
 
+/* Survey capture (A1) */
+.sync-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 16px; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.sync-bar small { color: var(--muted); }
+.sync-bar .row-actions { margin-left: auto; }
+.sync-bar.offline { background: var(--warning-soft); border-color: #efdba9; color: var(--warning); }
+.sync-bar.attention { background: var(--danger-soft); border-color: #f2c4cb; color: var(--danger); }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.attention-panel ul, .tasks-panel ul { display: grid; gap: 10px; margin: 0; padding: 16px 20px; list-style: none; }
+.attention-panel li, .tasks-panel li { display: grid; gap: 4px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.attention-panel li:last-child, .tasks-panel li:last-child { border-bottom: 0; padding-bottom: 0; }
+.survey-section { display: grid; gap: 16px; }
+.survey-element { padding: 18px 20px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.survey-element-header { display: flex; gap: 16px; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+.survey-element-header h3 { margin: 0; font-size: 15px; }
+.survey-element-header p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+.inspection-status { display: grid; gap: 4px; min-width: 200px; font-size: 11px; font-weight: 600; color: var(--muted); }
+.pending-note { margin: 0 0 10px; color: var(--warning); font-size: 12px; }
+.survey-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+.survey-field { display: grid; gap: 6px; align-content: start; }
+.survey-field.professional { padding: 10px; border-radius: 8px; background: var(--surface-2); }
+.survey-field-label { display: flex; gap: 8px; justify-content: space-between; align-items: center; }
+.survey-field-label label { font-weight: 600; font-size: 12px; }
+.state-select { width: auto; max-width: 150px; padding-block: 4px; font-size: 11px; }
+.required-mark { color: var(--danger); }
+.survey-field .form-help { margin: 0; }
+.survey-evidence { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.survey-evidence-header { display: flex; gap: 12px; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.survey-evidence-header h4 { margin: 0; font-size: 13px; }
+.file-button { position: relative; cursor: pointer; }
+.observation-form { display: grid; gap: 10px; margin-bottom: 12px; padding: 12px; border-radius: 8px; background: var(--surface-2); }
+.measurement-row { display: flex; gap: 6px; }
+.observation-list { display: grid; gap: 8px; margin: 0 0 12px; padding: 0; list-style: none; }
+.observation-list li { display: grid; gap: 4px; justify-items: start; }
+.observation-list p { margin: 0; }
+.observation-list small { color: var(--warning); }
+.photo-strip { display: flex; flex-wrap: wrap; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.photo-strip li { display: grid; gap: 4px; width: 120px; }
+.photo-strip img, .photo-placeholder { width: 120px; height: 90px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-2); }
+.photo-placeholder { display: grid; place-items: center; padding: 6px; font-size: 10px; text-align: center; color: var(--muted); }
+.photo-strip small { color: var(--warning); font-size: 10px; }
+
 @media (max-width: 1050px) {
   .metric-grid { grid-template-columns: repeat(2, 1fr); }
   .metric:nth-child(2) { border-right: 0; }
@@ -348,6 +390,9 @@ a { color: inherit; text-decoration: none; }
 
 @media (max-width: 760px) {
   .address-search-row { flex-direction: column; }
+  .survey-element-header { flex-direction: column; }
+  .inspection-status { min-width: 0; width: 100%; }
+  .sync-bar .row-actions { margin-left: 0; }
   .app-shell { grid-template-columns: 1fr; }
   .sidebar { position: fixed; left: 0; transform: translateX(-102%); width: 244px; transition: transform .2s ease; box-shadow: 20px 0 40px rgba(8,20,36,.2); }
   .sidebar.open { transform: translateX(0); }

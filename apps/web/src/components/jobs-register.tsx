@@ -1,7 +1,8 @@
 "use client";
 
 import { type FormEvent, useMemo, useState } from "react";
-import { Clock3, Download, Eye, Pencil, Plus, Search, X } from "lucide-react";
+import Link from "next/link";
+import { ClipboardList, Clock3, Download, Eye, Pencil, Plus, Search, X } from "lucide-react";
 import { canTransitionJob, jobStageLabels, jobStages, type JobStage } from "@surveynt/domain";
 import { StatusDot } from "@surveynt/ui";
 import type { Job } from "@/lib/demo-data";
@@ -28,7 +29,7 @@ const formatTarget = (value: string | null) => value
   : "Not scheduled";
 const formatDateTime = (value: string) => new Date(value).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/London" });
 
-export function JobsRegister({ jobs: initialJobs, options, canEdit = true }: { jobs: Job[]; options: JobFormOptions; canEdit?: boolean }) {
+export function JobsRegister({ slug, jobs: initialJobs, options, canEdit = true }: { slug: string; jobs: Job[]; options: JobFormOptions; canEdit?: boolean }) {
   const [jobs, setJobs] = useState(initialJobs);
   const [query, setQuery] = useState("");
   const [stage, setStage] = useState("All stages");
@@ -135,6 +136,6 @@ export function JobsRegister({ jobs: initialJobs, options, canEdit = true }: { j
       <div className="field"><label htmlFor="edit-job-target">Target date</label><input id="edit-job-target" name="targetDate" className="input" type="date" defaultValue={detail.job.targetDate ?? ""} disabled={!canEdit} /></div>
       <div className="field"><label htmlFor="edit-job-fee">Fee (£)</label><input id="edit-job-fee" name="fee" className="input" type="number" min="0" step="0.01" inputMode="decimal" defaultValue={detail.job.fee ?? ""} disabled={!canEdit} /></div>
       <div className="field full"><label htmlFor="edit-job-notes">Internal notes</label><textarea id="edit-job-notes" name="notes" className="input" rows={5} maxLength={5000} defaultValue={detail.job.notes ?? ""} disabled={!canEdit} /></div>
-    </div>{error ? <p className="form-error" role="alert">{error}</p> : null}</div><aside className="job-history" aria-label="Stage history"><div className="job-history-heading"><Clock3 size={16} /><div><h3>Stage history</h3><p>{detail.stageHistory.length} recorded {detail.stageHistory.length === 1 ? "event" : "events"}</p></div></div>{detail.stageHistory.length ? <ol>{[...detail.stageHistory].reverse().map((event) => <li key={event.id}><i aria-hidden="true" /><div><strong>{jobStageLabels[event.toStage]}</strong><span>{event.reason || (event.fromStage ? `Moved from ${jobStageLabels[event.fromStage]}` : "Stage recorded")}</span><small>{event.changedBy} · {formatDateTime(event.createdAt)}</small></div></li>)}</ol> : <p className="job-history-empty">No stage events have been recorded.</p>}</aside></div>{canEdit ? <div className="modal-actions"><button type="button" className="button button-secondary" onClick={closeDetail}>Close</button><button className="button button-primary" disabled={saving}><Pencil size={14} />{saving ? "Saving…" : "Save changes"}</button></div> : <div className="modal-actions"><button type="button" className="button button-secondary" onClick={closeDetail}>Close</button></div>}</form></section></div> : null}
+    </div>{error ? <p className="form-error" role="alert">{error}</p> : null}</div><aside className="job-history" aria-label="Stage history"><div className="job-history-heading"><Clock3 size={16} /><div><h3>Stage history</h3><p>{detail.stageHistory.length} recorded {detail.stageHistory.length === 1 ? "event" : "events"}</p></div></div>{detail.stageHistory.length ? <ol>{[...detail.stageHistory].reverse().map((event) => <li key={event.id}><i aria-hidden="true" /><div><strong>{jobStageLabels[event.toStage]}</strong><span>{event.reason || (event.fromStage ? `Moved from ${jobStageLabels[event.fromStage]}` : "Stage recorded")}</span><small>{event.changedBy} · {formatDateTime(event.createdAt)}</small></div></li>)}</ol> : <p className="job-history-empty">No stage events have been recorded.</p>}</aside></div>{canEdit ? <div className="modal-actions"><button type="button" className="button button-secondary" onClick={closeDetail}>Close</button><Link className="button button-secondary" href={`/app/${slug}/jobs/${detail.job.id}/survey`}><ClipboardList size={14} />Open survey</Link><button className="button button-primary" disabled={saving}><Pencil size={14} />{saving ? "Saving…" : "Save changes"}</button></div> : <div className="modal-actions"><button type="button" className="button button-secondary" onClick={closeDetail}>Close</button><Link className="button button-secondary" href={`/app/${slug}/jobs/${detail.job.id}/survey`}><ClipboardList size={14} />Open survey</Link></div>}</form></section></div> : null}
   </>;
 }

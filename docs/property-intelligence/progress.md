@@ -56,9 +56,23 @@ Acceptance:
 - Coordinate, CRS and distance validation pass (integration-tested).
 
 ## A1 — Survey, observation and evidence core
-- [ ] Survey, element, field-value, observation, media and evidence tables
-- [ ] Storage adapter (Vercel Blob, private)
-- [ ] Sync API with idempotency and conflict detection; offline outbox
+
+| Item | Code | Configured | Imported | Live |
+|---|---|---|---|---|
+| Migrations 0009–0010: `surveys` (template key, version and fingerprint pinned; jurisdiction; scope), `survey_elements` (inspection status and limitation), append-only `survey_field_values`, `observations` (current / measurement / client claim / historical / external kinds), immutable `media_assets` originals, `evidence_links`, `assistant_tasks`, `sync_operations` ledger; RLS and composite tenant FKs on all of them; erasure-only deletes | ✅ | ❌ not applied to any Neon branch | — | — |
+| Shared sync contract (`@surveynt/assistant` capture) and deterministic reinspection tasks from same-firm history (same property record or surveyor-confirmed UPRN only) | ✅ | — | — | — |
+| Survey service: create/pin, pack, ordered idempotent sync with conflicts, professional-judgement restriction, revisions that carry evidence, media storage idempotent by client id | ✅ | — | — | — |
+| Storage adapter: Vercel Blob private (`put`/`get`/`del`); in-memory for tests | ✅ | ❌ no Blob store configured | — | ❌ |
+| APIs: `GET/POST /jobs/:id/survey`, `GET /surveys/:id`, `POST /surveys/:id/sync`, `POST /surveys/:id/media`, `GET /media/:id` | ✅ | — | — | — |
+| Survey workspace: template-driven form, explicit value states, observations, photos, sync bar, conflict resolution, history reminders; linked from the job record | ✅ | — | — | — |
+| Offline: per-user/firm IndexedDB pack, outbox and photo queue; service worker shell cache; 30-day expiry; "Remove offline copy" ([`../assistant/offline.md`](../assistant/offline.md)) | ✅ (browser-tested in demo) | — | — | — |
+
+Acceptance:
+
+- An observation entered once is reusable through the pack, evidence links and history.
+- A restart or lost connection recovers queued data: offline reload and resync were browser-tested.
+- Duplicate retries are idempotent and conflicts are surfaced, not overwritten.
+- There is no cross-tenant history access (integration-tested): another firm's observations of the same UPRN and address-only matches are excluded.
 
 ## P2 — Core property intelligence
 - [ ] Registry, runs, snapshots, orchestrator
@@ -87,3 +101,5 @@ Acceptance:
 | 2026-10-01 | `pnpm --filter @surveynt/property-data test:integration` | ✅ 9 tests: registry disabled by default, staged import and atomic activation, metre-accurate candidates, app role read-only on reference, importer denied tenant tables, failed import keeps active version, activation and rollback, property CHECKs, immutable tenant-scoped identity events |
 | 2026-10-01 | `pnpm --filter @surveynt/web test:integration` | ✅ 5 tests: cached postcode lookup and tenant-scoped lookups, centroid resolution never auto-selects, evidence-required UPRN confirmation with history and audit, cross-tenant update denied, deployment-wide rate gate |
 | 2026-10-01 | Playwright smoke (demo mode, production build) | ✅ search fills editable fields, labelled demo results, ambiguity warnings, confirmation form, Surveys tab, no console errors, no horizontal overflow at 390 px |
+| 2026-10-01 | `pnpm --filter @surveynt/web test:integration` (A1) | ✅ 12 tests, including 7 survey tests: jurisdiction and template pinning, tenant- and UPRN-scoped history reminders, idempotent replay, conflict instead of overwrite, append-only history, professional-judgement restriction, evidence carried on revision, media idempotency, immutability, cross-tenant denial, template integrity stop |
+| 2026-10-01 | Playwright offline test (demo mode, production build) | ✅ element status synced online; offline observation and field edit saved on device; offline reload restored both via service worker shell + IndexedDB; back online → "All changes synced"; no console errors; no overflow at 390 px |

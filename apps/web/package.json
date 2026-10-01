@@ -18,6 +18,7 @@
     "@surveynt/domain": "workspace:*",
     "@surveynt/property-data": "workspace:*",
     "@surveynt/ui": "workspace:*",
+    "@vercel/blob": "^2.8.0",
     "drizzle-orm": "^0.44.5",
     "geist": "^1.4.2",
     "lucide-react": "^0.544.0",
