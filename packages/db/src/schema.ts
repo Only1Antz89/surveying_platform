@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  customType,
   date,
   doublePrecision,
   foreignKey,
@@ -423,6 +424,8 @@ export const backgroundJobs = pgTable("background_jobs", {
   attempts: integer("attempts").notNull().default(0),
   payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
   availableAt: timestamp("available_at", { withTimezone: true }).notNull().defaultNow(),
+  /** Lease for a claimed job; an expired lease lets another worker reclaim it after a crash. */
+  lockedUntil: timestamp("locked_until", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   failedAt: timestamp("failed_at", { withTimezone: true }),
   error: text("error"),
@@ -433,6 +436,9 @@ export const backgroundJobs = pgTable("background_jobs", {
 // surveynt_reference_read group role; writable only by importers
 // (surveynt_reference_write) and the owner. See docs/property-intelligence.
 export const referenceSchema = pgSchema("reference");
+
+/** Any PostGIS geometry type in WGS84 (drizzle's built-in geometry type is point-only). Values are read as GeoJSON via SQL. */
+const anyGeometry = customType<{ data: string; driverData: string }>({ dataType: () => "geometry(Geometry, 4326)" });
 
 export const dataSources = referenceSchema.table("data_sources", {
   key: text("key").primaryKey(),
@@ -461,6 +467,8 @@ export const dataSources = referenceSchema.table("data_sources", {
 export const datasetSyncs = referenceSchema.table("dataset_syncs", {
   id: uuid("id").primaryKey().defaultRandom(),
   sourceKey: text("source_key").notNull().references(() => dataSources.key, { onDelete: "restrict" }),
+  /** Layer within a multi-layer source (for example a heritage designation type). Empty for single-layer sources. */
+  layer: text("layer").notNull().default(""),
   datasetVersion: text("dataset_version").notNull(),
   sourceUrl: text("source_url"),
   checksum: text("checksum"),
@@ -478,7 +486,7 @@ export const datasetSyncs = referenceSchema.table("dataset_syncs", {
   activatedAt: timestamp("activated_at", { withTimezone: true }),
   retiredAt: timestamp("retired_at", { withTimezone: true }),
 }, (table) => [
-  uniqueIndex("dataset_syncs_one_active_uidx").on(table.sourceKey).where(sql`status = 'active'`),
+  uniqueIndex("dataset_syncs_one_active_layer_uidx").on(table.sourceKey, table.layer).where(sql`status = 'active'`),
   index("dataset_syncs_source_idx").on(table.sourceKey, table.startedAt),
   check("dataset_syncs_status_chk", sql`status in ('staging', 'active', 'retired', 'failed')`),
 ]);
@@ -695,4 +703,80 @@ export const syncOperations = pgTable("sync_operations", {
 }, (table) => [
   foreignKey({ name: "sync_operations_survey_fk", columns: [table.organisationId, table.surveyId], foreignColumns: [surveys.organisationId, surveys.id] }).onDelete("restrict"),
   uniqueIndex("sync_operations_operation_uidx").on(table.organisationId, table.operationId),
+]);
+
+/**
+ * Generic versioned spatial reference layer (points, lines or polygons) for
+ * bulk-imported open datasets. Only rows of active syncs are ever queried.
+ */
+export const spatialFeatures = referenceSchema.table("spatial_features", {
+  datasetSyncId: uuid("dataset_sync_id").notNull().references(() => datasetSyncs.id, { onDelete: "cascade" }),
+  sourceKey: text("source_key").notNull(),
+  layer: text("layer").notNull(),
+  featureId: text("feature_id").notNull(),
+  name: text("name"),
+  attributes: jsonb("attributes").$type<Record<string, unknown>>().notNull().default({}),
+  geom: anyGeometry("geom").notNull(),
+}, (table) => [
+  primaryKey({ name: "spatial_features_pk", columns: [table.datasetSyncId, table.featureId] }),
+  index("spatial_features_gix").using("gist", table.geom),
+  index("spatial_features_layer_idx").on(table.sourceKey, table.layer),
+]);
+
+export const enrichmentRuns = pgTable("enrichment_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  propertyId: uuid("property_id").notNull(),
+  actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+  idempotencyKey: text("idempotency_key").notNull(),
+  status: text("status").notNull().default("queued"),
+  inputFingerprint: text("input_fingerprint").notNull(),
+  propertyVersion: integer("property_version").notNull(),
+  providerStatuses: jsonb("provider_statuses").$type<Record<string, unknown>>().notNull().default({}),
+  error: text("error"),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  ...timestamps,
+}, (table) => [
+  unique("enrichment_runs_org_id_uidx").on(table.organisationId, table.id),
+  foreignKey({ name: "enrichment_runs_property_fk", columns: [table.organisationId, table.propertyId], foreignColumns: [properties.organisationId, properties.id] }).onDelete("restrict"),
+  uniqueIndex("enrichment_runs_idempotency_uidx").on(table.organisationId, table.idempotencyKey),
+  index("enrichment_runs_property_idx").on(table.propertyId, table.createdAt),
+  check("enrichment_runs_status_chk", sql`status in ('queued', 'running', 'completed', 'partial', 'failed', 'superseded')`),
+]);
+
+/** Immutable record of what a source said about a property at retrieval time. Never overwrites surveyor observations. */
+export const propertyIntelligenceSnapshots = pgTable("property_intelligence_snapshots", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  propertyId: uuid("property_id").notNull(),
+  enrichmentRunId: uuid("enrichment_run_id").notNull(),
+  sourceKey: text("source_key").notNull(),
+  datasetVersion: text("dataset_version"),
+  sourceRecordId: text("source_record_id"),
+  category: text("category").notNull(),
+  schemaVersion: integer("schema_version").notNull().default(1),
+  data: jsonb("data").$type<Record<string, unknown>>().notNull().default({}),
+  evidence: jsonb("evidence").$type<{ label: string; url: string }[]>().notNull().default([]),
+  matchMethod: text("match_method").notNull(),
+  confidence: text("confidence"),
+  informationClass: text("information_class").notNull(),
+  coverageStatus: text("coverage_status").notNull(),
+  resultStatus: text("result_status").notNull(),
+  message: text("message"),
+  licence: jsonb("licence").$type<Record<string, unknown>>().notNull().default({}),
+  inputFingerprint: text("input_fingerprint").notNull(),
+  retrievedAt: timestamp("retrieved_at", { withTimezone: true }).notNull(),
+  sourceUpdatedAt: timestamp("source_updated_at", { withTimezone: true }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique("property_intelligence_snapshots_org_id_uidx").on(table.organisationId, table.id),
+  foreignKey({ name: "property_intelligence_snapshots_property_fk", columns: [table.organisationId, table.propertyId], foreignColumns: [properties.organisationId, properties.id] }).onDelete("restrict"),
+  foreignKey({ name: "property_intelligence_snapshots_run_fk", columns: [table.organisationId, table.enrichmentRunId], foreignColumns: [enrichmentRuns.organisationId, enrichmentRuns.id] }).onDelete("restrict"),
+  index("property_intelligence_snapshots_property_idx").on(table.propertyId, table.sourceKey, table.category, table.retrievedAt),
+  index("property_intelligence_snapshots_run_idx").on(table.enrichmentRunId),
+  check("property_intelligence_snapshots_status_chk", sql`result_status in ('matched', 'no_match', 'unsupported', 'not_configured', 'unavailable', 'error')`),
+  check("property_intelligence_snapshots_class_chk", sql`information_class in ('surveyor_verified', 'authoritative_external', 'indicative_external')`),
+  check("property_intelligence_snapshots_coverage_chk", sql`coverage_status in ('covered', 'partial', 'not_covered', 'unknown')`),
 ]);

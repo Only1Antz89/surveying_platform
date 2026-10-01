@@ -1,5 +1,5 @@
 import { and, desc, eq, gt, sql } from "drizzle-orm";
-import { addressLookups, auditEvents, createDatabase, properties, propertyIdentityEvents, providerResponseCache, withTenant, type Database, type TenantTransaction } from "@surveynt/db";
+import { addressLookups, auditEvents, createDatabase, properties, propertyIdentityEvents, withTenant, type Database, type TenantTransaction } from "@surveynt/db";
 import type { UkCountry } from "@surveynt/domain";
 import {
   addressFingerprint,
@@ -21,6 +21,7 @@ import {
   type UprnEvidenceType,
 } from "@surveynt/property-data";
 import { findUprnCandidates, getSourceState, uprnExists } from "@surveynt/property-data/db";
+import { databasePublicCache } from "./provider-cache";
 
 export const intelligenceEnabled = () => process.env.PROPERTY_INTELLIGENCE_ENABLED === "true";
 
@@ -50,18 +51,6 @@ export function databaseRateGate(db: Database): RateGate {
       return true;
     },
   };
-}
-
-async function cachedPublicResponse<T>(db: Database, input: { sourceKey: string; key: string; ttlDays: number; load: () => Promise<T>; cacheable: (value: T) => boolean }) {
-  const cacheKey = await sha256(`${input.sourceKey}|v1|${input.key}`);
-  const [hit] = await db.select({ response: providerResponseCache.response }).from(providerResponseCache).where(and(eq(providerResponseCache.cacheKey, cacheKey), gt(providerResponseCache.expiresAt, new Date()))).limit(1);
-  if (hit) return hit.response as T;
-  const value = await input.load();
-  if (!input.cacheable(value)) return value;
-  const expiresAt = new Date(Date.now() + input.ttlDays * 86_400_000);
-  await db.insert(providerResponseCache).values({ cacheKey, sourceKey: input.sourceKey, response: value as Record<string, unknown>, expiresAt })
-    .onConflictDoUpdate({ target: providerResponseCache.cacheKey, set: { response: value as Record<string, unknown>, retrievedAt: new Date(), expiresAt } });
-  return value;
 }
 
 export type AddressCandidate = {
@@ -122,7 +111,7 @@ export async function searchAddresses(context: TenantContext, rawQuery: string):
   try {
     if (usePostcode) {
       const postcode = normalisePostcode(query)!;
-      const result = await cachedPublicResponse(db, { sourceKey: "postcodes_io", key: postcode, ttlDays: 30, load: () => lookupPostcode(postcode, { baseUrl: process.env.POSTCODES_IO_BASE_URL }), cacheable: (value) => value.status === "matched" });
+      const result = await databasePublicCache(db).getOrLoad(`postcodes_io|v1|${postcode}`, 30, () => lookupPostcode(postcode, { baseUrl: process.env.POSTCODES_IO_BASE_URL }), (value) => value.status === "matched");
       if (result.status === "matched") {
         status = "matched";
         candidates = [{ index: 0, source: "postcodes_io", label: `${result.result.postcode} (postcode centre${result.result.adminDistrict ? `, ${result.result.adminDistrict}` : ""})`, line1: null, city: result.result.adminDistrict, postcode: result.result.postcode, country: result.result.country, latitude: result.result.latitude, longitude: result.result.longitude, precision: "postcode", confidence: "postcode_centroid" }];

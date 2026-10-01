@@ -4,8 +4,8 @@ import { sourceDefinitions } from "../registry/sources";
 
 type Executor = Database | TenantTransaction;
 
-export async function getActiveSync(db: Executor, sourceKey: string) {
-  const [row] = await db.select().from(datasetSyncs).where(and(eq(datasetSyncs.sourceKey, sourceKey), eq(datasetSyncs.status, "active"))).limit(1);
+export async function getActiveSync(db: Executor, sourceKey: string, layer = "") {
+  const [row] = await db.select().from(datasetSyncs).where(and(eq(datasetSyncs.sourceKey, sourceKey), eq(datasetSyncs.layer, layer), eq(datasetSyncs.status, "active"))).limit(1);
   return row ?? null;
 }
 
@@ -55,8 +55,8 @@ export async function uprnExists(db: Executor, uprn: string) {
   return { referenceAvailable: true, exists: Boolean(row), point: row ? { latitude: Number(row.latitude), longitude: Number(row.longitude) } : null };
 }
 
-async function lockSource(tx: TenantTransaction, sourceKey: string) {
-  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`dataset_sync:${sourceKey}`}))`);
+async function lockSource(tx: TenantTransaction, sourceKey: string, layer: string) {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`dataset_sync:${sourceKey}:${layer}`}))`);
 }
 
 /**
@@ -67,11 +67,11 @@ export async function activateSync(db: Database, syncId: string) {
   return db.transaction(async (tx) => {
     const [target] = await tx.select().from(datasetSyncs).where(eq(datasetSyncs.id, syncId)).limit(1);
     if (!target) throw new Error("Dataset sync not found.");
-    await lockSource(tx, target.sourceKey);
+    await lockSource(tx, target.sourceKey, target.layer);
     const [fresh] = await tx.select().from(datasetSyncs).where(eq(datasetSyncs.id, syncId)).limit(1);
     if (fresh.status === "active") return fresh;
     if (fresh.status === "failed" || !fresh.completedAt) throw new Error("Only completed, validated imports can be activated.");
-    const [current] = await tx.select().from(datasetSyncs).where(and(eq(datasetSyncs.sourceKey, fresh.sourceKey), eq(datasetSyncs.status, "active"))).limit(1);
+    const [current] = await tx.select().from(datasetSyncs).where(and(eq(datasetSyncs.sourceKey, fresh.sourceKey), eq(datasetSyncs.layer, fresh.layer), eq(datasetSyncs.status, "active"))).limit(1);
     if (current) await tx.update(datasetSyncs).set({ status: "retired", retiredAt: new Date() }).where(eq(datasetSyncs.id, current.id));
     const [activated] = await tx.update(datasetSyncs).set({ status: "active", activatedAt: new Date(), retiredAt: null, previousActiveId: current?.id ?? fresh.previousActiveId }).where(eq(datasetSyncs.id, fresh.id)).returning();
     return activated;
@@ -79,10 +79,10 @@ export async function activateSync(db: Database, syncId: string) {
 }
 
 /** Re-activates the version that was active before the current one. */
-export async function rollbackSource(db: Database, sourceKey: string) {
+export async function rollbackSource(db: Database, sourceKey: string, layer = "") {
   return db.transaction(async (tx) => {
-    await lockSource(tx, sourceKey);
-    const current = await getActiveSync(tx, sourceKey);
+    await lockSource(tx, sourceKey, layer);
+    const current = await getActiveSync(tx, sourceKey, layer);
     if (!current?.previousActiveId) throw new Error("There is no earlier version to roll back to.");
     const [previous] = await tx.select().from(datasetSyncs).where(eq(datasetSyncs.id, current.previousActiveId)).limit(1);
     if (!previous || previous.status !== "retired") throw new Error("The earlier version is no longer available.");
@@ -94,8 +94,8 @@ export async function rollbackSource(db: Database, sourceKey: string) {
 }
 
 /** Keeps the newest `keep` retired versions for rollback and deletes older ones (rows cascade). */
-export async function pruneRetiredSyncs(db: Database, sourceKey: string, keep = 2) {
-  const retired = await db.select({ id: datasetSyncs.id }).from(datasetSyncs).where(and(eq(datasetSyncs.sourceKey, sourceKey), inArray(datasetSyncs.status, ["retired", "failed"]))).orderBy(desc(datasetSyncs.startedAt));
+export async function pruneRetiredSyncs(db: Database, sourceKey: string, keep = 2, layer = "") {
+  const retired = await db.select({ id: datasetSyncs.id }).from(datasetSyncs).where(and(eq(datasetSyncs.sourceKey, sourceKey), eq(datasetSyncs.layer, layer), inArray(datasetSyncs.status, ["retired", "failed"]))).orderBy(desc(datasetSyncs.startedAt));
   const removable = retired.slice(keep).map((row) => row.id);
   if (removable.length) await db.delete(datasetSyncs).where(inArray(datasetSyncs.id, removable));
   return removable.length;

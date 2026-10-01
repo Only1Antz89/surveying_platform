@@ -1,5 +1,6 @@
 import { emailDeliveryConfigured } from "@/lib/email";
 import { enqueueDailyNotifications, processEmailQueue } from "@/lib/email-queue";
+import { processIntelligenceQueue } from "@/lib/intelligence";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -12,5 +13,6 @@ export async function GET(request: Request) {
   const delivery = emailDeliveryConfigured()
     ? await processEmailQueue(30)
     : { configured: false, claimed: 0, completed: 0, retried: 0, failed: 0 };
-  return Response.json({ ok: true, scheduled, delivery });
+  const intelligence = await processIntelligenceQueue(10).catch(() => ({ claimed: 0, results: [], error: "Intelligence sweep failed." }));
+  return Response.json({ ok: true, scheduled, delivery, intelligence: { claimed: intelligence.claimed } });
 }

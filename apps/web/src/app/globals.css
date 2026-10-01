@@ -379,6 +379,26 @@ a { color: inherit; text-decoration: none; }
 .photo-placeholder { display: grid; place-items: center; padding: 6px; font-size: 10px; text-align: center; color: var(--muted); }
 .photo-strip small { color: var(--warning); font-size: 10px; }
 
+/* Property intelligence (P2) */
+.intel-inline { margin: 12px 20px 0; }
+.intel-panel .identity-warning { margin-top: 12px; }
+.intel-group { padding: 16px 20px 4px; }
+.intel-group h3 { margin: 0 0 10px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.intel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; padding-bottom: 12px; }
+.intel-card { display: grid; gap: 8px; align-content: start; padding: 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.intel-card.stale { border-style: dashed; background: var(--surface-2); }
+.intel-card header { display: grid; gap: 6px; }
+.intel-card h4 { margin: 0; font-size: 13px; }
+.intel-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+.intel-card .identity-warning { margin: 0; }
+.intel-records { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.intel-record { display: grid; gap: 2px; }
+.intel-evidence { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+.intel-evidence a { display: inline-flex; gap: 4px; align-items: center; color: #1f5cd7; font-size: 11px; font-weight: 600; }
+.intel-message { margin: 0; font-size: 12px; }
+.intel-caveat { margin: 0; padding: 7px 9px; border-radius: 6px; background: var(--surface-2); color: var(--muted); font-size: 11px; }
+.intel-card footer { font-size: 10px; }
+
 @media (max-width: 1050px) {
   .metric-grid { grid-template-columns: repeat(2, 1fr); }
   .metric:nth-child(2) { border-right: 0; }

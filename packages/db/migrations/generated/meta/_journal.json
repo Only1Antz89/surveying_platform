@@ -78,6 +78,20 @@
       "when": 1790893297273,
       "tag": "0010_survey_capture_security",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790894410264,
+      "tag": "0011_property_intelligence",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790894411735,
+      "tag": "0012_property_intelligence_security",
+      "breakpoints": true
     }
   ]
 }

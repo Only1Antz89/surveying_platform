@@ -9,6 +9,7 @@ import {
   observations,
   practicePackVersions,
   properties,
+  propertyIntelligenceSnapshots,
   surveyElements,
   surveyFieldValues,
   surveys,
@@ -260,7 +261,9 @@ async function applyOperation(tx: TenantTransaction, context: SurveyContext, sur
         const [observation] = await tx.select({ id: observations.id }).from(observations).where(and(eq(observations.surveyId, survey.id), eq(observations.organisationId, context.organisationId), eq(observations.id, operation.evidence.id))).limit(1);
         if (!observation) return reject(operationId, "The supporting observation was not found.");
       } else {
-        return reject(operationId, "Linking external intelligence snapshots becomes available with property intelligence.");
+        // Binds the exact immutable snapshot relied on, so later refreshes never change what the survey cited.
+        const [snapshot] = uuidPattern.test(operation.evidence.id) ? await tx.select({ id: propertyIntelligenceSnapshots.id }).from(propertyIntelligenceSnapshots).where(and(eq(propertyIntelligenceSnapshots.organisationId, context.organisationId), eq(propertyIntelligenceSnapshots.propertyId, survey.propertyId), eq(propertyIntelligenceSnapshots.id, operation.evidence.id))).limit(1) : [];
+        if (!snapshot) return reject(operationId, "That intelligence record was not found for this property.");
       }
       const [link] = await tx.insert(evidenceLinks).values({ organisationId: context.organisationId, surveyId: survey.id, targetType: operation.target.type, targetId, evidenceType: operation.evidence.type, evidenceId: operation.evidence.id, region: operation.region ?? null, note: operation.note ?? null, createdByUserId: context.internalUserId, clientGeneratedId: operationId }).returning();
       return { id: link.id, targetType: link.targetType, targetId: link.targetId, evidenceType: link.evidenceType, evidenceId: link.evidenceId };

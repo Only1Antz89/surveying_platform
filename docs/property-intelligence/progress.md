@@ -75,9 +75,26 @@ Acceptance:
 - There is no cross-tenant history access (integration-tested): another firm's observations of the same UPRN and address-only matches are excluded.
 
 ## P2 — Core property intelligence
-- [ ] Registry, runs, snapshots, orchestrator
-- [ ] Planning Data, EPC and Historic England adapters (disabled until verified)
-- [ ] Intelligence and Sources UI
+
+| Item | Code | Configured | Imported | Live |
+|---|---|---|---|---|
+| Migrations 0011–0012: `enrichment_runs` (idempotency key, input fingerprint, per-provider statuses), immutable `property_intelligence_snapshots` (all brief fields: source, dataset version, record id, category, schema version, data, evidence, match method, confidence, information class, coverage/result status, licence snapshot, retrieval/source/expiry dates), `background_jobs.locked_until` lease, layer-aware `reference.dataset_syncs`, generic `reference.spatial_features` (geometry(Geometry,4326)); RLS + composite tenant FKs | ✅ | ❌ | — | — |
+| Provider framework: applicability (unsupported / not_configured / too approximate), orchestrator with outer timeouts, concurrency limit, transient-only retry, failure isolation | ✅ | — | — | — |
+| Planning Data adapter (England; point-in-area; per-dataset "no record found"; partial coverage) | ✅ fixtures | ❌ source not enabled | — | ❌ blocked host |
+| EPC adapter (England & Wales; **exact confirmed UPRN only**; no address fields stored; age band normalised) | ✅ fixtures | ❌ credentials | — | ❌ blocked host |
+| Historic England via imported NHLE layers (reference-layer provider; intersects = match, nearby = separate indicative context; unimported layer = not checked) | ✅ synthetic layer | ❌ | ❌ no real release imported | — |
+| Generic spatial layer importer (GeoJSON/GeoJSONSeq, optional `ogr2ogr` conversion, attribute allowlists, UK-extent and validity checks, staged/atomic/per-layer activation) | ✅ | — | — | — |
+| Durable orchestration: idempotent refresh + 10-minute reuse window, `after()` accelerator, leased jobs, queue consumer `/api/queues/intelligence`, daily cron sweep, fingerprint checks before and after provider calls | ✅ | — | — | — |
+| APIs: intelligence (+ planning/environment views), refresh, run status | ✅ | — | — | — |
+| UI: Intelligence, Planning and Sources tabs; information-class labels; per-source status/freshness/coverage/confidence/evidence; fixed caveats; stale marking | ✅ | — | — | — |
+| Survey binding: `link_evidence` accepts an immutable snapshot id from the same property | ✅ | — | — | — |
+
+Acceptance:
+
+- Real adapters normalise validated responses and attach source, licence and coverage metadata.
+- One failed provider does not lose successful results (run status `partial`, integration-tested).
+- Missing or unsupported data shows as Not checked or No record found.
+- Refresh is permission-checked, rate-limited and idempotent; surveyor observations are never written by enrichment.
 
 ## A2 — Proposals and discrepancies
 ## P3 — Land and environmental context
@@ -102,4 +119,5 @@ Acceptance:
 | 2026-10-01 | `pnpm --filter @surveynt/web test:integration` | ✅ 5 tests: cached postcode lookup and tenant-scoped lookups, centroid resolution never auto-selects, evidence-required UPRN confirmation with history and audit, cross-tenant update denied, deployment-wide rate gate |
 | 2026-10-01 | Playwright smoke (demo mode, production build) | ✅ search fills editable fields, labelled demo results, ambiguity warnings, confirmation form, Surveys tab, no console errors, no horizontal overflow at 390 px |
 | 2026-10-01 | `pnpm --filter @surveynt/web test:integration` (A1) | ✅ 12 tests, including 7 survey tests: jurisdiction and template pinning, tenant- and UPRN-scoped history reminders, idempotent replay, conflict instead of overwrite, append-only history, professional-judgement restriction, evidence carried on revision, media idempotency, immutability, cross-tenant denial, template integrity stop |
+| 2026-10-01 | `pnpm --filter @surveynt/web test:integration` (P2 additions) | ✅ 5 intelligence tests: idempotent refresh, a single concurrent claim, partial run with EPC 503, imported layer match/nearby/not-imported, attribute allowlist, snapshot immutability, stale identity, superseded run without provider calls, expired-lease reclaim, cross-tenant denial |
 | 2026-10-01 | Playwright offline test (demo mode, production build) | ✅ element status synced online; offline observation and field edit saved on device; offline reload restored both via service worker shell + IndexedDB; back online → "All changes synced"; no console errors; no overflow at 390 px |

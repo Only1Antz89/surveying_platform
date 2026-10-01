@@ -4,7 +4,24 @@
 import { parseArgs } from "node:util";
 import { createDatabase } from "@surveynt/db";
 import { activateSync, pruneRetiredSyncs, rollbackSource, syncSourceRegistry } from "../db/reference";
+import { spawn } from "node:child_process";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { importOsOpenUprn, type Bbox } from "./os-open-uprn";
+import { importSpatialLayer } from "./spatial-layer";
+
+/** Converts a shapefile, GML or GeoPackage to GeoJSONSeq in EPSG:4326 using GDAL (no shell). */
+async function convertWithOgr(input: string) {
+  const directory = await mkdtemp(path.join(tmpdir(), "surveynt-layer-"));
+  const output = path.join(directory, "layer.geojsonl");
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn("ogr2ogr", ["-f", "GeoJSONSeq", "-t_srs", "EPSG:4326", "-lco", "RS=NO", output, input], { stdio: "inherit" });
+    child.on("error", reject);
+    child.on("exit", (code) => code === 0 ? resolve() : reject(new Error(`ogr2ogr exited with ${code}`)));
+  });
+  return output;
+}
 
 function requireEnv(name: string) {
   const value = process.env[name];
@@ -22,7 +39,7 @@ function parseBbox(value: string | undefined): Bbox | undefined {
 async function main() {
   const [command, ...rest] = process.argv.slice(2);
   const { values } = parseArgs({ args: rest, options: {
-    file: { type: "string" }, version: { type: "string" }, "source-url": { type: "string" }, bbox: { type: "string" },
+    file: { type: "string" }, version: { type: "string" }, "source-url": { type: "string" }, bbox: { type: "string" }, layer: { type: "string" }, convert: { type: "boolean", default: false }, "source-crs": { type: "string" },
     activate: { type: "boolean", default: false }, sync: { type: "string" }, source: { type: "string" }, keep: { type: "string" },
   } });
   switch (command) {
@@ -39,6 +56,15 @@ async function main() {
       if (outcome.status === "failed") process.exitCode = 1;
       break;
     }
+    case "spatial-layer": {
+      if (!values.source || !values.layer || !values.file || !values.version) throw new Error("--source, --layer, --file and --version are required.");
+      const db = createDatabase(requireEnv("DATABASE_IMPORTER_URL"));
+      const filePath = values.convert ? await convertWithOgr(values.file) : values.file;
+      const outcome = await importSpatialLayer(db, { sourceKey: values.source, layer: values.layer, filePath, datasetVersion: values.version, sourceUrl: values["source-url"], sourceCrs: values["source-crs"], activate: values.activate, importedBy: process.env.USER ?? "operator" });
+      console.log(JSON.stringify(outcome, null, 2));
+      if (outcome.status === "failed") process.exitCode = 1;
+      break;
+    }
     case "activate": {
       if (!values.sync) throw new Error("--sync is required.");
       const db = createDatabase(requireEnv("DATABASE_IMPORTER_URL"));
@@ -48,17 +74,17 @@ async function main() {
     case "rollback": {
       if (!values.source) throw new Error("--source is required.");
       const db = createDatabase(requireEnv("DATABASE_IMPORTER_URL"));
-      console.log(JSON.stringify(await rollbackSource(db, values.source), null, 2));
+      console.log(JSON.stringify(await rollbackSource(db, values.source, values.layer ?? ""), null, 2));
       break;
     }
     case "prune": {
       if (!values.source) throw new Error("--source is required.");
       const db = createDatabase(requireEnv("DATABASE_IMPORTER_URL"));
-      console.log(`Removed ${await pruneRetiredSyncs(db, values.source, Number(values.keep ?? 2))} old versions.`);
+      console.log(`Removed ${await pruneRetiredSyncs(db, values.source, Number(values.keep ?? 2), values.layer ?? "")} old versions.`);
       break;
     }
     default:
-      throw new Error("Commands: registry-sync | os-open-uprn --file --version [--bbox] [--activate] | activate --sync | rollback --source | prune --source [--keep]");
+      throw new Error("Commands: registry-sync | os-open-uprn --file --version [--bbox] [--activate] | spatial-layer --source --layer --file --version [--convert] [--activate] | activate --sync | rollback --source [--layer] | prune --source [--layer] [--keep]");
   }
 }
 
