@@ -23,9 +23,14 @@ Execution order: P0 → A0 → P1 → A1 → P2 → A2 → P3 → P4 → A3 → 
 | Integration harness: local PostgreSQL 16 + PostGIS 3.4 via the Neon driver, app role without BYPASSRLS, baseline cross-tenant tests | ✅ | — | — | — |
 
 ## A0 — Field map and form template model
-- [ ] Surveynt-owned element taxonomy and form schema
-- [ ] Field classes (clerical / factual_sourced / professional_assessment)
-- [ ] `field-map.md` for priorities 1, 3, 4, 6 and 7 (requires qualified-surveyor review)
+
+| Item | Code | Configured | Imported | Live |
+|---|---|---|---|---|
+| `@surveynt/assistant` with zod form-template schema, value states, inspection statuses and service scopes | ✅ | — | — | — |
+| Surveynt-owned residential taxonomy `surveynt-residential@1.0.0` (no third-party standard text), fingerprint-pinned | ✅ | — | — | — |
+| Field classes (clerical / factual_sourced / professional_assessment) with `fieldPolicy` and per-field proposal source allowlists | ✅ | — | — | — |
+| [`docs/assistant/field-map.md`](../assistant/field-map.md) for priorities 1, 3, 4, 6 and 7 | ✅ (**requires qualified-surveyor review**) | — | — | — |
+| UK country enum shared in `@surveynt/domain` | ✅ | — | — | — |
 
 ## P1 — Property identity
 - [ ] Additive identity columns, PostGIS, reference schema and group roles

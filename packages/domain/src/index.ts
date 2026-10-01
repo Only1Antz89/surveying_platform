@@ -132,3 +132,13 @@ export function resolveAccess(
   }
   return "billing_only";
 }
+
+export const ukCountries = ["ENG", "WLS", "SCT", "NIR"] as const;
+export type UkCountry = (typeof ukCountries)[number];
+
+export const ukCountryLabels: Record<UkCountry, string> = {
+  ENG: "England",
+  WLS: "Wales",
+  SCT: "Scotland",
+  NIR: "Northern Ireland",
+};
