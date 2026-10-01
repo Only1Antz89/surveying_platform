@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { locationFingerprint, propertyLocationSchema, searchNominatim, searchPostcode, sourceRegistry } from "./index";
+import { locationFingerprint, providerCacheKey, ProviderHttpError, propertyLocationSchema, retryClassification, searchNominatim, searchPostcode, sourceRegistry, validateProviderResult } from "./index";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -16,6 +16,36 @@ describe("property intelligence contracts", () => {
   it("changes the fingerprint when identity changes", () => {
     const base = { country: "ENG" as const, uprn: "123", latitude: 51.45, longitude: -2.58, propertyVersion: 1 };
     expect(locationFingerprint(base)).not.toBe(locationFingerprint({ ...base, propertyVersion: 2 }));
+  });
+
+  it("builds cache keys from provider, version and the complete property identity", () => {
+    const location = { country: "ENG" as const, uprn: "123", latitude: 51.45, longitude: -2.58, propertyVersion: 1 };
+    expect(providerCacheKey("planning_data", location, "2026-10")).toBe("property-data:planning_data:2026-10:ENG:123:51.4500000:-2.5800000:1");
+    expect(providerCacheKey("planning_data", { ...location, propertyVersion: 2 }, "2026-10")).not.toBe(providerCacheKey("planning_data", location, "2026-10"));
+  });
+
+  it("classifies only retryable transport and provider failures as transient", () => {
+    expect(retryClassification(new ProviderHttpError(429))).toBe("transient");
+    expect(retryClassification(new ProviderHttpError(503))).toBe("transient");
+    expect(retryClassification(new ProviderHttpError(401))).toBe("permanent");
+    expect(retryClassification(new TypeError("network unavailable"))).toBe("transient");
+    expect(retryClassification(new Error("invalid payload"))).toBe("permanent");
+  });
+
+  it("validates provider status, confidence, coverage and licence metadata", () => {
+    const result = validateProviderResult({ source: "planning_data", category: "planning", status: "no_match", records: [], matchMethod: "point_intersection", confidence: 0.9, coverage: "partial", informationClass: "authoritative_external", licence: "Open Government Licence v3.0", attribution: "Crown copyright", retrievedAt: new Date().toISOString() });
+    expect(result.status).toBe("no_match");
+    expect(() => validateProviderResult({ ...result, confidence: 1.1 })).toThrow();
+    expect(() => validateProviderResult({ ...result, licence: "" })).toThrow();
+  });
+
+  it("retries a transient provider response once", async () => {
+    const providerFetch = vi.fn()
+      .mockResolvedValueOnce(new Response("temporarily unavailable", { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: 200, result: { postcode: "BS8 4JX", admin_district: "Bristol, City of", latitude: 51.46, longitude: -2.62, country: "England" } }), { status: 200 }));
+    vi.stubGlobal("fetch", providerFetch);
+    await expect(searchPostcode("BS8 4JX")).resolves.toHaveLength(1);
+    expect(providerFetch).toHaveBeenCalledTimes(2);
   });
 
   it("keeps flood zones as distinct sources", () => {

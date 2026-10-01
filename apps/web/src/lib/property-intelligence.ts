@@ -1,4 +1,6 @@
+import { createHash } from "node:crypto";
 import { and, asc, desc, eq, inArray, lt, lte, sql } from "drizzle-orm";
+import { z } from "zod";
 import {
   auditEvents,
   backgroundJobs,
@@ -11,12 +13,14 @@ import {
 } from "@surveynt/db";
 import {
   epcProvider,
+  addressCandidateSchema,
   locationFingerprint,
   planningDataProvider,
   propertyLocationSchema,
   searchNominatim,
   searchPostcode,
   sourceRegistry,
+  validateProviderResult,
   type AddressCandidate,
   type PropertyLocation,
   type ProviderResult,
@@ -25,7 +29,32 @@ import {
 const intelligenceJobType = "property_intelligence_refresh";
 const maximumAttempts = 5;
 
-export async function searchAddresses(query: string) {
+async function redisCommand(command: Array<string | number>) {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  try {
+    const response = await fetch(url, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(command) });
+    if (!response.ok) return null;
+    return (await response.json() as { result?: unknown }).result ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function searchAddresses(query: string, organisationId: string) {
+  const normalisedQuery = query.trim().toLowerCase().replace(/\s+/g, " ");
+  const cacheHash = createHash("sha256").update(`${organisationId}:${normalisedQuery}`).digest("hex");
+  const cacheKey = `property-data:address-search:${cacheHash}`;
+  const cached = await redisCommand(["GET", cacheKey]);
+  if (typeof cached === "string") {
+    try {
+      const parsed = z.array(addressCandidateSchema).safeParse(JSON.parse(cached));
+      if (parsed.success) return parsed.data;
+    } catch {
+      // A corrupt or outdated cache value is ignored and replaced below.
+    }
+  }
   const nominatimBaseUrl = process.env.NOMINATIM_BASE_URL;
   const publicNominatim = nominatimBaseUrl?.includes("nominatim.openstreetmap.org") ?? false;
   let nominatimAllowed = Boolean(nominatimBaseUrl && process.env.NOMINATIM_USER_AGENT);
@@ -39,23 +68,20 @@ export async function searchAddresses(query: string) {
     ...(nominatim.status === "fulfilled" ? nominatim.value : []),
   ];
   const seen = new Set<string>();
-  return candidates.filter((candidate) => {
+  const results = candidates.filter((candidate) => {
     const key = `${candidate.providerKey}:${candidate.sourceRecordId}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   }).slice(0, 10);
+  const ttl = Math.max(60, Math.min(Number(process.env.ADDRESS_SEARCH_CACHE_TTL_SECONDS ?? 86_400), 604_800));
+  await redisCommand(["SET", cacheKey, JSON.stringify(results), "EX", Number.isFinite(ttl) ? ttl : 86_400]);
+  return results;
 }
 
 async function acquireProviderSlot(provider: string, seconds: number) {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return false;
-  const key = encodeURIComponent(`property-data:rate:${provider}`);
-  const response = await fetch(`${url}/set/${key}/${Date.now()}?NX=true&EX=${seconds}`, { headers: { Authorization: `Bearer ${token}` } });
-  if (!response.ok) return false;
-  const payload = await response.json() as { result?: string | null };
-  return payload.result === "OK";
+  const result = await redisCommand(["SET", `property-data:rate:${provider}`, Date.now(), "NX", "EX", seconds]);
+  return result === "OK";
 }
 
 export async function findNearbyUprns(latitude: number, longitude: number, limit = 8) {
@@ -172,7 +198,7 @@ async function runProviders(db: ReturnType<typeof createDatabase>, location: Pro
     ];
     return await Promise.all(providers.map(async (provider) => {
       try {
-        return await provider.run();
+        return validateProviderResult(await provider.run());
       } catch {
         const source = sourceRegistry.find((entry) => entry.key === provider.source);
         return {

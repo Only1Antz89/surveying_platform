@@ -16,6 +16,7 @@
     "db:migrate": "drizzle-kit migrate",
     "check:property-data-capabilities": "tsx scripts/check-property-data-capabilities.ts",
     "import:property-data": "tsx scripts/import-property-data.ts",
+    "activate:property-data": "tsx scripts/activate-property-data.ts",
     "rollback:property-data": "tsx scripts/rollback-property-data.ts"
   },
   "dependencies": {

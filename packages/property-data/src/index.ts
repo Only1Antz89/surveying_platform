@@ -49,40 +49,98 @@ export type ProviderResult = {
   safeError?: string | null;
 };
 
+const evidenceLinkSchema = z.object({ label: z.string().min(1), url: z.url() });
+const normalisedRecordSchema = z.object({
+  sourceRecordId: z.string().min(1),
+  title: z.string().min(1),
+  summary: z.string(),
+  data: z.record(z.string(), z.unknown()),
+  geometry: z.object({ type: z.string(), coordinates: z.unknown() }).nullable().optional(),
+  evidence: z.array(evidenceLinkSchema),
+  sourceUpdatedAt: z.string().nullable().optional(),
+});
+
+export const providerResultSchema = z.object({
+  source: z.string().min(1),
+  category: z.string().min(1),
+  status: z.enum(providerStatuses),
+  records: z.array(normalisedRecordSchema),
+  matchMethod: z.string().min(1),
+  confidence: z.number().min(0).max(1),
+  coverage: z.enum(coverageStatuses),
+  informationClass: z.enum(informationClasses),
+  licence: z.string().min(1),
+  attribution: z.string().min(1),
+  retrievedAt: z.iso.datetime(),
+  expiresAt: z.string().nullable().optional(),
+  datasetVersion: z.string().nullable().optional(),
+  safeError: z.string().nullable().optional(),
+});
+
+export function validateProviderResult(input: unknown): ProviderResult {
+  return providerResultSchema.parse(input) as ProviderResult;
+}
+
 export interface PropertyDataProvider {
   key: string;
   supports(country: PropertyCountry): boolean;
   fetch(location: PropertyLocation, signal: AbortSignal): Promise<ProviderResult>;
 }
 
-export type AddressCandidate = {
-  providerKey: string;
-  sourceRecordId: string;
-  displayLabel: string;
-  line1: string;
-  line2: string | null;
-  city: string;
-  postcode: string;
-  country: PropertyCountry;
-  latitude: number;
-  longitude: number;
-  precision: "address" | "street" | "postcode" | "place";
-  attribution: string;
-};
+export const addressCandidateSchema = z.object({
+  providerKey: z.string().min(1).max(50),
+  sourceRecordId: z.string().min(1).max(100),
+  displayLabel: z.string().min(1).max(500),
+  line1: z.string().max(180),
+  line2: z.string().max(180).nullable(),
+  city: z.string().max(100),
+  postcode: z.string().max(10),
+  country: z.enum(propertyCountries),
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  precision: z.enum(["address", "street", "postcode", "place"]),
+  attribution: z.string().min(1).max(300),
+});
+
+export type AddressCandidate = z.infer<typeof addressCandidateSchema>;
 
 const postcodePattern = /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i;
 const fetchTimeoutMs = 8_000;
 
-async function fetchJson(url: URL, init: RequestInit = {}) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), fetchTimeoutMs);
-  try {
-    const response = await fetch(url, { ...init, signal: init.signal ?? controller.signal });
-    if (!response.ok) throw new Error(`Provider returned ${response.status}`);
-    return await response.json() as unknown;
-  } finally {
-    clearTimeout(timeout);
+export class ProviderHttpError extends Error {
+  constructor(public readonly status: number) {
+    super(`Provider returned ${status}`);
+    this.name = "ProviderHttpError";
   }
+}
+
+export function retryClassification(error: unknown): "transient" | "permanent" {
+  if (error instanceof ProviderHttpError) return error.status === 408 || error.status === 425 || error.status === 429 || error.status >= 500 ? "transient" : "permanent";
+  if (error instanceof DOMException && error.name === "AbortError") return "transient";
+  if (error instanceof TypeError) return "transient";
+  return "permanent";
+}
+
+async function fetchJson(url: URL, init: RequestInit = {}) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const controller = new AbortController();
+    const forwardAbort = () => controller.abort(init.signal?.reason);
+    if (init.signal?.aborted) forwardAbort();
+    else init.signal?.addEventListener("abort", forwardAbort, { once: true });
+    const timeout = setTimeout(() => controller.abort(), fetchTimeoutMs);
+    try {
+      const response = await fetch(url, { ...init, signal: controller.signal });
+      if (!response.ok) throw new ProviderHttpError(response.status);
+      return await response.json() as unknown;
+    } catch (error) {
+      if (attempt === 1 || init.signal?.aborted || retryClassification(error) === "permanent") throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    } finally {
+      clearTimeout(timeout);
+      init.signal?.removeEventListener("abort", forwardAbort);
+    }
+  }
+  throw new Error("Provider request failed.");
 }
 
 export async function searchPostcode(query: string): Promise<AddressCandidate[]> {
@@ -149,6 +207,10 @@ export async function searchNominatim(query: string, configuration: { baseUrl?: 
 
 export function locationFingerprint(location: Pick<PropertyLocation, "country" | "uprn" | "latitude" | "longitude" | "propertyVersion">) {
   return [location.country, location.uprn ?? "", location.latitude.toFixed(7), location.longitude.toFixed(7), location.propertyVersion].join(":");
+}
+
+export function providerCacheKey(source: string, location: Pick<PropertyLocation, "country" | "uprn" | "latitude" | "longitude" | "propertyVersion">, datasetVersion = "live") {
+  return ["property-data", source, datasetVersion, locationFingerprint(location)].join(":");
 }
 
 export const sourceRegistry = [

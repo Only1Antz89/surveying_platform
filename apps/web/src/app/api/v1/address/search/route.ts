@@ -11,7 +11,7 @@ export async function GET(request: Request) {
   const parsed = querySchema.safeParse(new URL(request.url).searchParams.get("q") ?? "");
   if (!parsed.success) return problem(400, "invalid_query", "Enter between 3 and 200 characters.");
   try {
-    const candidates = await searchAddresses(parsed.data);
+    const candidates = await searchAddresses(parsed.data, context.organisationId);
     return ok(candidates, { explicitSubmitOnly: true, completeCoverage: false });
   } catch {
     return problem(503, "address_provider_unavailable", "Address search is temporarily unavailable. You can still enter the property manually.");
