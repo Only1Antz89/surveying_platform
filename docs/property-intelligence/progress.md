@@ -13,6 +13,7 @@
 - [x] Read-only target Neon audit: PostGIS 3.6.4 is available and application/admin roles are separate
 - [x] Apply PostGIS migration to the authorised non-production Neon database
 - [x] Recheck application-role spatial functions, reference-table write denial and tenant RLS after migration
+- [x] Verify metre-distance candidates, inside/outside/boundary intersections and BNG-to-WGS84 transformation in PostGIS
 - [ ] Import and validate national datasets
 - [ ] Live-test EPC after credentials/licence acceptance
 - [ ] Configure production geocoder and basemap providers

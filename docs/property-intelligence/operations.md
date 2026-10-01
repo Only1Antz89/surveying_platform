@@ -15,6 +15,8 @@ Run the read-only database gate first with `pnpm --filter @surveynt/db check:pro
 
 The 1 October 2026 non-production migration installed PostGIS 3.6.4 on PostgreSQL 18.6. The post-migration audit confirmed separate application and administrator roles, application-role spatial-function access, readable source metadata, denied reference-table writes, tenant isolation against a guessed organisation ID, all required RLS policies, and the immutable-snapshot trigger. Run `pnpm --filter @surveynt/db verify:property-data-security` after future permission or migration changes.
 
+Run `pnpm --filter @surveynt/db verify:property-data-spatial` after PostGIS or spatial-index changes. It uses temporary versioned fixtures to check metre-based nearby-UPRN ambiguity, inside/outside/boundary intersections and EPSG:27700 to EPSG:4326 transformation, then verifies complete fixture removal.
+
 1. Obtain the official release and record its licence, publication date and source URL.
 2. Convert source data to UTF-8 CSV. OS Open UPRN headers must include `uprn,latitude,longitude`; other layers require `source_record_id,wkt` with optional `name,properties_json`. Declare either `--source-crs EPSG:4326` or `--source-crs EPSG:27700`; unsupported or omitted CRS values are rejected and BNG geometries are transformed to WGS84 during staging.
 3. Run `pnpm --filter @surveynt/db import:property-data -- --source ... --version ... --file ... --source-url ... --source-crs ... --neon-storage-usd-per-gb-month ... --dry-run true`.
