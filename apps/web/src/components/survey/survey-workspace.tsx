@@ -11,6 +11,7 @@ import { AssistantPanel } from "./assistant-panel";
 import { CompletionPanel } from "./completion-panel";
 import { DocumentsPanel } from "./documents-panel";
 import { ReportPanel } from "./report-panel";
+import { SharedCasesPanel } from "./shared-cases-panel";
 
 const elementKey = (section: string, element: string, location = "") => `${section}.${element}.${location}`;
 
@@ -208,6 +209,7 @@ export function SurveyWorkspace({ surveyId, canEdit, canJudge }: { surveyId: str
       <DocumentsPanel surveyId={surveyId} pack={pack} canEdit={canEdit && pack.survey.status === "in_progress"} online={online} demo={demo} onChanged={fetchPack} />
       <AssistantPanel surveyId={surveyId} pack={pack} canEdit={canEdit && pack.survey.status === "in_progress"} canJudge={canJudge} online={online} onChanged={fetchPack} />
       <ReportPanel surveyId={surveyId} canEdit={canEdit} canJudge={canJudge} online={online} demo={demo} onChanged={fetchPack} />
+      <SharedCasesPanel pack={pack} sectionKey={activeSection.key} online={online} />
     </aside>
     <div className="survey-main">
     <nav className="workspace-tabs survey-sections" role="tablist" aria-label="Survey sections">

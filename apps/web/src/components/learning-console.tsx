@@ -65,6 +65,18 @@ export function LearningConsole({ initial, role, demo }: { initial: Console | nu
     void send(`/api/platform/learning/candidates/${item.id}/privacy`, "POST", { decision, checks: values.getAll("checks").map(String), note: String(values.get("note") ?? "").trim() || null }, decision === "approved" ? "Approved for surveying review." : "Rejected; the case will not be used.");
   }
 
+  function review(candidateId: string, decision: "approved" | "rejected", form: HTMLFormElement) {
+    const values = new FormData(form);
+    const text = (name: string) => String(values.get(name) ?? "").trim();
+    const lines = (name: string) => text(name).split("\n").map((line) => line.trim()).filter(Boolean);
+    const reviewedCase = {
+      observedFeature: text("observedFeature"), possibleCauses: lines("possibleCauses"), confirmedCause: text("confirmedCause") || null, confirmationBasis: text("confirmationBasis") || null,
+      surveyorJudgement: text("surveyorJudgement"), ratingExample: text("ratingExample") || null, nextSteps: lines("nextSteps"), limitations: text("limitations") || null, uncertainty: text("uncertainty"),
+      evidenceStrength: text("evidenceStrength"), knowledgeReviewDue: text("knowledgeReviewDue"), ratingDisagreement: values.get("ratingDisagreement") === "on", noDefect: values.get("noDefect") === "on",
+    };
+    void send(`/api/platform/learning/candidates/${candidateId}/technical`, "POST", { decision, reviewed: decision === "approved" ? reviewedCase : null, note: text("note") || null }, decision === "approved" ? "Case approved for the next release." : "Case rejected.");
+  }
+
   if (demo || !data) return <div className="ai-governance">
     <p className="address-demo-label">Demo workspace: no platform data is loaded and nothing is saved. Shared learning is off.</p>
     <section className="panel"><div className="panel-header"><div><h2>Programme</h2><p>Off until the platform flag is set, a policy with a privacy assessment and release criteria is published, and firms grant scopes individually.</p></div></div></section>
@@ -115,6 +127,55 @@ export function LearningConsole({ initial, role, demo }: { initial: Console | nu
           <div className="row-actions"><button type="button" className="button button-secondary" disabled={busy} onClick={(event) => decide(item, "approved", event.currentTarget.form!)}>Approve</button><button type="button" className="button button-quiet danger" disabled={busy} onClick={(event) => decide(item, "rejected", event.currentTarget.form!)}>Reject</button></div>
         </form> : null}
       </li>)}</ul> : <p className="form-help assistant-empty">Nothing awaits privacy review.</p>}
+    </section>
+
+    <section className="panel">
+      <div className="panel-header"><div><h2>Surveying review</h2><p>Write the generalised case that would be shared. Keep what was seen, what might explain it, the judgement and any confirmed outcome separate. A client&apos;s account of a repair is not confirmation.</p></div></div>
+      {data.technicalQueue === null ? <p className="form-help assistant-empty">The learning service is not configured.</p> : data.technicalQueue.length ? <ul className="ai-list">{data.technicalQueue.map((item) => <li key={item.id}>
+        <div className="wording-head"><strong>{item.elementRef}</strong><StatusDot tone="amber">Awaiting surveying review</StatusDot><span className="cell-sub">contributor {item.contributor}</span></div>
+        <SanitisedPreview value={item.sanitised as SanitisedCase | null} />
+        {role === "technical_reviewer" ? <form className="form-section" onSubmit={(event) => event.preventDefault()}>
+          <div className="form-grid">
+            <div className="field full"><label htmlFor={`feature-${item.id}`}>Observed feature (generalised)</label><textarea id={`feature-${item.id}`} name="observedFeature" className="textarea" rows={2} maxLength={2000} defaultValue={(item.sanitised as SanitisedCase | null)?.text.surveyorObservations.join(" ") ?? ""} /></div>
+            <div className="field full"><label htmlFor={`causes-${item.id}`}>Possible causes (one per line, not confirmed)</label><textarea id={`causes-${item.id}`} name="possibleCauses" className="textarea" rows={2} /></div>
+            <div className="field"><label htmlFor={`confirmed-${item.id}`}>Confirmed cause (only if followed up)</label><input id={`confirmed-${item.id}`} name="confirmedCause" className="input" maxLength={500} /></div>
+            <div className="field"><label htmlFor={`basis-${item.id}`}>Confirmed by</label><select id={`basis-${item.id}`} name="confirmationBasis" className="select" defaultValue=""><option value="">Not confirmed</option><option value="follow_up_inspection">Follow-up inspection</option><option value="specialist_report">Specialist report</option></select></div>
+            <div className="field full"><label htmlFor={`judgement-${item.id}`}>Surveyor judgement and reasoning</label><textarea id={`judgement-${item.id}`} name="surveyorJudgement" className="textarea" rows={2} maxLength={2000} /></div>
+            <div className="field"><label htmlFor={`rating-${item.id}`}>Example rating</label><select id={`rating-${item.id}`} name="ratingExample" className="select" defaultValue={(item.sanitised as SanitisedCase | null)?.conditionRating ?? ""}><option value="">None</option><option>1</option><option>2</option><option>3</option><option>NI</option></select></div>
+            <div className="field"><label htmlFor={`uncertainty-${item.id}`}>Uncertainty</label><select id={`uncertainty-${item.id}`} name="uncertainty" className="select" defaultValue="medium"><option>low</option><option>medium</option><option>high</option></select></div>
+            <div className="field full"><label htmlFor={`steps-${item.id}`}>Next steps (one per line)</label><textarea id={`steps-${item.id}`} name="nextSteps" className="textarea" rows={2} /></div>
+            <div className="field full"><label htmlFor={`limits-${item.id}`}>Limitations</label><input id={`limits-${item.id}`} name="limitations" className="input" maxLength={1000} /></div>
+            <div className="field"><label htmlFor={`evidence-${item.id}`}>Evidence</label><select id={`evidence-${item.id}`} name="evidenceStrength" className="select" defaultValue="observed"><option value="observed">Observed</option><option value="observed_with_photo">Observed with photo</option><option value="reported_only">Reported only</option></select></div>
+            <div className="field"><label htmlFor={`due-${item.id}`}>Review knowledge by</label><input id={`due-${item.id}`} name="knowledgeReviewDue" type="date" className="input" /></div>
+            <label className="check-field"><input type="checkbox" name="ratingDisagreement" />I would rate this differently from the original surveyor</label>
+            <label className="check-field"><input type="checkbox" name="noDefect" />No defect (an ordinary-condition example)</label>
+            <div className="field full"><label htmlFor={`tnote-${item.id}`}>Note (required to reject)</label><input id={`tnote-${item.id}`} name="note" className="input" maxLength={2000} /></div>
+          </div>
+          <div className="row-actions"><button type="button" className="button button-secondary" disabled={busy} onClick={(event) => review(item.id, "approved", event.currentTarget.form!)}>Approve case</button><button type="button" className="button button-quiet danger" disabled={busy} onClick={(event) => review(item.id, "rejected", event.currentTarget.form!)}>Reject</button></div>
+        </form> : null}
+      </li>)}</ul> : <p className="form-help assistant-empty">Nothing awaits surveying review.</p>}
+    </section>
+
+    <section className="panel">
+      <div className="panel-header"><div><h2>Releases</h2><p>A release carries the whole reviewed corpus. It needs a privacy sign-off and a release manager&apos;s approval by different people; one release is active at a time.</p></div>{role === "release_manager" && data.releases?.some((item) => item.status === "active") ? <button type="button" className="button button-quiet danger" disabled={busy} onClick={() => { const reason = window.prompt("Why roll back the active release?"); if (reason?.trim()) void send("/api/platform/learning/releases/rollback", "POST", { reason }, "Rolled back."); }}>Roll back</button> : null}</div>
+      {data.releases === null ? <p className="form-help assistant-empty">The learning service is not configured.</p> : data.releases.length ? <ul className="ai-list">{data.releases.map((release) => {
+        const manifest = release.manifest as { caseCount?: number; contributorCount?: number; maxEffectiveShare?: number; unsupportedSegments?: string[]; duplicatesRemoved?: number };
+        return <li key={release.id}>
+          <div className="wording-head"><strong>Release {release.version}</strong><StatusDot tone={release.status === "active" ? "green" : release.status === "draft" || release.status === "approved" ? "amber" : "slate"}>{release.status.replace("_", " ")}</StatusDot><span className="cell-sub">policy {release.policyVersion}{release.privacySignedOff ? " · privacy signed off" : ""}</span></div>
+          <span className="cell-sub">{manifest.caseCount ?? 0} cases from {manifest.contributorCount ?? 0} contributors · largest effective share {Math.round((manifest.maxEffectiveShare ?? 0) * 100)}% · {manifest.duplicatesRemoved ?? 0} duplicates removed</span>
+          {manifest.unsupportedSegments?.length ? <span className="cell-sub">Not covered: {manifest.unsupportedSegments.join(", ")}</span> : null}
+          {release.problems.length ? <ul className="learning-problems">{release.problems.map((problem) => <li key={problem}>{problem}</li>)}</ul> : null}
+          <div className="row-actions">
+            {release.status === "draft" && role === "privacy_reviewer" && !release.privacySignedOff ? <button type="button" className="button button-secondary" disabled={busy} onClick={() => { const note = window.prompt("What did you check, including linkage across earlier releases?"); if (note?.trim()) void send(`/api/platform/learning/releases/${release.id}/privacy`, "POST", { note }, "Release signed off."); }}>Privacy sign-off</button> : null}
+            {release.status === "draft" && role === "release_manager" ? <button type="button" className="button button-secondary" disabled={busy || !release.privacySignedOff} onClick={() => void send(`/api/platform/learning/releases/${release.id}/approve`, "POST", {}, "Release approved.")}>Approve</button> : null}
+            {(release.status === "approved" || release.status === "superseded") && role === "release_manager" ? <button type="button" className="button button-primary" disabled={busy} onClick={() => void send(`/api/platform/learning/releases/${release.id}/activate`, "POST", {}, "Release activated.")}>Activate</button> : null}
+          </div>
+        </li>;
+      })}</ul> : <p className="form-help assistant-empty">No releases.</p>}
+      {role === "release_manager" ? <form className="form-section" onSubmit={(event) => { event.preventDefault(); const form = event.currentTarget; void send("/api/platform/learning/releases", "POST", { version: String(new FormData(form).get("version") ?? "").trim() }, "Draft release prepared.").then((done) => { if (done) form.reset(); }); }}>
+        <div className="form-grid"><div className="field"><label htmlFor="release-version">New release version</label><input id="release-version" name="version" className="input" required pattern="[A-Za-z0-9][A-Za-z0-9._-]{1,30}" /></div></div>
+        <div className="form-actions"><button className="button button-secondary" disabled={busy}>Prepare draft</button></div>
+      </form> : null}
     </section>
   </div>;
 }

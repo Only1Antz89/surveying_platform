@@ -3,7 +3,7 @@ import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { applyRarityCheck, currentGrant, evaluateEligibility, extractCandidates, quasiIdentifierKey, sanitiseCandidate, type KnownIdentifiers } from "@surveynt/learning";
 import {
   clientContacts, clients, createDatabase, evidenceLinks, jobs, learningAuditLog, learningCandidates, learningContributionGrants, learningContributors, learningReviews,
-  learningSanitisationRuns, learningWithdrawalRequests, organisationMemberships, organisations, properties, reportApprovals, reportVersions, surveys, users, withTenant, type Database,
+  learningReleaseItems, learningSanitisationRuns, learningWithdrawalRequests, organisationMemberships, sharedCases, organisations, properties, reportApprovals, reportVersions, surveys, users, withTenant, type Database,
 } from "@surveynt/db";
 import { loadProgramme } from "./learning";
 import { readSurveyPack } from "./surveys";
@@ -148,7 +148,7 @@ export async function processWithdrawal(organisationId: string, requestId: strin
       if (request.jobId) conditions.push(eq(learningCandidates.jobId, request.jobId));
       const ids = (await ltx.select({ id: learningCandidates.id }).from(learningCandidates).where(and(...conditions))).map((row) => row.id);
       if (ids.length) {
-        result.sharedCasesRemoved = await removeSharedCases();
+        result.sharedCasesRemoved = await removeSharedCases(ltx, ids);
         await ltx.delete(learningSanitisationRuns).where(inArray(learningSanitisationRuns.candidateId, ids));
         await ltx.delete(learningReviews).where(inArray(learningReviews.candidateId, ids));
         await ltx.update(learningCandidates).set({ status: "withdrawn", content: {}, statusReason: "Withdrawn by the contributing firm.", updatedAt: new Date() }).where(inArray(learningCandidates.id, ids));
@@ -164,9 +164,18 @@ export async function processWithdrawal(organisationId: string, requestId: strin
   return { status: "completed", ...result, message };
 }
 
-/** Released copies of withdrawn candidates. There are none until shared releases exist (L2). */
-async function removeSharedCases() {
-  return 0;
+/** Removes released copies of these candidates from every release and marks the release items withdrawn. */
+async function removeSharedCases(tx: Pick<Database, "select" | "update" | "delete" | "execute">, candidateIds: string[]) {
+  const items = await tx.select({ sharedCaseId: learningReleaseItems.sharedCaseId, releaseId: learningReleaseItems.releaseId }).from(learningReleaseItems)
+    .where(and(inArray(learningReleaseItems.candidateId, candidateIds), eq(learningReleaseItems.status, "included")));
+  if (!items.length) return 0;
+  const shared = items.map((item) => item.sharedCaseId);
+  const deleted = await tx.delete(sharedCases).where(inArray(sharedCases.id, shared)).returning({ id: sharedCases.id });
+  await tx.update(learningReleaseItems).set({ status: "withdrawn", statusReason: "Withdrawn by the contributing firm." }).where(inArray(learningReleaseItems.sharedCaseId, shared));
+  for (const releaseId of new Set(items.map((item) => item.releaseId))) {
+    await tx.execute(sql`update learning_shared.releases set case_count = (select count(*) from learning_shared.cases c where c.release_id = ${releaseId}) where id = ${releaseId}`);
+  }
+  return deleted.length;
 }
 
 /** Daily sweep: withdrawals are always processed; extraction only while the programme is active. */

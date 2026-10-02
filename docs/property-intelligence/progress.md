@@ -290,6 +290,25 @@ Acceptance (L1 gate: "identifier/linkage tests, access isolation and rejection p
 
 Blockers: legal and DPO review of the policy and privacy assessment; release criteria from qualified reviewers; a learning login role and secrets; reviewers appointed. The ICO pages could not be read from this environment.
 
+### L2 — Technical review, releases and shared retrieval
+
+| Item | Code | Configured | Imported | Live |
+|---|---|---|---|---|
+| Migrations 0031–0032: restricted `releases` (immutable once approved; approval needs a privacy sign-off by a different person) and `release_items` (lineage, status only changes); `learning_shared` schema with `releases` and `cases` (no lineage columns, never updated, full-text index); the tenant role reads only the active release through row-level security | ✅ | ❌ not applied | — | — |
+| Technical review: technical reviewers only, never the case's privacy reviewer; observed feature, possible causes, confirmed cause (follow-up or specialist report only), judgement, example rating, next steps, uncertainty and evidence strength kept separate; reviewer text re-scanned for identifiers | ✅ | — | — | — |
+| Curation and release: whole reviewed corpus per release, duplicates removed per property and element, dominant contributors down-weighted to the criteria's cap, coverage and unsupported segments in the manifest, rights re-checked at drafting and approval, withdrawals honoured until activation | ✅ | ❌ no criteria set by reviewers | — | — |
+| Activation and rollback: one active release, atomic publish to the shared schema, rollback restores the previous release | ✅ | — | — | — |
+| Shared retrieval `GET /api/v1/shared-cases`: same corpus for every assistant-enabled firm; labelled as reviewed examples that do not describe this property; survey workspace "Reviewed examples" panel | ✅ | ❌ no release exists | — | — |
+| Seed corpus | — | ❌ not commissioned ([`seed-corpus.md`](../shared-learning/seed-corpus.md)) | ❌ | — |
+
+Acceptance (L2 gate: "expert review and privacy approval required; identical baseline corpus available to small and large firms"):
+
+- A case reaches shared retrieval only after privacy review, technical review by a different person, privacy sign-off of the release and approval by a release manager who is not the signer (integration-tested).
+- A firm that contributes nothing reads exactly the same cases as a contributing firm. The shared schema has no lineage columns. The tenant role cannot write it or read restricted staging (integration-tested).
+- Withdrawal between drafting and approval blocks approval until processed. Withdrawal after release removes the firm's cases from every release (integration-tested).
+- Rollback restores the previous release. Inactive releases are invisible to the tenant role (integration-tested).
+- Expert review itself is a human step. No qualified reviewers are appointed and no real case has been reviewed.
+
 ## Validation log
 
 | Date | Command | Result |
@@ -335,3 +354,6 @@ Blockers: legal and DPO review of the policy and privacy assessment; release cri
 | 2026-10-02 | `pnpm check` (L0–L1) | ✅ lint, typecheck, 138 unit tests (15 new learning tests: programme and eligibility gates, sanitiser identifiers and dates, minimal extraction, generalisation, rarity quarantine, review schemas, curation weights, evaluation splits, training gate, EXIF and GPS stripping), build |
 | 2026-10-02 | `pnpm test:integration` (L0–L1, all suites) | ✅ 87 tests (db 3, property-data 28, web 56), including 6 new shared-learning tests. The first run failed 4 unrelated web tests with "remaining connection slots are reserved": with 11 files in parallel the local server's 100 connections ran out. Web integration files now run one at a time (`--no-file-parallelism`) |
 | 2026-10-02 | Playwright L0–L1 smoke (demo mode, production build) | ✅ Settings → Shared learning (inactive banner listing reasons, four scopes off, no grant or withdrawal controls in demo), settings navigation link, platform Shared learning page and navigation entry, demo grant API refused with `programme_inactive`, no overflow at 390 px. The only console error was that deliberate 409 |
+| 2026-10-02 | `pnpm check` (L2) | ✅ lint, typecheck, 138 unit tests, build |
+| 2026-10-02 | `pnpm test:integration` (L2, all suites) | ✅ 92 tests (db 3, property-data 28, web 61), including 5 new release tests: separation of duties and identifier re-scan in technical review; balanced draft with duplicates removed and contributor cap; approval blocked by a pending withdrawal and by a missing or same-person privacy sign-off; identical corpus for contributing and non-contributing firms with no lineage columns; release replacement and rollback; withdrawal removing released cases from every release |
+| 2026-10-02 | Playwright L2 smoke (demo mode, production build) | ✅ survey workspace "Reviewed examples" panel searches and reports "Shared learning is not active on Surveynt"; platform console renders; no console errors from the survey page; no overflow at 390 px |

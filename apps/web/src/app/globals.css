@@ -532,6 +532,7 @@ fieldset.field legend { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
 .learning-preview { display: grid; gap: 6px; padding: 10px 12px; border-radius: 8px; background: var(--surface-2); font-size: 12px; }
 .learning-preview p { margin: 2px 0 0; }
 .learning-json { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.learning-problems { margin: 4px 0 0; padding-left: 18px; color: var(--red, #b91c1c); font-size: 12px; }
 .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-2); font-size: 11px; color: var(--muted); }
 .metric-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 12px 20px; }

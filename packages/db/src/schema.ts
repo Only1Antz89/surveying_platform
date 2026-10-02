@@ -1261,3 +1261,90 @@ export const learningAuditLog = learningRestricted.table("audit_log", {
   metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index("learning_audit_log_created_idx").on(table.createdAt)]);
+
+// Releases (L2). The restricted side keeps the manifest and the lineage from
+// each released case back to its candidate (for withdrawal). The shared side
+// holds only the generalised, reviewed case and its release; no lineage.
+
+export const learningReleases = learningRestricted.table("releases", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  version: text("version").notNull().unique(),
+  status: text("status").notNull().default("draft"),
+  policyVersion: text("policy_version").notNull(),
+  manifest: jsonb("manifest").$type<Record<string, unknown>>().notNull(),
+  problems: jsonb("problems").$type<string[]>().notNull().default([]),
+  createdByStaffId: uuid("created_by_staff_id").notNull(),
+  privacySignoffStaffId: uuid("privacy_signoff_staff_id"),
+  privacySignoffAt: timestamp("privacy_signoff_at", { withTimezone: true }),
+  privacyNote: text("privacy_note"),
+  approvedByStaffId: uuid("approved_by_staff_id"),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  activatedByStaffId: uuid("activated_by_staff_id"),
+  activatedAt: timestamp("activated_at", { withTimezone: true }),
+  ...timestamps,
+}, () => [
+  check("learning_releases_status_chk", sql`status in ('draft', 'approved', 'active', 'superseded', 'rolled_back', 'retired')`),
+  check("learning_releases_approval_chk", sql`status = 'draft' or (privacy_signoff_staff_id is not null and approved_by_staff_id is not null and approved_by_staff_id <> privacy_signoff_staff_id)`),
+]);
+
+export const learningReleaseItems = learningRestricted.table("release_items", {
+  releaseId: uuid("release_id").notNull().references(() => learningReleases.id, { onDelete: "restrict" }),
+  candidateId: uuid("candidate_id").notNull().references(() => learningCandidates.id, { onDelete: "restrict" }),
+  sharedCaseId: uuid("shared_case_id").notNull().unique().defaultRandom(),
+  weight: doublePrecision("weight").notNull(),
+  status: text("status").notNull().default("included"),
+  statusReason: text("status_reason"),
+}, (table) => [
+  primaryKey({ name: "learning_release_items_pk", columns: [table.releaseId, table.candidateId] }),
+  index("learning_release_items_candidate_idx").on(table.candidateId),
+  check("learning_release_items_status_chk", sql`status in ('included', 'withdrawn', 'retracted')`),
+  check("learning_release_items_weight_chk", sql`weight > 0 and weight <= 1`),
+]);
+
+export const learningShared = pgSchema("learning_shared");
+
+const tsvector = customType<{ data: string }>({ dataType: () => "tsvector" });
+
+export const sharedReleases = learningShared.table("releases", {
+  id: uuid("id").primaryKey(),
+  version: text("version").notNull().unique(),
+  status: text("status").notNull(),
+  caseCount: integer("case_count").notNull(),
+  coverage: jsonb("coverage").$type<Record<string, unknown>>().notNull().default({}),
+  activatedAt: timestamp("activated_at", { withTimezone: true }),
+}, () => [
+  check("shared_releases_status_chk", sql`status in ('active', 'inactive')`),
+]);
+
+export const sharedCases = learningShared.table("cases", {
+  id: uuid("id").primaryKey(),
+  releaseId: uuid("release_id").notNull().references(() => sharedReleases.id, { onDelete: "cascade" }),
+  jurisdiction: text("jurisdiction").notNull(),
+  serviceLevel: text("service_level").notNull(),
+  template: text("template").notNull(),
+  propertyType: text("property_type"),
+  builtForm: text("built_form"),
+  ageBand: text("age_band"),
+  elementKey: text("element_key").notNull(),
+  elementLabel: text("element_label").notNull(),
+  inspectionStatus: text("inspection_status"),
+  observedFeature: text("observed_feature").notNull(),
+  possibleCauses: text("possible_causes").array().notNull().default(sql`'{}'::text[]`),
+  confirmedCause: text("confirmed_cause"),
+  confirmationBasis: text("confirmation_basis"),
+  surveyorJudgement: text("surveyor_judgement").notNull(),
+  ratingExample: text("rating_example"),
+  nextSteps: text("next_steps").array().notNull().default(sql`'{}'::text[]`),
+  limitations: text("limitations"),
+  uncertainty: text("uncertainty").notNull(),
+  evidenceStrength: text("evidence_strength").notNull(),
+  knowledgeReviewDue: date("knowledge_review_due").notNull(),
+  ratingDisagreement: boolean("rating_disagreement").notNull(),
+  noDefect: boolean("no_defect").notNull(),
+  weight: doublePrecision("weight").notNull(),
+  searchText: text("search_text").notNull(),
+  search: tsvector("search").generatedAlwaysAs(sql`to_tsvector('english'::regconfig, search_text)`),
+}, (table) => [
+  index("shared_cases_release_element_idx").on(table.releaseId, table.elementKey, table.jurisdiction),
+  index("shared_cases_search_idx").using("gin", table.search),
+]);
