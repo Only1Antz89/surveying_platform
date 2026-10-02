@@ -62,4 +62,19 @@ describe("spatial GeoJSON preparation", () => {
     expect(prepared).toContain('designationType');
     await expect(prepareGeoJson({ output, sourceCrs: "EPSG:4326", inputs: [{ label: "listed_building", path: input }] })).rejects.toThrow(/already exists/);
   });
+
+  it("keeps multipart authoritative records unique using their stable feature identifier", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "surveynt-geojson-multipart-"));
+    temporaryDirectories.push(directory);
+    const input = join(directory, "input.geojson");
+    const output = join(directory, "output.csv");
+    await writeFile(input, JSON.stringify({ type: "FeatureCollection", features: [
+      { type: "Feature", properties: { ListEntry: "1495772", OBJECTID: 207 }, geometry: { type: "Point", coordinates: [-0.75, 52.04] } },
+      { type: "Feature", properties: { ListEntry: "1495772", OBJECTID: 208 }, geometry: { type: "Point", coordinates: [-0.76, 52.04] } },
+    ] }));
+    await prepareGeoJson({ output, sourceCrs: "EPSG:4326", inputs: [{ label: "certificate_of_immunity", path: input }] });
+    const prepared = await readFile(output, "utf8");
+    expect(prepared).toContain("certificate_of_immunity:1495772:207");
+    expect(prepared).toContain("certificate_of_immunity:1495772:208");
+  });
 });

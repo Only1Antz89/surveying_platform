@@ -130,9 +130,9 @@ Media originals, `media_analyses` and the other append-only tables can be delete
 
 ## Reconciliation with the England release
 
-`main` shipped an independent England property-intelligence release (migrations 0006–0008, applied to a non-production Neon database). When this branch merged, main's schema was kept as the base and this branch's work was rebuilt on top of it:
+`main` shipped an independent England property-intelligence release (migrations 0006–0009, applied to a non-production Neon database). When this branch merged, main's schema was kept as the base and this branch's work was rebuilt on top of it:
 
-- **Migrations.** Main's 0006–0008 are unchanged. This branch's schema arrives as one generated migration, `0009_surveynt_assistant_and_learning`. Its hand-written security migrations follow as 0010–0024, in their original order. Nothing in 0009–0024 drops, renames or retypes anything main created.
+- **Migrations.** Main's 0006–0009 are unchanged. This branch's schema arrives as one generated migration, `0010_surveynt_assistant_and_learning`. Its hand-written security migrations follow as 0011–0025, in their original order. Nothing in 0010–0025 drops, renames or retypes anything main created.
 - **Shared columns and tables.** `properties` identity columns, `enrichment_runs` and `property_intelligence_snapshots` are main's.
   - This branch adds columns: `uprn_confirmed_at`, `uprn_evidence_type`, `identity_address_fingerprint`, `input_fingerprint`, `error`, `message`, `licence` and `confidence_label`.
   - It appends enum values: `location_confidence`, `enrichment_status`, `information_class` and `coverage_status`.

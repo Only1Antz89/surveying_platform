@@ -42,11 +42,51 @@ async function redisCommand(command: Array<string | number>) {
   }
 }
 
+async function readAddressCache(cacheKey: string, organisationId: string) {
+  const cached = await redisCommand(["GET", cacheKey]);
+  if (typeof cached === "string") return cached;
+  if (!process.env.DATABASE_ADMIN_URL) return null;
+  try {
+    const db = createDatabase(process.env.DATABASE_ADMIN_URL);
+    const result = await db.execute(sql`
+      select candidates
+      from address_search_cache
+      where cache_key = ${cacheKey}
+        and organisation_id = ${organisationId}
+        and expires_at > now()
+      limit 1
+    `);
+    return result.rows[0]?.candidates ? JSON.stringify(result.rows[0].candidates) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeAddressCache(cacheKey: string, organisationId: string, candidates: AddressCandidate[], ttl: number) {
+  const stored = await redisCommand(["SET", cacheKey, JSON.stringify(candidates), "EX", ttl]);
+  if (stored === "OK" || !process.env.DATABASE_ADMIN_URL) return;
+  try {
+    const db = createDatabase(process.env.DATABASE_ADMIN_URL);
+    await db.execute(sql`
+      insert into address_search_cache (cache_key, organisation_id, candidates, expires_at)
+      values (${cacheKey}, ${organisationId}, ${JSON.stringify(candidates)}::jsonb, now() + (${ttl} * interval '1 second'))
+      on conflict (cache_key) do update
+      set organisation_id = excluded.organisation_id,
+          candidates = excluded.candidates,
+          expires_at = excluded.expires_at,
+          updated_at = now()
+    `);
+    await db.execute(sql`delete from address_search_cache where organisation_id = ${organisationId} and expires_at <= now()`);
+  } catch {
+    // Cache failures never prevent manual property entry or provider fallbacks.
+  }
+}
+
 export async function searchAddresses(query: string, organisationId: string) {
   const normalisedQuery = query.trim().toLowerCase().replace(/\s+/g, " ");
   const cacheHash = createHash("sha256").update(`${organisationId}:${normalisedQuery}`).digest("hex");
   const cacheKey = `property-data:address-search:${cacheHash}`;
-  const cached = await redisCommand(["GET", cacheKey]);
+  const cached = await readAddressCache(cacheKey, organisationId);
   if (typeof cached === "string") {
     try {
       const parsed = z.array(addressCandidateSchema).safeParse(JSON.parse(cached));
@@ -75,13 +115,28 @@ export async function searchAddresses(query: string, organisationId: string) {
     return true;
   }).slice(0, 10);
   const ttl = Math.max(60, Math.min(Number(process.env.ADDRESS_SEARCH_CACHE_TTL_SECONDS ?? 86_400), 604_800));
-  await redisCommand(["SET", cacheKey, JSON.stringify(results), "EX", Number.isFinite(ttl) ? ttl : 86_400]);
+  await writeAddressCache(cacheKey, organisationId, results, Number.isFinite(ttl) ? ttl : 86_400);
   return results;
 }
 
 async function acquireProviderSlot(provider: string, seconds: number) {
   const result = await redisCommand(["SET", `property-data:rate:${provider}`, Date.now(), "NX", "EX", seconds]);
-  return result === "OK";
+  if (result === "OK") return true;
+  if (!process.env.DATABASE_ADMIN_URL) return false;
+  try {
+    const db = createDatabase(process.env.DATABASE_ADMIN_URL);
+    const acquired = await db.execute(sql`
+      insert into address_provider_rate_limits (provider, allowed_after, updated_at)
+      values (${provider}, now() + (${seconds} * interval '1 second'), now())
+      on conflict (provider) do update
+      set allowed_after = excluded.allowed_after, updated_at = now()
+      where address_provider_rate_limits.allowed_after <= now()
+      returning provider
+    `);
+    return acquired.rows.length === 1;
+  } catch {
+    return false;
+  }
 }
 
 export async function findNearbyUprns(latitude: number, longitude: number, limit = 8) {

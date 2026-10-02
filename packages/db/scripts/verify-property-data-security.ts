@@ -7,11 +7,12 @@ async function main() {
   const application = createDatabase(process.env.DATABASE_APP_URL);
   const administrator = createDatabase(process.env.DATABASE_ADMIN_URL);
 
-  const [referenceRead, propertyRows, policies, triggerRows] = await Promise.all([
+  const [referenceRead, propertyRows, policies, triggerRows, rlsRows] = await Promise.all([
     application.execute(sql`select count(*)::int as count from data_sources`),
     administrator.execute(sql`select id, organisation_id from properties order by created_at asc limit 1`),
-    administrator.execute(sql`select tablename, policyname, cmd from pg_policies where schemaname = 'public' and tablename in ('enrichment_runs', 'property_intelligence_snapshots', 'data_sources', 'dataset_versions', 'dataset_syncs', 'os_uprn_points', 'spatial_reference_features') order by tablename, policyname`),
+    administrator.execute(sql`select tablename, policyname, cmd from pg_policies where schemaname = 'public' and tablename in ('address_search_cache', 'enrichment_runs', 'property_intelligence_snapshots', 'data_sources', 'dataset_versions', 'dataset_syncs', 'os_uprn_points', 'spatial_reference_features') order by tablename, policyname`),
     administrator.execute(sql`select tgname from pg_trigger where tgrelid = 'property_intelligence_snapshots'::regclass and not tgisinternal`),
+    administrator.execute(sql`select relname from pg_class where relname in ('address_search_cache', 'address_provider_rate_limits') and relrowsecurity = true`),
   ]);
 
   const sourceCount = Number((referenceRead.rows[0] as { count?: number } | undefined)?.count ?? 0);
@@ -86,6 +87,7 @@ async function main() {
 
   const policyNames = policies.rows.map((row) => String((row as { policyname?: string }).policyname));
   const requiredPolicies = [
+    "address_search_cache_tenant_policy",
     "enrichment_runs_tenant_policy",
     "property_intelligence_snapshots_tenant_policy",
     "data_sources_read_policy",
@@ -96,8 +98,10 @@ async function main() {
   ];
   const missingPolicies = requiredPolicies.filter((policy) => !policyNames.includes(policy));
   const immutableTriggerPresent = triggerRows.rows.some((row) => (row as { tgname?: string }).tgname === "property_intelligence_snapshots_immutable");
+  const geocoderTablesRlsProtected = rlsRows.rows.length === 2;
   if (missingPolicies.length) throw new Error(`Missing RLS policies: ${missingPolicies.join(", ")}`);
   if (!immutableTriggerPresent) throw new Error("The immutable snapshot trigger is missing.");
+  if (!geocoderTablesRlsProtected) throw new Error("The geocoder cache or global rate gate is missing RLS protection.");
   if (ownTenantPropertyVisible !== true || guessedTenantPropertyHidden !== true) throw new Error("Tenant property isolation verification failed.");
   if (ownTenantRunVisible !== null && (ownTenantRunVisible !== true || guessedTenantRunHidden !== true)) throw new Error("Tenant enrichment-run isolation verification failed.");
   if (fixtureCleanupVerified === false) throw new Error("Temporary security fixtures were not fully removed.");
@@ -112,6 +116,7 @@ async function main() {
     guessedTenantRunHidden,
     fixtureCleanupVerified,
     requiredPoliciesPresent: true,
+    geocoderTablesRlsProtected,
     immutableSnapshotTriggerPresent: true,
   }, null, 2));
 }

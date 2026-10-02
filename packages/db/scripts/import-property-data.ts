@@ -9,6 +9,8 @@ import { auditEvents, createDatabase, dataSources, datasetSyncs, datasetVersions
 type SourceCrs = "EPSG:4326" | "EPSG:27700";
 export type ImportArguments = { source: string; version: string; file: string; sourceUrl: string; sourceCrs: SourceCrs; expectedChecksum?: string; licenceConfirmed: boolean; neonStorageUsdPerGbMonth?: number; dryRun: boolean };
 const spatialSources = new Set(["historic_england", "hmlr_inspire", "ea_flood_zone_2", "ea_flood_zone_3"]);
+const maximumBatchRows = 100;
+const maximumBatchPayloadBytes = 1_500_000;
 
 export function parseArguments(values: string[]): ImportArguments {
   const options = new Map<string, string>();
@@ -116,10 +118,16 @@ export async function inspectImport(path: string, source: string, sourceCrs: Sou
   return { bytes: file.size, recordCount: count, invalidRows: invalid, validationErrors, headers, duplicateHeaders, missingColumns: missing, sourceCrs, estimatedTableBytes, projectedStorageUsdPerMonth: neonStorageUsdPerGbMonth === undefined ? null : Number(((estimatedTableBytes / 1024 ** 3) * neonStorageUsdPerGbMonth).toFixed(4)), requiresPostgis: true };
 }
 
-async function databaseCapacityReport(db: ReturnType<typeof createDatabase>, source: string, versionId: string, recordCount: number, neonStorageUsdPerGbMonth?: number) {
+async function relationSizes(db: ReturnType<typeof createDatabase>, relation: string) {
+  const result = await db.execute(sql`select pg_total_relation_size(${relation}::regclass) as total_bytes, pg_indexes_size(${relation}::regclass) as index_bytes`);
+  const row = result.rows[0] as { total_bytes?: string | number; index_bytes?: string | number } | undefined;
+  return { totalBytes: Number(row?.total_bytes ?? 0), indexBytes: Number(row?.index_bytes ?? 0) };
+}
+
+async function databaseCapacityReport(db: ReturnType<typeof createDatabase>, source: string, versionId: string, recordCount: number, baseline: { totalBytes: number; indexBytes: number }, neonStorageUsdPerGbMonth?: number) {
   const relation = source === "os_open_uprn" ? "os_uprn_points" : "spatial_reference_features";
   const [sizes, sample] = await Promise.all([
-    db.execute(sql`select pg_total_relation_size(${relation}::regclass) as total_bytes, pg_indexes_size(${relation}::regclass) as index_bytes`),
+    relationSizes(db, relation),
     source === "os_open_uprn"
       ? db.execute(sql`select ST_X(location) as longitude, ST_Y(location) as latitude from os_uprn_points where dataset_version_id = ${versionId} limit 1`)
       : db.execute(sql`select ST_X(ST_PointOnSurface(geometry)) as longitude, ST_Y(ST_PointOnSurface(geometry)) as latitude from spatial_reference_features where dataset_version_id = ${versionId} limit 1`),
@@ -131,10 +139,39 @@ async function databaseCapacityReport(db: ReturnType<typeof createDatabase>, sou
     else await db.execute(sql`select source_record_id from spatial_reference_features where dataset_version_id = ${versionId} and ST_Intersects(geometry, ST_SetSRID(ST_MakePoint(${Number(point.longitude)}, ${Number(point.latitude)}), 4326)) limit 100`);
   }
   const queryLatencyMs = Number((performance.now() - started).toFixed(2));
-  const row = sizes.rows[0] as { total_bytes?: string | number; index_bytes?: string | number } | undefined;
-  const totalBytes = Number(row?.total_bytes ?? 0);
-  const indexBytes = Number(row?.index_bytes ?? 0);
-  return { recordCount, relation, totalBytes, indexBytes, queryLatencyMs, projectedStorageUsdPerMonth: neonStorageUsdPerGbMonth === undefined ? null : Number(((totalBytes / 1024 ** 3) * neonStorageUsdPerGbMonth).toFixed(4)) };
+  const totalBytes = Math.max(0, sizes.totalBytes - baseline.totalBytes);
+  const indexBytes = Math.max(0, sizes.indexBytes - baseline.indexBytes);
+  return { recordCount, relation, totalBytes, indexBytes, relationTotalBytes: sizes.totalBytes, relationIndexBytes: sizes.indexBytes, queryLatencyMs, projectedStorageUsdPerMonth: neonStorageUsdPerGbMonth === undefined ? null : Number(((totalBytes / 1024 ** 3) * neonStorageUsdPerGbMonth).toFixed(4)) };
+}
+
+function safeDatabaseError(error: unknown) {
+  let current = error;
+  let fallback = "Import failed";
+  for (let depth = 0; depth < 5 && current && typeof current === "object"; depth += 1) {
+    const candidate = current as { message?: unknown; cause?: unknown };
+    if (typeof candidate.message === "string" && !candidate.message.startsWith("Failed query:")) fallback = candidate.message;
+    if (!candidate.cause || candidate.cause === current) break;
+    current = candidate.cause;
+  }
+  return fallback.slice(0, 500);
+}
+
+function retryableDatabaseError(error: unknown) {
+  return /(connection terminated|connection closed|econnreset|socket|fetch failed|timeout|57p01|57p02|57p03)/i.test(safeDatabaseError(error));
+}
+
+async function executeWithRetry<T>(operation: () => Promise<T>) {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (!retryableDatabaseError(error) || attempt === 5) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 250 * (2 ** (attempt - 1))));
+    }
+  }
+  throw lastError;
 }
 
 async function main() {
@@ -156,21 +193,28 @@ async function main() {
   if (!version) throw new Error("This source version already exists; imports are idempotent and will not replace it.");
   await db.insert(auditEvents).values({ action: "property_data.import_started", resourceType: "dataset_version", resourceId: version.id, metadata: { source: options.source, version: options.version, syncId: sync.id, checksum: fileChecksum } });
   try {
+    const relation = options.source === "os_open_uprn" ? "os_uprn_points" : "spatial_reference_features";
+    const baseline = await relationSizes(db, relation);
     const lines = createInterface({ input: createReadStream(options.file), crlfDelay: Infinity });
     let headers: string[] = [];
     let imported = 0;
     let batch: SQL[] = [];
+    let batchPayloadBytes = 0;
     async function flush() {
       if (!batch.length) return;
-      if (options.source === "os_open_uprn") await db.execute(sql`insert into os_uprn_points (dataset_version_id, uprn, location, source_easting, source_northing) values ${sql.join(batch, sql`, `)}`);
-      else await db.execute(sql`insert into spatial_reference_features (dataset_version_id, source_key, source_record_id, name, geometry, properties) values ${sql.join(batch, sql`, `)}`);
+      const pending = batch;
+      if (options.source === "os_open_uprn") await executeWithRetry(() => db.execute(sql`insert into os_uprn_points (dataset_version_id, uprn, location, source_easting, source_northing) values ${sql.join(pending, sql`, `)} on conflict (dataset_version_id, uprn) do nothing`));
+      else await executeWithRetry(() => db.execute(sql`insert into spatial_reference_features (dataset_version_id, source_key, source_record_id, name, geometry, properties) values ${sql.join(pending, sql`, `)} on conflict (dataset_version_id, source_record_id) do nothing`));
       batch = [];
+      batchPayloadBytes = 0;
     }
     for await (const line of lines) {
       if (!headers.length) { headers = splitCsv(line).map((value) => value.trim().toLowerCase()); continue; }
       if (!line.trim()) continue;
       const values = splitCsv(line);
       const row = Object.fromEntries(headers.map((header, index) => [header, values[index] ?? ""]));
+      const rowPayloadBytes = Buffer.byteLength(line, "utf8");
+      if (batch.length && batchPayloadBytes + rowPayloadBytes > maximumBatchPayloadBytes) await flush();
       if (options.source === "os_open_uprn") {
         if (!/^\d{1,12}$/.test(row.uprn) || !Number.isFinite(Number(row.latitude)) || !Number.isFinite(Number(row.longitude))) throw new Error(`Invalid OS Open UPRN record at row ${imported + 2}`);
         batch.push(sql`(${version.id}, ${row.uprn}, ST_SetSRID(ST_MakePoint(${Number(row.longitude)}, ${Number(row.latitude)}), 4326), ${row.x_coordinate ? Number(row.x_coordinate) : null}, ${row.y_coordinate ? Number(row.y_coordinate) : null})`);
@@ -181,11 +225,17 @@ async function main() {
         batch.push(sql`(${version.id}, ${options.source}, ${row.source_record_id}, ${row.name || null}, ST_Force2D(ST_Transform(ST_SetSRID(ST_GeomFromText(${row.wkt}), ${sourceSrid}), 4326)), ${JSON.stringify(properties)}::jsonb)`);
       }
       imported += 1;
-      if (batch.length >= 500) await flush();
+      batchPayloadBytes += rowPayloadBytes;
+      if (batch.length >= maximumBatchRows || batchPayloadBytes >= maximumBatchPayloadBytes) await flush();
+      if (imported % 50_000 === 0) console.log(JSON.stringify({ source: options.source, version: options.version, processedRecords: imported }));
     }
     await flush();
-    if (imported !== report.recordCount) throw new Error(`Expected ${report.recordCount} records but imported ${imported}.`);
-    const measuredCapacity = await databaseCapacityReport(db, options.source, version.id, imported, options.neonStorageUsdPerGbMonth);
+    const stored = options.source === "os_open_uprn"
+      ? await executeWithRetry(() => db.execute(sql`select count(*)::int as count from os_uprn_points where dataset_version_id = ${version.id}`))
+      : await executeWithRetry(() => db.execute(sql`select count(*)::int as count from spatial_reference_features where dataset_version_id = ${version.id}`));
+    const storedRecords = Number((stored.rows[0] as { count?: number | string } | undefined)?.count ?? 0);
+    if (imported !== report.recordCount || storedRecords !== report.recordCount) throw new Error(`Expected ${report.recordCount} records but processed ${imported} and stored ${storedRecords}.`);
+    const measuredCapacity = await databaseCapacityReport(db, options.source, version.id, imported, baseline, options.neonStorageUsdPerGbMonth);
     console.log(JSON.stringify({ source: options.source, version: options.version, measuredCapacity }, null, 2));
     await db.transaction(async (tx) => {
       await tx.update(datasetVersions).set({ recordCount: imported, validation: { capacity: report, measuredCapacity, imported, checksumVerified: Boolean(options.expectedChecksum) }, updatedAt: new Date() }).where(eq(datasetVersions.id, version.id));
@@ -193,7 +243,7 @@ async function main() {
       await tx.insert(auditEvents).values({ action: "property_data.import_staged", resourceType: "dataset_version", resourceId: version.id, metadata: { source: options.source, version: options.version, syncId: sync.id, records: imported, checksum: fileChecksum } });
     });
   } catch (error) {
-    const safeError = error instanceof Error ? error.message.slice(0, 500) : "Import failed";
+    const safeError = safeDatabaseError(error);
     await db.update(datasetSyncs).set({ status: "failed", safeError, completedAt: new Date() }).where(eq(datasetSyncs.id, sync.id));
     await db.insert(auditEvents).values({ action: "property_data.import_failed", resourceType: "dataset_version", resourceId: version.id, metadata: { source: options.source, version: options.version, syncId: sync.id, safeError } });
     await db.delete(datasetVersions).where(eq(datasetVersions.id, version.id));

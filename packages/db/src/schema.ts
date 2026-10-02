@@ -831,6 +831,22 @@ export const datasetSyncs = pgTable("dataset_syncs", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index("dataset_syncs_source_time_idx").on(table.sourceKey, table.createdAt)]);
 
+export const addressSearchCache = pgTable("address_search_cache", {
+  cacheKey: text("cache_key").primaryKey(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  candidates: jsonb("candidates").$type<unknown[]>().notNull().default([]),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  ...timestamps,
+}, (table) => [
+  index("address_search_cache_org_expiry_idx").on(table.organisationId, table.expiresAt),
+]);
+
+export const addressProviderRateLimits = pgTable("address_provider_rate_limits", {
+  provider: text("provider").primaryKey(),
+  allowedAfter: timestamp("allowed_after", { withTimezone: true }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const osUprnPoints = pgTable("os_uprn_points", {
   datasetVersionId: uuid("dataset_version_id").notNull().references(() => datasetVersions.id, { onDelete: "cascade" }),
   uprn: text("uprn").notNull(),
