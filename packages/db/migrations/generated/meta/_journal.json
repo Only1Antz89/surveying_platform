@@ -134,6 +134,20 @@
       "when": 1790930844147,
       "tag": "0018_completion_overrides_security",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790931851263,
+      "tag": "0019_media_analyses",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1790931852950,
+      "tag": "0020_media_analyses_security",
+      "breakpoints": true
     }
   ]
 }

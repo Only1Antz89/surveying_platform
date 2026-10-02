@@ -7,7 +7,8 @@ import { SurveyField, type FieldDisplay } from "./survey-field";
 
 export type ElementView = { serverId: string | null; version: number | null; inspectionStatus: InspectionStatus | null; limitationReason: string | null; pending: boolean };
 export type ObservationView = { key: string; text: string; kind: string; pending: boolean; measurement?: { value: number; unit: string } | null; locationLabel?: string | null; defect?: { nextAction: string } | null; evidenceCount?: number };
-export type PhotoView = { key: string; src: string | null; pending: boolean; label: string };
+export type PhotoView = { key: string; src: string | null; pending: boolean; label: string; quality?: string[] };
+export type EarlierPhotoView = { mediaId: string; jobReference: string; surveyDate: string; locationLabel: string | null };
 
 function PhotoThumb({ photo }: { photo: PhotoView }) {
   if (!photo.src) return <span className="photo-placeholder">{photo.label}</span>;
@@ -19,7 +20,7 @@ function PhotoThumb({ photo }: { photo: PhotoView }) {
 const needsReason: InspectionStatus[] = ["partially_inspected", "not_inspected", "inaccessible"];
 const observationKindLabels: Record<string, string> = { current_observation: "Observation", measurement: "Measurement", client_claim: "Client statement (not inspected)" };
 
-export function SurveyElementCard({ section, element, template, view, fieldDisplay, observations, photos, canEdit, canJudge, onElement, onField, onObservation, onPhoto, onLinkPhoto }: {
+export function SurveyElementCard({ section, element, template, view, fieldDisplay, observations, photos, canEdit, canJudge, onElement, onField, onObservation, onPhoto, onLinkPhoto, onLoadEarlier }: {
   section: SectionDefinition;
   element: ElementDefinition;
   template: FormTemplate;
@@ -35,10 +36,13 @@ export function SurveyElementCard({ section, element, template, view, fieldDispl
   onPhoto: (file: File) => void;
   /** Links an existing photo of this element to an observation as its evidence. */
   onLinkPhoto?: (observationKey: string, pending: boolean, photoKey: string) => void;
+  /** Loads this firm's earlier photos of the element, for comparison on site. */
+  onLoadEarlier?: () => Promise<EarlierPhotoView[] | null>;
 }) {
   const [reason, setReason] = useState(view.limitationReason ?? "");
   const [seenReason, setSeenReason] = useState(view.limitationReason);
   const [adding, setAdding] = useState(false);
+  const [earlier, setEarlier] = useState<EarlierPhotoView[] | "loading" | "unavailable" | null>(null);
   if (seenReason !== view.limitationReason) {
     setSeenReason(view.limitationReason);
     setReason(view.limitationReason ?? "");
@@ -106,7 +110,16 @@ export function SurveyElementCard({ section, element, template, view, fieldDispl
         {observation.defect ? <small>{observation.evidenceCount ? `${observation.evidenceCount} item${observation.evidenceCount === 1 ? "" : "s"} of evidence` : "No evidence linked yet"}</small> : null}
         {observation.defect && canEdit && onLinkPhoto && photos.length ? <select className="select observation-link" aria-label="Link a photo as evidence" value="" onChange={(event) => { if (event.target.value) onLinkPhoto(observation.key, observation.pending, event.target.value); }}><option value="">Link a photo as evidence…</option>{photos.map((photo, index) => <option key={photo.key} value={photo.key}>Photo {index + 1}{photo.pending ? " (waiting to upload)" : ""}</option>)}</select> : null}
       </li>)}</ul> : null}
-      {photos.length ? <ul className="photo-strip">{photos.map((photo) => <li key={photo.key}><PhotoThumb photo={photo} />{photo.pending ? <small>Waiting to upload</small> : null}</li>)}</ul> : null}
+      {photos.length ? <ul className="photo-strip">{photos.map((photo) => <li key={photo.key}><PhotoThumb photo={photo} />{photo.pending ? <small>Waiting to upload</small> : null}{photo.quality?.map((message) => <small key={message} className="photo-quality">{message}</small>)}</li>)}</ul> : null}
+      {onLoadEarlier ? <div className="earlier-photos">
+        {earlier === null ? <button type="button" className="button button-quiet" onClick={() => { setEarlier("loading"); void onLoadEarlier().then((items) => setEarlier(items ?? "unavailable"), () => setEarlier("unavailable")); }}>Show earlier photos of this element</button> : null}
+        {earlier === "loading" ? <p className="form-help">Loading earlier photos…</p> : null}
+        {earlier === "unavailable" ? <p className="form-help">Earlier photos are unavailable offline.</p> : null}
+        {Array.isArray(earlier) ? earlier.length ? <>
+          <p className="form-help">From this firm&apos;s earlier surveys of the same property. Compare on site: any difference is a possible change, not a finding.</p>
+          <ul className="photo-strip">{earlier.map((photo) => <li key={photo.mediaId}><PhotoThumb photo={{ key: photo.mediaId, src: `/api/v1/media/${photo.mediaId}`, pending: false, label: `Earlier photo of ${element.label}` }} /><small>{photo.jobReference} · {photo.surveyDate}{photo.locationLabel ? ` · ${photo.locationLabel}` : ""}</small></li>)}</ul>
+        </> : <p className="form-help">No earlier photos of this element in this firm&apos;s surveys.</p> : null}
+      </div> : null}
       {!observations.length && !photos.length ? <p className="form-help">No observations or photos recorded for this element.</p> : null}
     </div> : null}
   </section>;

@@ -1,7 +1,9 @@
+import { after } from "next/server";
 import { z } from "zod";
 import { canMutateOperations } from "@surveynt/domain";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { ok, problem } from "@/lib/api";
+import { analyseStoredMedia } from "@/lib/media-analysis";
 import { storeSurveyMedia } from "@/lib/surveys";
 
 export const runtime = "nodejs";
@@ -31,5 +33,7 @@ export async function POST(request: Request, route: RouteContext<"/api/v1/survey
   if (result.kind === "not_configured") return problem(503, "storage_not_configured", result.message);
   if (result.kind === "invalid") return problem(422, "media_rejected", result.message);
   const { media } = result;
+  // Quality hints and document facts are computed after the response; the daily sweep catches any that do not run.
+  if (!result.duplicate) after(() => analyseStoredMedia({ organisationId: context.organisationId }, media.id).then(() => undefined, () => undefined));
   return ok({ id: media.id, kind: media.kind, contentType: media.contentType, byteSize: media.byteSize, sha256: media.sha256, clientGeneratedId: media.clientGeneratedId, createdAt: media.createdAt.toISOString() }, { duplicate: result.duplicate });
 }

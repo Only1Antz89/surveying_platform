@@ -16,6 +16,7 @@
     "@surveynt/assistant": "workspace:*",
     "@surveynt/db": "workspace:*",
     "@surveynt/domain": "workspace:*",
+    "@surveynt/evidence": "workspace:*",
     "@surveynt/property-data": "workspace:*",
     "@surveynt/ui": "workspace:*",
     "@vercel/blob": "^2.8.0",
@@ -26,8 +27,10 @@
     "next": "16.3.7",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "sharp": "^0.35.5",
     "stripe": "^18.5.0",
     "svix": "^1.80.0",
+    "unpdf": "^1.8.1",
     "zod": "^4.1.8"
   },
   "devDependencies": {

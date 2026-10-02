@@ -5,10 +5,11 @@ import { AlertTriangle, CloudOff, History, RefreshCw, Trash2 } from "lucide-reac
 import { serviceLevelLabels, type FieldValue, type InspectionStatus, type SyncOperation, type SyncResult } from "@surveynt/assistant";
 import type { SurveyPack } from "@/lib/surveys";
 import { newOperationId, offlineStore, type OutboxEntry, type UploadEntry } from "@/lib/offline-store";
-import { SurveyElementCard, type ElementView, type ObservationView, type PhotoView } from "./survey-element-card";
+import { SurveyElementCard, type EarlierPhotoView, type ElementView, type ObservationView, type PhotoView } from "./survey-element-card";
 import type { FieldDisplay } from "./survey-field";
 import { AssistantPanel } from "./assistant-panel";
 import { CompletionPanel } from "./completion-panel";
+import { DocumentsPanel } from "./documents-panel";
 
 const elementKey = (section: string, element: string, location = "") => `${section}.${element}.${location}`;
 
@@ -201,6 +202,7 @@ export function SurveyWorkspace({ surveyId, canEdit, canJudge }: { surveyId: str
     {attention.length ? <section className="panel attention-panel" aria-labelledby="attention-heading"><div className="panel-header"><div><h2 id="attention-heading">Changes needing attention</h2><p>Nothing is overwritten silently. Choose which value to keep.</p></div></div><ul>{attention.map((entry) => <li key={entry.operationId}><strong>{entry.operation.type === "set_field" ? entry.operation.fieldPath : entry.operation.type.replace(/_/g, " ")}</strong><span>{entry.message}</span>{entry.status === "conflict" && entry.operation.type === "set_field" ? <span className="cell-sub">Yours: {describeValue(entry.operation.value)} · Current: {describeValue(entry.current?.value)}</span> : null}<div className="row-actions">{entry.status === "conflict" ? <><button type="button" className="button button-secondary" onClick={() => void resolveConflict(entry, true)}>Keep mine</button><button type="button" className="button button-quiet" onClick={() => void resolveConflict(entry, false)}>Use current</button></> : <button type="button" className="button button-quiet danger" onClick={() => void resolveConflict(entry, false)}>Discard</button>}</div></li>)}</ul></section> : null}
     {openTasks.length ? <section className="panel tasks-panel" aria-labelledby="tasks-heading"><div className="panel-header"><div><h2 id="tasks-heading">Reminders from earlier surveys</h2><p>Historical context only. These are not current findings.</p></div><History size={17} color="#3b82f6" aria-hidden="true" /></div><ul>{openTasks.map((task) => <li key={task.id}><strong>{task.title}</strong><span>{task.detail}</span></li>)}</ul></section> : null}
     <CompletionPanel pack={pack} pendingCount={pendingCount} onGoTo={(sectionKey, elementKey) => { setSection(sectionKey); window.setTimeout(() => document.getElementById(`element-${sectionKey}-${elementKey}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 50); }} />
+    <DocumentsPanel surveyId={surveyId} pack={pack} canEdit={canEdit && pack.survey.status === "in_progress"} online={online} demo={demo} onChanged={fetchPack} />
     <AssistantPanel surveyId={surveyId} pack={pack} canEdit={canEdit && pack.survey.status === "in_progress"} canJudge={canJudge} online={online} onChanged={fetchPack} />
     <nav className="workspace-tabs survey-sections" role="tablist" aria-label="Survey sections">
       {pack.template.sections.map((item) => <button key={item.key} type="button" role="tab" aria-selected={item.key === activeSection.key} className={`workspace-tab ${item.key === activeSection.key ? "active" : ""}`} onClick={() => setSection(item.key)}>{item.label}</button>)}
@@ -218,7 +220,7 @@ export function SurveyWorkspace({ surveyId, canEdit, canJudge }: { surveyId: str
         const pendingObservations: ObservationView[] = outbox.flatMap((entry) => entry.status === "pending" && entry.operation.type === "add_observation" && entry.operation.element?.sectionKey === activeSection.key && entry.operation.element.elementKey === element.key ? [{ key: entry.operationId, text: entry.operation.text, kind: entry.operation.kind, pending: true, measurement: entry.operation.measurement ?? null, locationLabel: entry.operation.element.locationLabel || null, defect: entry.operation.defect ?? null, evidenceCount: pendingLinks({ observationOperationId: entry.operationId }) }] : []);
         const linkedMedia = new Set(pack.evidence.filter((link) => link.evidenceType === "media" && link.targetType === "element" && link.targetId === view.serverId).map((link) => link.evidenceId));
         const photos: PhotoView[] = [
-          ...pack.media.filter((media) => media.kind === "photo" && linkedMedia.has(media.id)).map((media) => ({ key: media.id, src: demo ? null : `/api/v1/media/${media.id}`, pending: false, label: `Photo of ${element.label}` })),
+          ...pack.media.filter((media) => media.kind === "photo" && linkedMedia.has(media.id)).map((media) => ({ key: media.id, src: demo ? null : `/api/v1/media/${media.id}`, pending: false, label: `Photo of ${element.label}`, quality: media.analysis?.status === "completed" ? ((media.analysis.result as { messages?: string[] }).messages ?? []) : [] })),
           ...uploads.filter((upload) => upload.context.sectionKey === activeSection.key && upload.context.elementKey === element.key).map((upload) => ({ key: upload.clientId, src: photoUrls.get(upload.clientId) ?? null, pending: upload.status === "pending", label: upload.status === "failed" ? `Upload failed: ${upload.message ?? ""}` : `Photo of ${element.label}` })),
         ];
         return <SurveyElementCard
@@ -235,6 +237,11 @@ export function SurveyWorkspace({ surveyId, canEdit, canJudge }: { surveyId: str
           onElement={(status, reason) => void queue({ type: "set_element", operationId: newOperationId(), element: { sectionKey: activeSection.key, elementKey: element.key, locationLabel: "" }, inspectionStatus: status, limitationReason: reason, baseVersion: view.version })}
           onField={(path, value) => void queue({ type: "set_field", operationId: newOperationId(), fieldPath: path, value, baseValueId: values.get(path)?.id ?? null })}
           onObservation={(input) => void queue({ type: "add_observation", operationId: newOperationId(), element: { sectionKey: activeSection.key, elementKey: element.key, locationLabel: input.locationLabel ?? "" }, kind: input.kind, text: input.text, measurement: input.measurement, defect: input.defect, observedAt: new Date().toISOString() })}
+          onLoadEarlier={demo ? undefined : async () => {
+            if (!navigator.onLine) return null;
+            const response = await fetch(`/api/v1/surveys/${surveyId}/photo-history?section=${activeSection.key}&element=${element.key}`, { cache: "no-store" });
+            return response.ok ? ((await response.json()).data as EarlierPhotoView[]) : null;
+          }}
           onLinkPhoto={(observationKey, pending, photoKey) => void queue({ type: "link_evidence", operationId: newOperationId(), target: pending ? { type: "observation", observationOperationId: observationKey } : { type: "observation", observationId: observationKey }, evidence: { type: "media", id: photoKey } })}
           onPhoto={(file) => void (async () => {
             const clientId = `media_${crypto.randomUUID().replace(/-/g, "")}`;

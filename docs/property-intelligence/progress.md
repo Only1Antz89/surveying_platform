@@ -173,6 +173,23 @@ Acceptance:
 - Coordinators cannot override. Surveyors need a permitted reason, and "other" needs a note. Unreviewed AI text, missing limitations and contradictions cannot be overridden (unit and integration-tested).
 - Overrides are stored immutably, audited and tenant-isolated (integration-tested).
 ## A4 — Photo and document proposals
+
+| Item | Code | Configured | Imported | Live |
+|---|---|---|---|---|
+| `@surveynt/evidence`: deterministic photo quality (`photo-quality-v1`: resolution, Laplacian blur measure, exposure; blur not judged under extreme exposure; HEIC/damaged files "unavailable") and PDF text-layer reading (unpdf, page-limited, no rendering or scripts) | ✅ synthetic images and PDFs | — | — | — |
+| `certificate-facts-v1` in `@surveynt/assistant`: certificate type, reference and dates with page and character spans; day-first dates only, two-digit years refused; instruction-like text reported and ignored; expiry and due-soon checks against the inspection date | ✅ | — | — | — |
+| Migrations 0019–0020: `media_analyses` (one per media and analyser version; tenant RLS; append-only; deletable only by erasure) | ✅ | ❌ not applied to any Neon branch | — | — |
+| Analysis after upload (`after()`) plus a daily backfill sweep; an expired certificate raises a discrepancy task with the document span, which the A3 gate enforces | ✅ | ❌ needs a Blob store | — | — |
+| UI: quality hints under photos; "Certificates and documents" panel (PDF upload, facts with page references, checks, limitations, open original); earlier photos of the same element for comparison on site, labelled possible change only | ✅ (demo smoke-tested) | — | — | — |
+| Image understanding, OCR and tag suggestions | — (unavailable: no AI provider, by decision) | — | — | — |
+| Evaluation pack `packages/evidence/eval` (11 labelled synthetic cases: blur, darkness, low resolution, misleading scale, damp-like staining, stale certificate, prompt injection, scanned document, ambiguous date, no-record, repaired old defect) and [`docs/assistant/evaluation.md`](../assistant/evaluation.md) | ✅ 11/11, abstentions 4/4, unsupported claims 0 | — | — | — |
+
+Acceptance:
+
+- No photo-only professional assessment: refused by validation, and image understanding is unavailable (evaluation pack).
+- Document facts cite page and span. An expired certificate becomes a discrepancy that blocks the move to review until it is resolved or explained (integration-tested).
+- Injected instructions in a document change nothing (integration and evaluation tested).
+- Earlier photos come only from the same firm and the same property or confirmed UPRN, never another firm's (integration-tested).
 ## P5 — Data engine and administration
 ## A5 — Wording library and report assembly
 ## P6 — Country-specific expansion
@@ -204,3 +221,7 @@ Acceptance:
 | 2026-10-02 | `pnpm check` (A3) | ✅ lint, typecheck, 99 unit tests (12 new rule-engine tests with complete fixtures for all four service levels), build |
 | 2026-10-02 | `pnpm test:integration` (A3, all suites) | ✅ 55 tests, including 4 new gate tests: not gated without a survey or for other stages; incomplete survey blocked, then passes when complete; coordinator cannot override; unlisted reason refused; permitted override stored immutably with audit and tenant isolation; defect classification limited to surveyors; defect gated until a photo is linked |
 | 2026-10-02 | Playwright A3 smoke (demo mode, production build) | ✅ completion panel (42 to resolve, 2 advisory, jump to element), defect classification options, jobs register move to internal review opens the gate dialog listing failures that must be resolved, no console errors, no overflow at 390 px |
+| 2026-10-02 | `pnpm check` (A4) | ✅ lint, typecheck, 108 unit tests (new: 4 certificate extractor tests, 4 analyser tests, the 11-case evaluation pack), build with sharp and unpdf kept as server externals |
+| 2026-10-02 | `pnpm --filter @surveynt/evidence eval` | ✅ 11/11 passed, abstentions 4/4, unsupported claims 0. Finding fixed during calibration: the blur measure is meaningless under extreme exposure, so blur is no longer judged there |
+| 2026-10-02 | `pnpm test:integration` (A4, all suites) | ✅ 59 tests, including 4 new analysis tests: photo hints idempotent and in the pack; certificate facts with spans; expiry discrepancy that gates completion; injected instructions change nothing; append-only and tenant-scoped analyses; backlog sweep; earlier photos same-firm only |
+| 2026-10-02 | Playwright A4 smoke (demo mode, production build) | ✅ documents panel (upload disabled in demo, labelled), earlier-photo control hidden in demo, no console errors, no overflow at 390 px |

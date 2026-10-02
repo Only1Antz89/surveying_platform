@@ -1,6 +1,7 @@
 import { emailDeliveryConfigured } from "@/lib/email";
 import { enqueueDailyNotifications, processEmailQueue } from "@/lib/email-queue";
 import { processIntelligenceQueue } from "@/lib/intelligence";
+import { processMediaAnalysisBacklog } from "@/lib/media-analysis";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -14,5 +15,6 @@ export async function GET(request: Request) {
     ? await processEmailQueue(30)
     : { configured: false, claimed: 0, completed: 0, retried: 0, failed: 0 };
   const intelligence = await processIntelligenceQueue(10).catch(() => ({ claimed: 0, results: [], error: "Intelligence sweep failed." }));
-  return Response.json({ ok: true, scheduled, delivery, intelligence: { claimed: intelligence.claimed } });
+  const media = await processMediaAnalysisBacklog(20).catch(() => ({ analysed: 0 }));
+  return Response.json({ ok: true, scheduled, delivery, intelligence: { claimed: intelligence.claimed }, media: { analysed: media.analysed } });
 }

@@ -880,3 +880,24 @@ export const completionOverrides = pgTable("completion_overrides", {
   index("completion_overrides_job_idx").on(table.organisationId, table.jobId),
   check("completion_overrides_reason_chk", sql`length(btrim(reason)) > 0`),
 ]);
+
+// Evidence analysis (A4). Deterministic results per media item and analyser
+// version: photo quality hints and document facts with page/span references.
+// Rows are append-only; they are removed only with their media by erasure.
+
+export const mediaAnalyses = pgTable("media_analyses", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  mediaId: uuid("media_id").notNull(),
+  surveyId: uuid("survey_id"),
+  analyser: text("analyser").notNull(),
+  status: text("status").notNull(),
+  result: jsonb("result").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  foreignKey({ name: "media_analyses_media_fk", columns: [table.organisationId, table.mediaId], foreignColumns: [mediaAssets.organisationId, mediaAssets.id] }).onDelete("restrict"),
+  foreignKey({ name: "media_analyses_survey_fk", columns: [table.organisationId, table.surveyId], foreignColumns: [surveys.organisationId, surveys.id] }).onDelete("restrict"),
+  uniqueIndex("media_analyses_media_analyser_uidx").on(table.mediaId, table.analyser),
+  index("media_analyses_survey_idx").on(table.organisationId, table.surveyId),
+  check("media_analyses_status_chk", sql`status in ('completed', 'unavailable', 'failed')`),
+]);

@@ -9,3 +9,4 @@ export * from "./proposals/model";
 export * from "./rules/types";
 export * from "./rules/engine";
 export { residentialRulesV1 } from "./rules/residential-rules-v1";
+export * from "./documents/certificates";

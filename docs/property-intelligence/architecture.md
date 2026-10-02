@@ -123,3 +123,7 @@ The build environment's egress policy blocked every official provider host (`api
 - Source facts were corroborated through web search summaries only. Every source is therefore recorded as **pending**, not verified.
 - No live smoke tests could be run.
 - Adapters are tested against fixtures built from the published response shapes. A configured environment must re-verify them before enabling.
+
+## Erasure order (A1–A4)
+
+Media originals, `media_analyses` and the other append-only tables can be deleted only with `app.erasure = 'on'` set in the transaction. The erasure routine is not implemented yet (it belongs with the data protection workflow). When it is built, it must delete `media_analyses` and `evidence_links` before `media_assets`, because the foreign keys use `restrict`.

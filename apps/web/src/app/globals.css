@@ -444,6 +444,18 @@ a { color: inherit; text-decoration: none; }
 .stage-gate-fixed { color: var(--danger); }
 .observation-link { max-width: 260px; margin-top: 4px; }
 
+/* Photo and document evidence (A4) */
+.photo-quality { display: block; color: #9c5b05; }
+.earlier-photos { display: grid; gap: 6px; margin-top: 10px; }
+.document-list { display: grid; gap: 10px; margin: 12px 20px 16px; padding: 0; list-style: none; }
+.document-list > li { display: grid; gap: 4px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
+.document-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.document-head a { display: inline-flex; gap: 4px; align-items: center; margin-left: auto; font-size: 12px; }
+.document-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px 16px; margin: 4px 0 0; font-size: 13px; }
+.document-facts dt { color: var(--muted); font-size: 12px; }
+.document-facts dd { margin: 0; }
+.file-button.disabled { opacity: .55; pointer-events: none; }
+
 /* Property history (P4) */
 .history-coverage { display: grid; gap: 8px; margin: 12px 20px 0; padding: 0; list-style: none; }
 .history-coverage li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
@@ -473,6 +485,7 @@ a { color: inherit; text-decoration: none; }
   .property-map { height: 280px; margin-inline: 12px; }
   .history-timeline, .history-coverage { margin-inline: 12px; }
   .completion-list { margin-inline: 12px; }
+  .document-list { margin-inline: 12px; }
   .stage-gate-override { grid-template-columns: 1fr; }
   .survey-element-header { flex-direction: column; }
   .inspection-status { min-width: 0; width: 100%; }
