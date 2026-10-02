@@ -9,6 +9,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { importOsOpenUprn, type Bbox } from "./os-open-uprn";
+import { importPricePaid, importPricePaidUprnLookup, parsePostcodeAreas } from "./price-paid";
 import { importSpatialLayer } from "./spatial-layer";
 
 /** Converts a shapefile, GML or GeoPackage to GeoJSONSeq in EPSG:4326 using GDAL (no shell). */
@@ -41,7 +42,10 @@ async function main() {
   const { values } = parseArgs({ args: rest, options: {
     file: { type: "string" }, version: { type: "string" }, "source-url": { type: "string" }, bbox: { type: "string" }, layer: { type: "string" }, convert: { type: "boolean", default: false }, "source-crs": { type: "string" }, "id-property": { type: "string" }, "name-property": { type: "string" }, attributes: { type: "string" },
     activate: { type: "boolean", default: false }, sync: { type: "string" }, source: { type: "string" }, keep: { type: "string" },
+    mode: { type: "string" }, "postcode-areas": { type: "string" }, "max-rejected": { type: "string" }, "transaction-column": { type: "string" }, "uprn-column": { type: "string" },
   } });
+  const maxRejected = values["max-rejected"] === undefined ? undefined : Number(values["max-rejected"]);
+  if (maxRejected !== undefined && (!Number.isInteger(maxRejected) || maxRejected < 0)) throw new Error("--max-rejected must be a whole number.");
   switch (command) {
     case "registry-sync": {
       const db = createDatabase(requireEnv("DATABASE_ADMIN_URL"));
@@ -67,6 +71,23 @@ async function main() {
       if (outcome.status === "failed") process.exitCode = 1;
       break;
     }
+    case "price-paid": {
+      if (!values.file || !values.version) throw new Error("--file and --version (the release date, for example 2026-09) are required.");
+      if (values.mode !== "full" && values.mode !== "update") throw new Error("--mode must be full (complete or yearly file) or update (monthly change file).");
+      const db = createDatabase(requireEnv("DATABASE_IMPORTER_URL"));
+      const outcome = await importPricePaid(db, { filePath: values.file, datasetVersion: values.version, mode: values.mode, postcodeAreas: parsePostcodeAreas(values["postcode-areas"]), sourceUrl: values["source-url"], maxRejected, activate: values.activate, importedBy: process.env.USER ?? "operator" });
+      console.log(JSON.stringify(outcome, null, 2));
+      if (outcome.status === "failed") process.exitCode = 1;
+      break;
+    }
+    case "price-paid-lookup": {
+      if (!values.file || !values.version) throw new Error("--file and --version are required.");
+      const db = createDatabase(requireEnv("DATABASE_IMPORTER_URL"));
+      const outcome = await importPricePaidUprnLookup(db, { filePath: values.file, datasetVersion: values.version, transactionColumn: values["transaction-column"], uprnColumn: values["uprn-column"], sourceUrl: values["source-url"], maxRejected, activate: values.activate, importedBy: process.env.USER ?? "operator" });
+      console.log(JSON.stringify(outcome, null, 2));
+      if (outcome.status === "failed") process.exitCode = 1;
+      break;
+    }
     case "activate": {
       if (!values.sync) throw new Error("--sync is required.");
       const db = createDatabase(requireEnv("DATABASE_IMPORTER_URL"));
@@ -86,7 +107,7 @@ async function main() {
       break;
     }
     default:
-      throw new Error("Commands: registry-sync | os-open-uprn --file --version [--bbox] [--activate] | spatial-layer --source --layer --file --version [--convert] [--activate] | activate --sync | rollback --source [--layer] | prune --source [--layer] [--keep N]. spatial-layer also accepts --id-property --name-property --attributes a,b");
+      throw new Error("Commands: registry-sync | os-open-uprn --file --version [--bbox] [--activate] | spatial-layer --source --layer --file --version [--convert] [--activate] | price-paid --file --version --mode full|update [--postcode-areas BS,BA] [--max-rejected N] [--activate] | price-paid-lookup --file --version [--transaction-column --uprn-column] [--activate] | activate --sync | rollback --source [--layer] | prune --source [--layer] [--keep N]. spatial-layer also accepts --id-property --name-property --attributes a,b");
   }
 }
 

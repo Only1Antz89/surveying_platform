@@ -12,6 +12,26 @@ export interface SpatialQuery {
   }[]>;
 }
 
+export type SaleRecord = {
+  transactionId: string;
+  price: number;
+  transferDate: string;
+  propertyType: "D" | "S" | "T" | "F" | "O";
+  newBuild: boolean;
+  tenure: "F" | "L" | "U";
+  ppdCategory: "A" | "B";
+  /** Number of UPRNs the published look-up links to this sale; above 1 the price covers several properties. */
+  linkedUprnCount: number;
+};
+
+/** Exact UPRN look-ups against imported Price Paid data and HM Land Registry's transaction-to-UPRN table. */
+export interface HistoryQuery {
+  salesForUprn(uprn: string): Promise<
+    | { available: false; reason: "price_paid_not_imported" | "lookup_not_imported" | "lookup_not_enabled" }
+    | { available: true; pricePaidVersion: string; lookupVersion: string; publishedAt: string | null; postcodeAreas: string[] | null; sales: SaleRecord[]; unresolvedLinks: number }
+  >;
+}
+
 /** Global cache for public-source responses. Keys must never contain tenant data. */
 export interface PublicCache {
   getOrLoad<T>(key: string, ttlDays: number, load: () => Promise<T>, cacheable: (value: T) => boolean): Promise<T>;
@@ -22,6 +42,7 @@ export type ProviderContext = {
   env: Record<string, string | undefined>;
   fetchImpl?: typeof fetch;
   spatial?: SpatialQuery;
+  history?: HistoryQuery;
   cache?: PublicCache;
 };
 

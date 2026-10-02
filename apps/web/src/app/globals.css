@@ -422,6 +422,21 @@ a { color: inherit; text-decoration: none; }
 .map-legend-item > span { display: grid; gap: 2px; }
 .map-panel + .panel { margin-top: 18px; }
 
+/* Property history (P4) */
+.history-coverage { display: grid; gap: 8px; margin: 12px 20px 0; padding: 0; list-style: none; }
+.history-coverage li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
+.history-coverage li .cell-sub { grid-column: 1 / -1; }
+.history-timeline { display: grid; gap: 0; margin: 16px 20px 20px; padding: 0; list-style: none; border-left: 2px solid var(--border); }
+.history-event { position: relative; display: grid; gap: 4px; padding: 0 0 18px 18px; }
+.history-event::before { content: ""; position: absolute; left: -7px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: var(--surface); border: 2px solid #3b82f6; }
+.history-event.stale::before { border-style: dashed; border-color: var(--muted); }
+.history-event-head { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.history-kind { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.history-dates { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 2px 0 0; font-size: 12px; }
+.history-dates div { display: flex; gap: 4px; }
+.history-dates dt { color: var(--muted); }
+.history-dates dd { margin: 0; }
+
 @media (max-width: 1050px) {
   .metric-grid { grid-template-columns: repeat(2, 1fr); }
   .metric:nth-child(2) { border-right: 0; }
@@ -434,6 +449,7 @@ a { color: inherit; text-decoration: none; }
 @media (max-width: 760px) {
   .address-search-row { flex-direction: column; }
   .property-map { height: 280px; margin-inline: 12px; }
+  .history-timeline, .history-coverage { margin-inline: 12px; }
   .survey-element-header { flex-direction: column; }
   .inspection-status { min-width: 0; width: 100%; }
   .sync-bar .row-actions { margin-left: 0; }

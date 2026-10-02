@@ -50,6 +50,7 @@ export const categoryCatalogue: Record<string, CategoryInfo> = {
   national_park: { label: "National Park", group: "environment", caveat: "The National Park Authority is the planning authority." },
   ancient_woodland: { label: "Ancient woodland", group: "environment", caveat: "Indicative inventory." },
   ancient_woodland_nearby: { label: "Ancient woodland nearby", group: "environment", caveat: "Nearby context only." },
+  sales_history: { label: "Registered sales", group: "history", caveat: "Linked by HM Land Registry's published transaction-to-UPRN look-up only. Not a complete ownership history." },
 };
 
 export function categoryInfo(category: string): CategoryInfo {

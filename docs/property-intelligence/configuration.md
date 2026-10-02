@@ -103,6 +103,31 @@ DATABASE_IMPORTER_URL=… pnpm --filter @surveynt/property-data reference rollba
 - Import rejects features outside the UK extent or with invalid geometry. Rows from a failed import are deleted; the active version stays.
 - Layers that are not imported, or whose source is not enabled, show as "Not checked" in the Intelligence and Land & Map tabs, never as "no record".
 
+## Importing Price Paid Data and the transaction-to-UPRN look-up (P4)
+
+Sales history needs both datasets, and both sources (`hmlr_price_paid`, `hmlr_ppd_uprn_lookup`) enabled after verification. Sales are linked only through the published look-up: never by address, postcode or distance.
+
+```bash
+# 1. Full load (complete or yearly files). --version is the release date: YYYY-MM or YYYY-MM-DD.
+#    Optional regional load first: --postcode-areas BS,BA (address columns are read only to filter, never stored).
+DATABASE_IMPORTER_URL=… pnpm --filter @surveynt/property-data reference price-paid \
+  --file ./pp-complete.csv --version 2026-09 --mode full --postcode-areas BS,BA
+# 2. Each month: apply the change file (A add, C change, D delete) to a copy of the active version.
+DATABASE_IMPORTER_URL=… pnpm --filter @surveynt/property-data reference price-paid \
+  --file ./pp-monthly-update.csv --version 2026-10 --mode update --activate
+# 3. The look-up (full file each release). The header is detected; pass --transaction-column/--uprn-column if it is not.
+DATABASE_IMPORTER_URL=… pnpm --filter @surveynt/property-data reference price-paid-lookup \
+  --file ./uprn-lookup.csv --version 2026-09 --activate
+# Undo a bad month:
+DATABASE_IMPORTER_URL=… pnpm --filter @surveynt/property-data reference rollback --source hmlr_price_paid
+```
+
+- Stored Price Paid fields: transaction id, price, transfer date, property type, new build, tenure and category. Postcode, PAON, SAON, street, locality, town, district and county are not stored or shown.
+- Any malformed row fails the import unless `--max-rejected N` is set. Rejection messages give the line number and reason, never the row's content.
+- An update inherits the active version's postcode areas. A property outside them shows "Not checked", not "no sales".
+- Each update copies the active version before applying changes. A national load is about 30 million rows, so budget for twice that during an update and prune retired versions afterwards (`prune --source hmlr_price_paid --keep 1`).
+- Not verified from this environment (gov.uk is blocked): the look-up's exact header names, and whether it is published as full files or change files. The importer assumes full files.
+
 ## Basemap
 
 The map draws imported layers on a plain background until `NEXT_PUBLIC_MAP_STYLE_URL` points at a MapLibre style from a contracted or self-hosted tile provider. Public OpenStreetMap tiles are not used: their usage policy rules out this kind of production traffic. Set `NEXT_PUBLIC_MAP_ATTRIBUTION` to the provider's required attribution. Layer attribution comes from the source register automatically.

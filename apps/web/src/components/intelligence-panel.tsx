@@ -23,6 +23,13 @@ function RecordSummary({ category, record }: { category: string; record: Intelli
       {data.walls ? <span className="cell-sub">Walls: {String(data.walls)}</span> : null}
     </div>;
   }
+  if (category === "sales_history") {
+    return <div className="intel-record">
+      <strong>{new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: 0 }).format(Number(data.price))} · {formatDate(String(data.transferDate ?? "") || null)}</strong>
+      <span className="cell-sub">{[data.propertyTypeLabel, data.tenureLabel, data.newBuild ? "New build" : null, data.ppdCategory === "B" ? "Additional price paid category" : null].filter(Boolean).map(String).join(" · ")}</span>
+      {data.sharedSale ? <span className="cell-sub">Linked to {String(data.linkedUprnCount)} properties: the price covers all of them.</span> : null}
+    </div>;
+  }
   const attributes = (data.attributes ?? {}) as Record<string, unknown>;
   return <div className="intel-record">
     <strong>{String(data.name ?? data.label ?? record.sourceRecordId ?? "Record")}</strong>

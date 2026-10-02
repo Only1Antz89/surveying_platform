@@ -134,6 +134,27 @@ Acceptance:
 - England-only layers return `unsupported`/`not_covered` for Wales, and postcode-centroid locations are refused.
 - An unimported layer is `null` for the map and "not configured" in intelligence, never "no record".
 ## P4 — Property history
+
+| Item | Code | Configured | Imported | Live |
+|---|---|---|---|---|
+| Migrations 0015–0016: `reference.price_paid_transactions` (transaction id, price, date, type, new build, tenure, category; **no address columns**) and `reference.price_paid_uprn_links` (transaction id ↔ UPRN, many-to-many), versioned by `dataset_syncs`; app read-only, importer write | ✅ | ❌ not applied to any Neon branch | — | — |
+| Price Paid importer: 16-column validation, `full` and monthly `update` modes (A/C/D applied by transaction id on a copy of the active version), regional postcode-area filter used transiently, rejection threshold, atomic activation, rollback | ✅ synthetic files | ❌ sources not enabled | ❌ no real release imported | — |
+| Transaction-to-UPRN look-up importer: header detection or explicit columns, headerless files, multi-UPRN links counted | ✅ synthetic files | ❌ | ❌ | — |
+| `hmlr_price_paid` provider: England & Wales, **confirmed UPRN only**, exact look-up links only; unimported/disabled look-up and areas outside a regional import are "Not checked"; no linked sale is `no_match` with partial coverage and a not-proof caveat; shared multi-property sales flagged | ✅ | — | — | — |
+| `GET /api/v1/properties/:id/history` and History tab: sales, energy certificates, listings and designations from stored snapshots plus the firm's job-stage and survey events; separate event, publication and retrieval dates; stale marking; per-source coverage notes | ✅ (demo smoke-tested) | — | — | — |
+
+Acceptance:
+
+- Sales link by exact transaction id ↔ UPRN only. There is no fuzzy or address matching (integration-tested: a sale linked to another UPRN never appears).
+- Corrections (C) and deletions (D) produce a new version; rollback restores the previous one (integration-tested).
+- No Price Paid address field is stored, returned or quoted in errors (integration-tested on table columns and responses).
+- A missing link or unimported dataset is never shown as "no sales".
+- Other firms' job events at the same UPRN never appear (integration-tested).
+
+Blockers:
+
+- The look-up was announced for 28 Aug 2026 (OGL). Its exact header names and release form could not be checked from this environment, so the importer detects or accepts them.
+- Real data needs the operator steps in [`configuration.md`](./configuration.md#importing-price-paid-data-and-the-transaction-to-uprn-look-up-p4) and source enablement after licence verification.
 ## A3 — Adaptive rules and completion checks
 ## A4 — Photo and document proposals
 ## P5 — Data engine and administration
@@ -161,3 +182,6 @@ Acceptance:
 | 2026-10-01 | `pnpm --filter @surveynt/web test:integration` (P3) | ✅ 24 tests, including the new assistant kill-switch test |
 | 2026-10-01 | `pnpm check` (P3) | ✅ lint, typecheck, 76 unit tests, build |
 | 2026-10-01 | Playwright Land & Map smoke (demo mode, production build) | ✅ first run found MapLibre's worker failing to load from the bundle (fixed by serving it from `public/vendor`); rerun: labelled demo polygon drawn, marker, attribution shown, toggle works, "Basemap not configured" and "Not checked" shown, no external hosts contacted, no console errors, no overflow at 390 px |
+| 2026-10-02 | `pnpm check` (P4) | ✅ lint, typecheck, 87 unit tests (11 new Price Paid parser and provider tests), build |
+| 2026-10-02 | `pnpm test:integration` (P4, all suites) | ✅ 51 tests: db 3, property-data 21 (7 new history tests: regional import with no address columns, header detection and multi-UPRN links, exact linkage with unresolved links counted, A/C/D update and rollback, failed import keeps active version, headerless look-up, app role read-only, disabled look-up reported as unavailable), web 27 (3 new timeline tests: merged sales and firm events with separate dates, unconfirmed UPRN explained, stale after identity change, cross-firm denial). The first run caught a "2026-09" release being widened to "2026-09-01" by the snapshot timestamp; the label is now kept as published |
+| 2026-10-02 | Playwright History smoke (demo mode, production build) | ✅ History tab, coverage notes, four labelled demo events in date order, event/published/retrieved dates shown separately (a month release shown as a month), no console errors, no overflow at 390 px |

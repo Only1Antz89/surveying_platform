@@ -723,6 +723,41 @@ export const spatialFeatures = referenceSchema.table("spatial_features", {
   index("spatial_features_layer_idx").on(table.sourceKey, table.layer),
 ]);
 
+// Property history (P4). HM Land Registry Price Paid Data and the published
+// transaction-to-UPRN look-up. Only the fields needed for a sales history are
+// kept: no Price Paid address field is ever stored.
+
+/** One Price Paid transaction per dataset version. Corrections (C) and deletions (D) are applied by transaction id. */
+export const pricePaidTransactions = referenceSchema.table("price_paid_transactions", {
+  datasetSyncId: uuid("dataset_sync_id").notNull().references(() => datasetSyncs.id, { onDelete: "cascade" }),
+  transactionId: text("transaction_id").notNull(),
+  price: integer("price").notNull(),
+  transferDate: date("transfer_date").notNull(),
+  propertyType: text("property_type").notNull(),
+  newBuild: boolean("new_build").notNull(),
+  tenure: text("tenure").notNull(),
+  ppdCategory: text("ppd_category").notNull(),
+}, (table) => [
+  primaryKey({ name: "price_paid_transactions_pk", columns: [table.datasetSyncId, table.transactionId] }),
+  check("price_paid_transactions_id_chk", sql`transaction_id ~ '^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$'`),
+  check("price_paid_transactions_price_chk", sql`price > 0`),
+  check("price_paid_transactions_type_chk", sql`property_type in ('D', 'S', 'T', 'F', 'O')`),
+  check("price_paid_transactions_tenure_chk", sql`tenure in ('F', 'L', 'U')`),
+  check("price_paid_transactions_category_chk", sql`ppd_category in ('A', 'B')`),
+]);
+
+/** Exact transaction-to-UPRN links as published by HM Land Registry. One sale may link to several UPRNs. */
+export const pricePaidUprnLinks = referenceSchema.table("price_paid_uprn_links", {
+  datasetSyncId: uuid("dataset_sync_id").notNull().references(() => datasetSyncs.id, { onDelete: "cascade" }),
+  transactionId: text("transaction_id").notNull(),
+  uprn: text("uprn").notNull(),
+}, (table) => [
+  primaryKey({ name: "price_paid_uprn_links_pk", columns: [table.datasetSyncId, table.transactionId, table.uprn] }),
+  index("price_paid_uprn_links_uprn_idx").on(table.datasetSyncId, table.uprn),
+  check("price_paid_uprn_links_id_chk", sql`transaction_id ~ '^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$'`),
+  check("price_paid_uprn_links_uprn_chk", sql`uprn ~ '^[0-9]{1,12}$'`),
+]);
+
 export const enrichmentRuns = pgTable("enrichment_runs", {
   id: uuid("id").primaryKey().defaultRandom(),
   organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
