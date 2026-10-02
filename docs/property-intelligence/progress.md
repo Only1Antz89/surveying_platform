@@ -191,6 +191,23 @@ Acceptance:
 - Injected instructions in a document change nothing (integration and evaluation tested).
 - Earlier photos come only from the same firm and the same property or confirmed UPRN, never another firm's (integration-tested).
 ## P5 — Data engine and administration
+
+| Item | Code | Configured | Imported | Live |
+|---|---|---|---|---|
+| `/platform/data-sources` (super admin or compliance to act; others view): register status, enablement with recorded verification, active versions per layer, import history with validation and errors, freshness, health; enable/disable, release check, probe, activate staged versions, roll back; every action audited | ✅ (demo smoke-tested) | ❌ needs `DATABASE_ADMIN_URL` and platform staff | — | — |
+| Freshness policy per source (release-check window for bulk datasets; live APIs per request), and a "newer dataset version active" flag on stored intelligence | ✅ | — | — | — |
+| Cache invalidation on activation and rollback (public response cache cleared per source, from the UI or the CLI); migration 0022 lets the importer clear, but not write, the public cache | ✅ | ❌ | — | — |
+| Health probes (postcodes.io, Planning Data; Nominatim never probed under its usage policy; EPC not until a status endpoint is confirmed) and a daily sweep for probes and due release checks | ✅ | ❌ | — | ❌ hosts blocked here |
+| Migration 0021: probe and release-check columns on `reference.data_sources` (operator-only) | ✅ | ❌ | — | — |
+| [`runbook.md`](./runbook.md): lifecycle, rollback and recovery, the daily sweep, synthetic benchmark results, national scale-up estimates, cost categories | ✅ | — | — | — |
+| Fixed: EPC cache keys used the prefix `epc` instead of the source key, so they could not be invalidated by source | ✅ | — | — | — |
+
+Acceptance:
+
+- Enabling needs a verification note, and blocked sources cannot be enabled (integration-tested).
+- Activation and rollback are atomic per layer, clear only that source's cached responses, and are audited (integration-tested).
+- Release checks reset freshness; a source with no import or check in its window is listed as due (integration-tested).
+- The app and importer roles cannot change operator metadata; the importer cannot write cache entries (integration-tested).
 ## A5 — Wording library and report assembly
 ## P6 — Country-specific expansion
 ## A6 — Pilot readiness and AI governance
@@ -225,3 +242,7 @@ Acceptance:
 | 2026-10-02 | `pnpm --filter @surveynt/evidence eval` | ✅ 11/11 passed, abstentions 4/4, unsupported claims 0. Finding fixed during calibration: the blur measure is meaningless under extreme exposure, so blur is no longer judged there |
 | 2026-10-02 | `pnpm test:integration` (A4, all suites) | ✅ 59 tests, including 4 new analysis tests: photo hints idempotent and in the pack; certificate facts with spans; expiry discrepancy that gates completion; injected instructions change nothing; append-only and tenant-scoped analyses; backlog sweep; earlier photos same-firm only |
 | 2026-10-02 | Playwright A4 smoke (demo mode, production build) | ✅ documents panel (upload disabled in demo, labelled), earlier-photo control hidden in demo, no console errors, no overflow at 390 px |
+| 2026-10-02 | `pnpm check` (P5) | ✅ lint, typecheck, 110 unit tests (including new freshness tests), build |
+| 2026-10-02 | `pnpm test:integration` (P5, all suites) | ✅ 66 tests, including 4 new operations tests (verified enablement, blocked refusal, atomic activation and rollback clearing only that source's cache, freshness and release checks, probes, role denial) and 3 new admin tests (audited actions, "newer dataset version" flag through activation and rollback, daily sweep) |
+| 2026-10-02 | `pnpm --filter @surveynt/property-data benchmark` | ✅ synthetic: UPRN ~41,700 rows/s; spatial ~22,500 rows/s; Price Paid ~43,100 rows/s; look-up ~50,700 rows/s; p95 queries 5–15 ms (see runbook) |
+| 2026-10-02 | Playwright P5 smoke (demo mode, production build) | ✅ Data sources page and navigation entry, 20 sources, blocked source cannot be enabled, demo action labelled as not saved, no console errors, no overflow at 390 px |

@@ -456,6 +456,14 @@ a { color: inherit; text-decoration: none; }
 .document-facts dd { margin: 0; }
 .file-button.disabled { opacity: .55; pointer-events: none; }
 
+/* Data source operations (P5) */
+.data-source-modal { max-width: 860px; }
+.data-source-body { display: grid; gap: 14px; max-height: 70vh; overflow: auto; padding: 0 20px 20px; }
+.data-source-body h3 { margin: 6px 0 0; font-size: 14px; }
+.data-source-actions { display: grid; gap: 8px; }
+.sync-history { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.sync-history li { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
+
 /* Property history (P4) */
 .history-coverage { display: grid; gap: 8px; margin: 12px 20px 0; padding: 0; list-style: none; }
 .history-coverage li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }

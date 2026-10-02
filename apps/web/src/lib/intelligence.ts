@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, lte, or, sql } from "drizzle-orm";
-import { auditEvents, backgroundJobs, createDatabase, enrichmentRuns, properties, propertyIntelligenceSnapshots, withTenant, type TenantTransaction } from "@surveynt/db";
-import { intelligenceProviders, runProviders, sourceCoversCountry, sourceDefinitions, type IntelligenceProvider, type ProviderResult } from "@surveynt/property-data";
+import { auditEvents, backgroundJobs, createDatabase, datasetSyncs, enrichmentRuns, properties, propertyIntelligenceSnapshots, withTenant, type TenantTransaction } from "@surveynt/db";
+import { getSourceDefinition, intelligenceProviders, runProviders, sourceCoversCountry, sourceDefinitions, type IntelligenceProvider, type ProviderResult } from "@surveynt/property-data";
 import { databaseHistoryQuery, databaseSpatialQuery, getSourceStates } from "@surveynt/property-data/importers";
 import { intelligenceEnabled } from "./property-identity";
 import { databasePublicCache } from "./provider-cache";
@@ -162,6 +162,8 @@ export async function processIntelligenceQueue(limit = 10) {
 }
 
 export type IntelligenceCategoryView = {
+  /** A newer version of the imported dataset is active; refreshing would use it. */
+  newerDataAvailable?: boolean;
   sourceKey: string;
   category: string;
   status: string;
@@ -198,6 +200,15 @@ export async function loadPropertyIntelligence(context: TenantContext, propertyI
     if (existing[0].enrichmentRunId === snapshot.enrichmentRunId) existing.push(snapshot);
   }
   const now = Date.now();
+  // Dataset versions now active, to flag results built from an older import (cache invalidation for stored snapshots).
+  const activeRows = await db.select({ sourceKey: datasetSyncs.sourceKey, datasetVersion: datasetSyncs.datasetVersion }).from(datasetSyncs).where(eq(datasetSyncs.status, "active"));
+  const activeVersions = (key: string) => new Set(activeRows.filter((row) => row.sourceKey === key).map((row) => row.datasetVersion));
+  const newerDataAvailable = (sourceKey: string, version: string | null) => {
+    if (!version || getSourceDefinition(sourceKey)?.accessMethod !== "bulk_import") return false;
+    const linked = /^(.*) \(look-up (.*)\)$/.exec(version);
+    if (linked && sourceKey === "hmlr_price_paid") return !activeVersions("hmlr_price_paid").has(linked[1]) || !activeVersions("hmlr_ppd_uprn_lookup").has(linked[2]);
+    return !activeVersions(sourceKey).has(version);
+  };
   const categories: IntelligenceCategoryView[] = [...groups.values()].map((rows) => {
     const head = rows[0];
     return {
@@ -205,6 +216,7 @@ export async function loadPropertyIntelligence(context: TenantContext, propertyI
       retrievedAt: head.retrievedAt.toISOString(), expiresAt: head.expiresAt?.toISOString() ?? null, datasetVersion: head.datasetVersion,
       fresh: Boolean(head.expiresAt && head.expiresAt.getTime() > now),
       stale: head.inputFingerprint !== fingerprint || !usableRuns.has(head.enrichmentRunId),
+      newerDataAvailable: newerDataAvailable(head.sourceKey, head.datasetVersion),
       licence: head.licence,
       records: head.resultStatus === "matched" ? rows.map((row) => ({ snapshotId: row.id, sourceRecordId: row.sourceRecordId, data: row.data, evidence: row.evidence, matchMethod: row.matchMethod, confidence: row.confidence, sourceUpdatedAt: row.sourceUpdatedAt?.toISOString() ?? null })) : [],
     };

@@ -460,6 +460,13 @@ export const dataSources = referenceSchema.table("data_sources", {
   lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
   lastFailureAt: timestamp("last_failure_at", { withTimezone: true }),
   lastFailureCode: text("last_failure_code"),
+  // Operations (P5): the last health probe and the last check of the publisher's release page.
+  lastProbeAt: timestamp("last_probe_at", { withTimezone: true }),
+  lastProbeStatus: text("last_probe_status"),
+  lastProbeMessage: text("last_probe_message"),
+  lastReleaseCheckAt: timestamp("last_release_check_at", { withTimezone: true }),
+  lastReleaseCheckBy: text("last_release_check_by"),
+  lastReleaseCheckNote: text("last_release_check_note"),
   ...timestamps,
 });
 

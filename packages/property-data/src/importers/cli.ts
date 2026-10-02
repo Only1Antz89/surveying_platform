@@ -3,7 +3,8 @@
 // (DATABASE_ADMIN_URL) because they change operator-controlled metadata.
 import { parseArgs } from "node:util";
 import { createDatabase } from "@surveynt/db";
-import { activateSync, pruneRetiredSyncs, rollbackSource, syncSourceRegistry } from "../db/reference";
+import { activateSyncAndInvalidate, rollbackAndInvalidate } from "../db/operations";
+import { pruneRetiredSyncs, syncSourceRegistry } from "../db/reference";
 import { spawn } from "node:child_process";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -91,13 +92,13 @@ async function main() {
     case "activate": {
       if (!values.sync) throw new Error("--sync is required.");
       const db = createDatabase(requireEnv("DATABASE_IMPORTER_URL"));
-      console.log(JSON.stringify(await activateSync(db, values.sync), null, 2));
+      console.log(JSON.stringify(await activateSyncAndInvalidate(db, values.sync), null, 2));
       break;
     }
     case "rollback": {
       if (!values.source) throw new Error("--source is required.");
       const db = createDatabase(requireEnv("DATABASE_IMPORTER_URL"));
-      console.log(JSON.stringify(await rollbackSource(db, values.source, values.layer ?? ""), null, 2));
+      console.log(JSON.stringify(await rollbackAndInvalidate(db, values.source, values.layer ?? ""), null, 2));
       break;
     }
     case "prune": {

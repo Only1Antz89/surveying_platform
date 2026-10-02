@@ -148,6 +148,20 @@
       "when": 1790931852950,
       "tag": "0020_media_analyses_security",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1790932409813,
+      "tag": "0021_data_source_operations",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1790932822569,
+      "tag": "0022_reference_cache_invalidation",
+      "breakpoints": true
     }
   ]
 }

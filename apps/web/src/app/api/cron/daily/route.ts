@@ -2,6 +2,7 @@ import { emailDeliveryConfigured } from "@/lib/email";
 import { enqueueDailyNotifications, processEmailQueue } from "@/lib/email-queue";
 import { processIntelligenceQueue } from "@/lib/intelligence";
 import { processMediaAnalysisBacklog } from "@/lib/media-analysis";
+import { runDataSourceSweep } from "@/lib/data-source-admin";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -16,5 +17,6 @@ export async function GET(request: Request) {
     : { configured: false, claimed: 0, completed: 0, retried: 0, failed: 0 };
   const intelligence = await processIntelligenceQueue(10).catch(() => ({ claimed: 0, results: [], error: "Intelligence sweep failed." }));
   const media = await processMediaAnalysisBacklog(20).catch(() => ({ analysed: 0 }));
-  return Response.json({ ok: true, scheduled, delivery, intelligence: { claimed: intelligence.claimed }, media: { analysed: media.analysed } });
+  const sources = await runDataSourceSweep().catch(() => ({ probed: 0, stale: [] }));
+  return Response.json({ ok: true, scheduled, delivery, intelligence: { claimed: intelligence.claimed }, media: { analysed: media.analysed }, sources: { probed: sources.probed, releaseChecksDue: sources.stale.length } });
 }

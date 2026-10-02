@@ -73,7 +73,7 @@ export const epcProvider: IntelligenceProvider = {
     url.searchParams.set("uprn", location.uprn!);
     url.searchParams.set("size", "50");
     const load = async () => (await withTransientRetry(() => providerFetchJson(url, { allowedHosts: [base.hostname], timeoutMs: 8000, maxBytes: 2_000_000, fetchImpl: context.fetchImpl, headers: { authorization: authHeader(context.env)! }, notFoundIsEmpty: true }))).body ?? { rows: [] };
-    const body = context.cache ? await context.cache.getOrLoad(`epc|v1|uprn:${location.uprn}`, 30, load, () => true) : await load();
+    const body = context.cache ? await context.cache.getOrLoad(`${sourceKey}|v1|uprn:${location.uprn}`, 30, load, () => true) : await load();
     const parsed = responseSchema.safeParse(body);
     if (!parsed.success) throw Object.assign(new Error("The EPC service returned an unexpected response."), { code: "invalid_response" });
     // Defensive: keep only certificates lodged against exactly this UPRN.

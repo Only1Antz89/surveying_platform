@@ -50,6 +50,7 @@ function CategoryCard({ item }: { item: IntelligenceCategoryView }) {
       </div>
     </header>
     {item.stale ? <p className="identity-warning"><AlertTriangle size={14} aria-hidden="true" />Retrieved for an earlier location or identity of this property. Refresh before relying on it.</p> : null}
+    {!item.stale && item.newerDataAvailable ? <p className="identity-warning"><AlertTriangle size={14} aria-hidden="true" />A newer version of this dataset is now active. Refresh to check against it.</p> : null}
     {item.records.length ? <ul className="intel-records">{item.records.map((record) => <li key={record.snapshotId}><RecordSummary category={item.category} record={record} />{record.evidence.length ? <div className="intel-evidence">{record.evidence.map((evidence) => <a key={evidence.url} href={evidence.url} target="_blank" rel="noopener noreferrer">{evidence.label}<ExternalLink size={12} aria-hidden="true" /></a>)}</div> : null}</li>)}</ul> : null}
     {item.message ? <p className="intel-message">{item.message}</p> : null}
     <p className="intel-caveat">{info.caveat}</p>

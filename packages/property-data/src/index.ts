@@ -6,3 +6,4 @@ export * from "./adapters/postcodes-io";
 export * from "./adapters/nominatim";
 export * from "./providers";
 export * from "./registry/categories";
+export * from "./operations/freshness";

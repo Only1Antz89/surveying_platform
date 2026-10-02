@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { BrandMark } from "@surveynt/ui";
 import {
   Activity, Bell, BookOpenCheck, BriefcaseBusiness, Building2, ChevronDown,
-  CircleDollarSign, ClipboardCheck, FileClock, Headphones, House, Menu, Settings,
+  CircleDollarSign, ClipboardCheck, Database, FileClock, Headphones, House, Menu, Settings,
   ShieldCheck, SlidersHorizontal, Users, X, type LucideIcon,
 } from "lucide-react";
 import { platformRoleLabels, roleLabels, type OrganisationRole, type PlatformRole } from "@surveynt/domain";
@@ -30,6 +30,7 @@ const platformItems: Item[] = [
   { label: "Support", href: "/platform/support", icon: Headphones },
   { label: "Incidents", href: "/platform/incidents", icon: ShieldCheck },
   { label: "Practice packs", href: "/platform/practice-packs", icon: BookOpenCheck },
+  { label: "Data sources", href: "/platform/data-sources", icon: Database },
   { label: "Audit", href: "/platform/audit", icon: FileClock },
   { label: "Settings", href: "/platform/settings", icon: SlidersHorizontal },
 ];

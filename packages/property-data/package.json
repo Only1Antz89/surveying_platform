@@ -16,7 +16,8 @@
     "test": "vitest run",
     "import:os-open-uprn": "tsx src/importers/cli.ts os-open-uprn",
     "reference": "tsx src/importers/cli.ts",
-    "test:integration": "vitest run --dir test"
+    "test:integration": "vitest run --dir test",
+    "benchmark": "tsx test/benchmark.ts"
   },
   "dependencies": {
     "@surveynt/db": "workspace:*",

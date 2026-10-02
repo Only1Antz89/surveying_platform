@@ -70,7 +70,9 @@ SET enabled = true, verified_at = now(), verified_by = '<name>', verification_no
 WHERE key = 'postcodes_io';
 ```
 
-A source with `register_status = 'blocked'` is always treated as disabled. The platform administration UI for this arrives in P5.
+A source with `register_status = 'blocked'` is always treated as disabled.
+
+Since P5 the usual route is **Platform → Data sources** (super admin or compliance): "Enable after verification" with a note of what was checked. The same page records release checks, runs probes, activates staged versions and rolls back, and each action is audited. See [`runbook.md`](./runbook.md).
 
 ## Importing OS Open UPRN (regional first)
 
