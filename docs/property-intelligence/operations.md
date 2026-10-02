@@ -29,6 +29,12 @@ Each repeated input must have a stable, unique label. The preparer prefixes sour
 
 The preparer streams the features array, so national files are not loaded into memory. Use `--where Flood_zone=2` and a separate `--where Flood_zone=3` run for the Environment Agency product; never combine the two output files or infer Flood Zone 1 from their absence.
 
+When an official OGC API Features collection is available, download and prepare it directly without retaining a multi-gigabyte GeoJSON document:
+
+`pnpm --filter @surveynt/db prepare:ogc-features -- --endpoint https://environment.data.gov.uk/geoservices/datasets/04532375-a198-476e-985e-0579a0a11b47/ogc/features/v1/collections/Flood_Zones_2_3_Rivers_and_Sea/items --output /private/tmp/ea-flood-zone-2.csv --source-crs EPSG:4326 --source-prefix flood_zone_2 --filter-field flood_zone --filter-value FZ2 --page-size 1000 --rewrite-pagination-origin https://api-k8s-dsp-prod.agrimetrics.co.uk`
+
+Run the same command with a distinct output, `flood_zone_3` and `FZ3` for Zone 3. The command uses a CQL2 filter, follows bounded pagination only on the same collection path and public HTTPS origin, confirms the service's total count and validates every returned feature against the requested layer. The EA service currently emits one unresolvable Agrimetrics backend link during later Zone 2 pages. The explicit rewrite option accepts only that exact origin and identical path, then requests the unchanged path and query through the reviewed public EA origin. It retries transient service failures three times and deletes only its newly created partial output on failure. The GeoJSON API response is CRS84/WGS84 even though the publisher also exposes the source dataset in British National Grid.
+
 For HMLR INSPIRE GML, extract each downloaded authority archive and prepare the national file with:
 
 `pnpm --filter @surveynt/db prepare:spatial-gml -- --output /private/tmp/hmlr.csv --source-crs EPSG:27700 --input adur=/path/Land_Registry_Cadastral_Parcels.gml --input amber_valley=/path/Land_Registry_Cadastral_Parcels.gml`

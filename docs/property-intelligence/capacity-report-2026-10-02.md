@@ -13,9 +13,10 @@ Cost projections use the current published Neon storage rate of USD 0.35 per GiB
 | OS Open UPRN `2026-09` | Full official GB CSV scanned; zero invalid rows; required headers and WGS84 ranges passed | 41,676,575 | 2,273,707,279 bytes CSV | 4,092,673,102 bytes | USD 1.3341 | Blocked: not staged; index size and latency unmeasured |
 | Historic England NHLE `2026-10-01` | All eight polygon layers converted and fully scanned; zero invalid rows | 401,771 | 401,683,375 bytes canonical CSV | 1,004,208,438 bytes | USD 0.3273 | Blocked: not staged; index size and latency unmeasured |
 | HMLR INSPIRE `2026-09` | Official Adur sample converted and fully scanned; zero invalid rows | 26,429 sample parcels | 3,633,091 bytes ZIP; 26,412,404 bytes GML; 17,737,855 bytes CSV | 44,344,638 bytes for sample | USD 0.0145 for sample | Blocked: national download, count, deduplication, table/index size and latency unmeasured |
-| EA Flood Map for Planning, revision `2026-05-20` | Official metadata/licence/CRS verified; national resource was not downloadable from the published endpoint during this run | Not measured | Catalogue reports 4,282.5 MB GeoJSON ZIP | Provisional 11,226,316,800 bytes using 2.5x multiplier | Provisional USD 3.6594 | Blocked: download endpoint returned not found; no checksum, semantic scan or measured capacity |
+| EA Flood Zone 2, revision `2026-05-20` | Official OGC collection fully downloaded and scanned; zero invalid rows; every feature matched FZ2 | 540,282 | 3,321,129,511 bytes canonical CSV | 8,302,823,778 bytes | USD 2.7064 | Blocked: not staged; index size and latency unmeasured |
+| EA Flood Zone 3, revision `2026-05-20` | Official OGC collection fully downloaded and scanned; zero invalid rows; every feature matched FZ3 | 273,345 | 3,360,223,998 bytes canonical CSV | 8,400,559,995 bytes | USD 2.7383 | Blocked: not staged; index size and latency unmeasured |
 
-The measured OS and Historic England dry-run estimate is USD 1.6614 per month before indexes and platform overhead. It must not be treated as the final Neon cost.
+The measured OS, Historic England and Environment Agency dry-run estimate is USD 7.1061 per month before indexes and platform overhead. It must not be treated as the final Neon cost.
 
 ## OS Open UPRN evidence
 
@@ -59,10 +60,15 @@ Canonical CSV SHA-256: `003510636bc2fa313ecd471ae26f582d00e9496fa8ad7f7aaf6e2bcd
 
 - Dataset: Flood Map for Planning - Flood Zones, metadata identifier `04532375-a198-476e-985e-0579a0a11b47`.
 - Revision date: 20 May 2026; data.gov.uk catalogue updated 6 July 2026.
-- CRS: `EPSG:27700`; licence: Open Government Licence.
+- Source dataset CRS: `EPSG:27700`; official OGC GeoJSON response CRS: CRS84/WGS84; licence: Open Government Licence.
 - The source explicitly states that the layers are planning context and are not suitable for deciding whether an individual property is at risk.
 - Flood Zones 2 and 3 must be split into distinct versioned imports. Absence from either layer must remain “no record found”, never “safe” or “low risk”.
-- The current catalogue resource URL returned `404` on 2 October 2026, while the catalogue continued to advertise the 4,282.5 MB GeoJSON ZIP. Retry against the publisher before any staging decision and record the new checksum and revision.
+- The catalogue's advertised GeoJSON ZIP returned `404`, so the national layers were obtained from the publisher's official OGC API Features collection using separate CQL2 filters.
+- The API reported 540,282 FZ2 and 273,345 FZ3 records. Both totals were downloaded across 83 pages, and every returned feature was checked against its requested zone.
+- During one later FZ2 page, the publisher emitted an unresolvable Agrimetrics backend hostname. The downloader accepted only that exact origin and identical collection path, rewrote it to the reviewed public EA origin, and retained the publisher's unchanged query. The equivalent public URL returned the expected 10,000-feature page.
+- FZ2 canonical CSV SHA-256: `69598bc591c826ec85320b8780de26c95fcf5a9dbbca16c75856a39d0fdca434`.
+- FZ3 canonical CSV SHA-256: `facf6ec1d72642d5704f8af3ca76347f898a8f24cd0d3f38d06be3655f878675`.
+- The importer's complete semantic scan found zero invalid rows, duplicate headers or missing required columns in either layer. Actual table/index size and query latency remain unmeasured until separately authorised staging.
 
 ## Required approval gate
 
