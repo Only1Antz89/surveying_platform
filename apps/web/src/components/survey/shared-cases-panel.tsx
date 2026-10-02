@@ -20,6 +20,14 @@ export function SharedCasesPanel({ pack, sectionKey, online }: { pack: SurveyPac
   const [result, setResult] = useState<Result | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<Record<string, string>>({});
+
+  async function sendFeedback(id: string, rating: "helpful" | "not_helpful" | "incorrect" | "identifying", note?: string) {
+    const response = await fetch(`/api/v1/shared-cases/${id}/feedback`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ rating, note: note ?? null }) });
+    const payload = await response.json().catch(() => null);
+    const message = !response.ok ? payload?.error?.message ?? "Feedback could not be sent." : payload?.data?.suspended ? "Thank you. The example has been withdrawn from use while it is reviewed." : "Thank you. Feedback goes to reviewers and is never used for training.";
+    setFeedback((current) => ({ ...current, [id]: message }));
+  }
   const selected = element || elements.find((item) => item.sectionKey === sectionKey)?.key || elements[0]?.key || "";
 
   async function search(event: FormEvent<HTMLFormElement>) {
@@ -54,6 +62,14 @@ export function SharedCasesPanel({ pack, sectionKey, online }: { pack: SurveyPac
           {item.confirmedCause ? <span className="cell-sub">Confirmed by follow-up: {item.confirmedCause}</span> : null}
           {item.nextSteps.length ? <span className="cell-sub">Next steps in that case: {item.nextSteps.join("; ")}</span> : null}
           <small className="cell-sub">{item.reference}</small>
+          <div className="row-actions" aria-label="Feedback on this example">
+            {feedback[item.id] ? <span className="cell-sub">{feedback[item.id]}</span> : <>
+              <button type="button" className="button button-quiet" onClick={() => void sendFeedback(item.id, "helpful")}>Helpful</button>
+              <button type="button" className="button button-quiet" onClick={() => void sendFeedback(item.id, "not_helpful")}>Not helpful</button>
+              <button type="button" className="button button-quiet" onClick={() => { const note = window.prompt("What is wrong with this example?"); if (note?.trim()) void sendFeedback(item.id, "incorrect", note); }}>Incorrect</button>
+              <button type="button" className="button button-quiet danger" onClick={() => { const note = window.prompt("Why could this identify a property or person? It will be withdrawn from use at once."); if (note?.trim()) void sendFeedback(item.id, "identifying", note); }}>Could identify someone</button>
+            </>}
+          </div>
         </li>)}</ul> : <p className="form-help assistant-empty">No reviewed examples match. {result.release.unsupportedSegments.length ? `Not yet covered: ${result.release.unsupportedSegments.join(", ")}.` : ""}</p>}
       </>}
     </div> : null}

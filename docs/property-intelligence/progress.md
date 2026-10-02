@@ -309,6 +309,22 @@ Acceptance (L2 gate: "expert review and privacy approval required; identical bas
 - Rollback restores the previous release. Inactive releases are invisible to the tenant role (integration-tested).
 - Expert review itself is a human step. No qualified reviewers are appointed and no real case has been reviewed.
 
+### L3–L4 — Evaluation, feedback, correction, withdrawal, rollback and the fine-tuning gate
+
+| Item | Code | Configured | Imported | Live |
+|---|---|---|---|---|
+| Migrations 0033–0034: tenant `learning_case_feedback` (append-only, FORCE RLS), restricted `evaluation_runs` (immutable) | ✅ | ❌ not applied | — | — |
+| Feedback on reviewed examples (survey workspace and API); reviewers see counts and notes without firm identity; "could identify someone" removes the case from every release at once and returns it to the privacy queue | ✅ | — | — | — |
+| Retraction for correction (back to review) or outright rejection; released cases never edited | ✅ | — | — | — |
+| Held-out retrieval-baseline evaluation (`retrieval-baseline-v1`): evaluation-scope cases only, held-out firms, property-grouped and later-date test sets, coverage, abstention and rating agreement by firm-size segment, three leakage checks | ✅ (synthetic corpus) | ❌ no pass marks set | — | — |
+| Withdrawal and rollback (from L1–L2) documented in [`operations.md`](../shared-learning/operations.md) | ✅ | — | — | — |
+| L4 fine-tuning: gate and eligibility rules, live gate panel, procedure in [`fine-tuning.md`](../shared-learning/fine-tuning.md) | ✅ gate only; **no training code by design** | ❌ no provider | — | — |
+
+Acceptance:
+
+- L3 gate ("quality and leakage thresholds met; no automatic feedback-to-training path"): leakage checks are zero on the synthetic corpus (integration-tested, repeated across random contributor keys). Feedback has no route into training eligibility. **Quality thresholds are not set**, so the gate is not met.
+- L4 gate: reported as not met. Reasons: no registered provider, no identified baseline failures, no measured benefit, no memorisation tests, no approved retirement procedure, no minimum corpus. Eligible cases are counted only from released cases of firms granting model training (integration-tested).
+
 ## Validation log
 
 | Date | Command | Result |
@@ -357,3 +373,6 @@ Acceptance (L2 gate: "expert review and privacy approval required; identical bas
 | 2026-10-02 | `pnpm check` (L2) | ✅ lint, typecheck, 138 unit tests, build |
 | 2026-10-02 | `pnpm test:integration` (L2, all suites) | ✅ 92 tests (db 3, property-data 28, web 61), including 5 new release tests: separation of duties and identifier re-scan in technical review; balanced draft with duplicates removed and contributor cap; approval blocked by a pending withdrawal and by a missing or same-person privacy sign-off; identical corpus for contributing and non-contributing firms with no lineage columns; release replacement and rollback; withdrawal removing released cases from every release |
 | 2026-10-02 | Playwright L2 smoke (demo mode, production build) | ✅ survey workspace "Reviewed examples" panel searches and reports "Shared learning is not active on Surveynt"; platform console renders; no console errors from the survey page; no overflow at 390 px |
+| 2026-10-02 | `pnpm check` (L3–L4) | ✅ lint, typecheck, 138 unit tests, build |
+| 2026-10-02 | `pnpm test:integration` (L3–L4, all suites) | ✅ 97 tests (db 3, property-data 28, web 66), including 5 new tests on a 40-case synthetic corpus: private feedback without firm identity; immediate suspension on an "identifying" report; retraction for correction or rejection; held-out evaluation with zero leakage and evaluation-scope-only test cases (repeated three times with different random contributor keys); fine-tuning gate with model-training eligibility |
+| 2026-10-02 | Playwright L3 smoke and demo API (production build) | ✅ survey panel and platform console render with no console errors and no overflow at 390 px; demo feedback API refuses "incorrect" without a note and accepts "helpful" without saving |

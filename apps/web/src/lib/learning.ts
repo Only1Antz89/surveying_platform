@@ -1,9 +1,9 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { contributionConfirmations, contributionScopes, currentGrant, programmeStatus, type ContributionScope } from "@surveynt/learning";
-import { auditEvents, createDatabase, jobs, learningContributionGrants, learningPolicyVersions, learningWithdrawalRequests, withTenant, type Database } from "@surveynt/db";
+import { auditEvents, createDatabase, jobs, learningCaseFeedback, learningContributionGrants, learningPolicyVersions, learningWithdrawalRequests, sharedCases, sharedReleases, withTenant, type Database } from "@surveynt/db";
 import { canManageTeam, canMutateOperations, type OrganisationRole } from "@surveynt/domain";
-import { processWithdrawal } from "./learning-pipeline";
+import { learningDb, processWithdrawal, retractCandidateCases } from "./learning-pipeline";
 
 export type LearningContext = { organisationId: string; internalUserId: string | null; role: OrganisationRole };
 
@@ -106,3 +106,28 @@ export async function requestWithdrawal(context: LearningContext, input: z.infer
 }
 
 export const scopeIsKnown = (value: string): value is ContributionScope => (contributionScopes as readonly string[]).includes(value);
+
+export const feedbackInput = z.object({
+  rating: z.enum(["helpful", "not_helpful", "incorrect", "identifying"]),
+  note: z.string().trim().max(1000).nullable().optional(),
+}).refine((input) => input.rating === "helpful" || input.rating === "not_helpful" || Boolean(input.note?.trim()), { message: "Say what is wrong so a reviewer can act on it.", path: ["note"] });
+
+/**
+ * Feedback on a shared case from any firm. It goes to reviewers as evaluation
+ * input and never into training. A report that a case could identify someone
+ * takes the case out of retrieval at once and holds it for privacy review.
+ */
+export async function recordCaseFeedback(context: LearningContext, sharedCaseId: string, input: z.infer<typeof feedbackInput>) {
+  if (!canMutateOperations(context.role)) throw new LearningError(403, "forbidden", "Your role cannot give feedback.");
+  const db = createDatabase();
+  const [shared] = await db.select({ id: sharedCases.id, version: sharedReleases.version }).from(sharedCases).innerJoin(sharedReleases, eq(sharedReleases.id, sharedCases.releaseId)).where(and(eq(sharedCases.id, sharedCaseId), eq(sharedReleases.status, "active"))).limit(1);
+  if (!shared) throw new LearningError(404, "not_found", "The shared case could not be found.");
+  const feedback = await withTenant(db, context.organisationId, async (tx) => {
+    const [created] = await tx.insert(learningCaseFeedback).values({ organisationId: context.organisationId, sharedCaseId, releaseVersion: shared.version, rating: input.rating, note: input.note?.trim() || null, createdByUserId: context.internalUserId }).returning();
+    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "learning.case_feedback", resourceType: "shared_case", resourceId: sharedCaseId, metadata: { rating: input.rating } });
+    return created;
+  });
+  const restricted = input.rating === "identifying" ? learningDb() : null;
+  const suspended = restricted ? await retractCandidateCases(restricted, { sharedCaseId, reason: "Reported by a firm as possibly identifying; held for privacy review.", nextStatus: "quarantined", actorStaffId: null, actor: "learning_service" }) : null;
+  return { feedback: { id: feedback.id, rating: feedback.rating }, suspended: Boolean(suspended) };
+}

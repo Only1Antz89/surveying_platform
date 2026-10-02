@@ -192,3 +192,26 @@ export async function runLearningSweep(limitPerFirm = 10) {
   for (const firm of firms) created += (await extractFirmCandidates(firm.organisationId, limitPerFirm)).created;
   return { withdrawals, firms: firms.length, created };
 }
+
+/**
+ * Takes a released case out of shared retrieval in every release and moves its
+ * candidate on: back to a review queue for correction, or rejected.
+ */
+export async function retractCandidateCases(db: Database, input: { sharedCaseId: string; reason: string; nextStatus: "quarantined" | "awaiting_technical_review" | "rejected"; actorStaffId: string | null; actor: string }) {
+  return db.transaction(async (tx) => {
+    const [item] = await tx.select({ candidateId: learningReleaseItems.candidateId }).from(learningReleaseItems).where(eq(learningReleaseItems.sharedCaseId, input.sharedCaseId)).limit(1);
+    if (!item) return null;
+    const items = await tx.select({ sharedCaseId: learningReleaseItems.sharedCaseId, releaseId: learningReleaseItems.releaseId }).from(learningReleaseItems)
+      .where(and(eq(learningReleaseItems.candidateId, item.candidateId), eq(learningReleaseItems.status, "included")));
+    const shared = items.map((entry) => entry.sharedCaseId);
+    const removed = shared.length ? await tx.delete(sharedCases).where(inArray(sharedCases.id, shared)).returning({ id: sharedCases.id }) : [];
+    if (shared.length) await tx.update(learningReleaseItems).set({ status: "retracted", statusReason: input.reason }).where(inArray(learningReleaseItems.sharedCaseId, shared));
+    for (const releaseId of new Set(items.map((entry) => entry.releaseId))) {
+      await tx.execute(sql`update learning_shared.releases set case_count = (select count(*) from learning_shared.cases c where c.release_id = ${releaseId}) where id = ${releaseId}`);
+    }
+    const [candidate] = await tx.update(learningCandidates).set({ status: input.nextStatus, statusReason: input.reason, updatedAt: new Date() })
+      .where(and(eq(learningCandidates.id, item.candidateId), ne(learningCandidates.status, "withdrawn"))).returning({ id: learningCandidates.id, status: learningCandidates.status });
+    await tx.insert(learningAuditLog).values({ actorStaffId: input.actorStaffId, actor: input.actor, action: "case.retracted", candidateId: item.candidateId, metadata: { reason: input.reason, nextStatus: input.nextStatus, sharedCases: removed.length } });
+    return { candidateId: item.candidateId, status: candidate?.status ?? "withdrawn", sharedCasesRemoved: removed.length };
+  });
+}

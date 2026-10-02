@@ -1348,3 +1348,33 @@ export const sharedCases = learningShared.table("cases", {
   index("shared_cases_release_element_idx").on(table.releaseId, table.elementKey, table.jurisdiction),
   index("shared_cases_search_idx").using("gin", table.search),
 ]);
+
+// L3: feedback and evaluation. Feedback on a shared case is evaluation input
+// for reviewers; there is no path from feedback to training.
+
+export const learningCaseFeedback = pgTable("learning_case_feedback", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  sharedCaseId: uuid("shared_case_id").notNull(),
+  releaseVersion: text("release_version").notNull(),
+  rating: text("rating").notNull(),
+  note: text("note"),
+  createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("learning_case_feedback_case_idx").on(table.sharedCaseId),
+  index("learning_case_feedback_org_idx").on(table.organisationId, table.createdAt),
+  check("learning_case_feedback_rating_chk", sql`rating in ('helpful', 'not_helpful', 'incorrect', 'identifying')`),
+]);
+
+export const learningEvaluationRuns = learningRestricted.table("evaluation_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  releaseId: uuid("release_id").notNull().references(() => learningReleases.id, { onDelete: "restrict" }),
+  method: text("method").notNull(),
+  options: jsonb("options").$type<Record<string, unknown>>().notNull(),
+  plan: jsonb("plan").$type<Record<string, unknown>>().notNull(),
+  metrics: jsonb("metrics").$type<Record<string, unknown>>().notNull(),
+  leakage: jsonb("leakage").$type<Record<string, unknown>>().notNull(),
+  createdByStaffId: uuid("created_by_staff_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [index("learning_evaluation_runs_release_idx").on(table.releaseId, table.createdAt)]);

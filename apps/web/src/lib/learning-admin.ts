@@ -1,10 +1,12 @@
+import { createHash } from "node:crypto";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
-import { currentGrant, curateRelease, privacyDecisionSchema, releaseCriteriaSchema, releaseProblems, reviewedCaseProblems, SANITISER, sharedCaseFields, technicalDecisionSchema, type CurationItem, type PrivacyDecision, type ReviewedCase, type SanitisedCase, type TechnicalDecision } from "@surveynt/learning";
-import { auditEvents, createDatabase, learningAuditLog, learningCandidates, learningContributionGrants, learningPolicyVersions, learningReleaseItems, learningReleases, learningReviews, learningSanitisationRuns, learningWithdrawalRequests, sharedCases, sharedReleases, withTenant, type Database } from "@surveynt/db";
+import { contributorSegments, planEvaluationSplits, splitLeakage } from "@surveynt/learning/evaluation";
+import { currentGrant, curateRelease, fineTuningGate, trainingEligibility, type ContributionScope, privacyDecisionSchema, releaseCriteriaSchema, releaseProblems, reviewedCaseProblems, SANITISER, sharedCaseFields, technicalDecisionSchema, type CurationItem, type PrivacyDecision, type ReviewedCase, type SanitisedCase, type TechnicalDecision } from "@surveynt/learning";
+import { aiModelRegister, auditEvents, createDatabase, learningAuditLog, learningCaseFeedback, learningEvaluationRuns, learningCandidates, learningContributionGrants, learningPolicyVersions, learningReleaseItems, learningReleases, learningReviews, learningSanitisationRuns, learningWithdrawalRequests, sharedCases, sharedReleases, withTenant, type Database } from "@surveynt/db";
 import type { PlatformRole } from "@surveynt/domain";
 import { LearningError, loadProgramme } from "./learning";
-import { learningDb } from "./learning-pipeline";
+import { learningDb, retractCandidateCases } from "./learning-pipeline";
 
 // Platform side of shared learning. Separate roles review privacy, review the
 // surveying content and manage releases; compliance owns the policy. Reviewers
@@ -120,7 +122,7 @@ export async function recordPrivacyDecision(operator: LearningOperator, candidat
 
 export async function loadLearningConsole() {
   const programme = await loadProgramme(adminDb());
-  const [policies, counts, privacyQueue, technicalQueue, releases] = await Promise.all([loadPolicyVersions(), loadQueueCounts(), loadReviewQueue("privacy"), loadReviewQueue("technical"), loadReleases()]);
+  const [policies, counts, privacyQueue, technicalQueue, releases, feedback, evaluations, fineTuning] = await Promise.all([loadPolicyVersions(), loadQueueCounts(), loadReviewQueue("privacy"), loadReviewQueue("technical"), loadReleases(), loadCaseFeedback(), loadEvaluationRuns(), loadFineTuningGate()]);
   return {
     programme: { active: programme.status.active, reasons: programme.status.reasons, policy: programme.policy },
     learningConfigured: Boolean(process.env.DATABASE_LEARNING_URL),
@@ -129,6 +131,9 @@ export async function loadLearningConsole() {
     privacyQueue,
     technicalQueue,
     releases,
+    feedback,
+    evaluations,
+    fineTuning,
   };
 }
 
@@ -180,8 +185,8 @@ async function stagedCases(db: Database, candidateIds?: string[]): Promise<Stage
   });
 }
 
-/** Whether each contributing firm still grants structured cases under the current policy, read through the tenant connection. */
-async function rightsByCandidate(cases: StagedCase[], policyVersion: string) {
+/** Whether each contributing firm still grants a scope under the current policy, read through the tenant connection. */
+async function rightsByCandidate(cases: Pick<StagedCase, "candidateId" | "organisationId" | "jobId">[], policyVersion: string, scope: ContributionScope = "structured_cases") {
   const app = createDatabase();
   const current = new Map<string, boolean>();
   for (const organisationId of new Set(cases.map((item) => item.organisationId))) {
@@ -189,9 +194,9 @@ async function rightsByCandidate(cases: StagedCase[], policyVersion: string) {
       tx.select().from(learningContributionGrants).where(eq(learningContributionGrants.organisationId, organisationId)),
       tx.select({ scope: learningWithdrawalRequests.scope, jobId: learningWithdrawalRequests.jobId }).from(learningWithdrawalRequests).where(eq(learningWithdrawalRequests.organisationId, organisationId)),
     ]));
-    const grant = currentGrant(grants, "structured_cases");
+    const grant = currentGrant(grants, scope);
     for (const item of cases.filter((entry) => entry.organisationId === organisationId)) {
-      const withdrawn = withdrawals.some((request) => request.jobId === item.jobId && (request.scope === null || request.scope === "structured_cases"));
+      const withdrawn = withdrawals.some((request) => request.jobId === item.jobId && (request.scope === null || request.scope === "structured_cases" || request.scope === scope));
       current.set(item.candidateId, grant?.status === "granted" && grant.policyVersion === policyVersion && !withdrawn);
     }
   }
@@ -324,4 +329,120 @@ export async function loadReleases() {
   if (!db) return null;
   const releases = await db.select().from(learningReleases).orderBy(desc(learningReleases.createdAt)).limit(20);
   return releases.map((row) => ({ id: row.id, version: row.version, status: row.status, policyVersion: row.policyVersion, manifest: row.manifest, problems: row.problems, privacySignedOff: Boolean(row.privacySignoffAt), privacyNote: row.privacyNote, approvedAt: row.approvedAt?.toISOString() ?? null, activatedAt: row.activatedAt?.toISOString() ?? null, createdAt: row.createdAt.toISOString() }));
+}
+
+// L3: corrections, feedback and held-out evaluation.
+
+/** Takes a released case out of every release; it can go back for review (a correction) or be rejected. */
+export async function retractSharedCase(operator: LearningOperator, sharedCaseId: string, input: { reason: string; reviewAgain: boolean }) {
+  if (!["release_manager", "privacy_reviewer", "technical_reviewer"].includes(operator.role)) throw new LearningError(403, "forbidden", "A reviewer or release manager role is required.");
+  if (input.reason.trim().length < 10) throw new LearningError(422, "reason_required", "Record why the case is retracted.");
+  const nextStatus = !input.reviewAgain ? "rejected" : operator.role === "privacy_reviewer" ? "quarantined" : "awaiting_technical_review";
+  const result = await retractCandidateCases(requireLearningDb(), { sharedCaseId, reason: input.reason.trim(), nextStatus, actorStaffId: operator.platformStaffId, actor: operator.role });
+  if (!result) throw new LearningError(404, "not_found", "The shared case could not be found.");
+  return result;
+}
+
+/** Feedback from every firm, without firm identity: counts per case, and the notes behind problem reports. */
+export async function loadCaseFeedback() {
+  const db = adminDb();
+  const [counts, notes] = await Promise.all([
+    db.select({ sharedCaseId: learningCaseFeedback.sharedCaseId, releaseVersion: learningCaseFeedback.releaseVersion, rating: learningCaseFeedback.rating, count: sql<number>`count(*)::int` }).from(learningCaseFeedback).groupBy(learningCaseFeedback.sharedCaseId, learningCaseFeedback.releaseVersion, learningCaseFeedback.rating),
+    db.select({ sharedCaseId: learningCaseFeedback.sharedCaseId, rating: learningCaseFeedback.rating, note: learningCaseFeedback.note, createdAt: learningCaseFeedback.createdAt }).from(learningCaseFeedback).where(inArray(learningCaseFeedback.rating, ["incorrect", "identifying"])).orderBy(desc(learningCaseFeedback.createdAt)).limit(100),
+  ]);
+  const byCase = new Map<string, { sharedCaseId: string; releaseVersion: string; ratings: Record<string, number>; notes: { rating: string; note: string | null; createdAt: string }[] }>();
+  for (const row of counts) {
+    const entry = byCase.get(row.sharedCaseId) ?? { sharedCaseId: row.sharedCaseId, releaseVersion: row.releaseVersion, ratings: {}, notes: [] };
+    entry.ratings[row.rating] = (entry.ratings[row.rating] ?? 0) + Number(row.count);
+    byCase.set(row.sharedCaseId, entry);
+  }
+  for (const row of notes) byCase.get(row.sharedCaseId)?.notes.push({ rating: row.rating, note: row.note, createdAt: row.createdAt.toISOString() });
+  const priority = (entry: { ratings: Record<string, number> }) => (entry.ratings.identifying ?? 0) * 100 + (entry.ratings.incorrect ?? 0) * 10 + (entry.ratings.not_helpful ?? 0);
+  return [...byCase.values()].sort((a, b) => priority(b) - priority(a)).slice(0, 50);
+}
+
+export const evaluationInput = z.object({
+  seed: z.string().trim().min(3).max(60),
+  testShare: z.number().min(0.05).max(0.5),
+  heldOutContributorShare: z.number().min(0).max(0.5),
+  testFromDate: z.iso.date().nullable(),
+  segmentThresholds: z.object({ small: z.number().int().min(1), large: z.number().int().min(2) }),
+});
+
+/**
+ * Held-out evaluation of the shared-retrieval baseline on the active release.
+ * Only cases from firms that grant the evaluation scope are used as test cases;
+ * every case from one property stays on one side; held-out firms are test-only.
+ * For each test case the best-ranked training case for the same element is
+ * retrieved, and its example rating compared. Nothing is trained.
+ */
+export async function runRetrievalEvaluation(operator: LearningOperator, input: z.infer<typeof evaluationInput>) {
+  if (operator.role !== "release_manager" && operator.role !== "technical_reviewer") throw new LearningError(403, "forbidden", "A release manager or technical reviewer role is required.");
+  const options = evaluationInput.parse(input);
+  const db = requireLearningDb();
+  const programme = await loadProgramme(adminDb());
+  if (!programme.status.active) throw new LearningError(409, "programme_inactive", "Shared learning is not active.");
+  const [release] = await db.select().from(learningReleases).where(eq(learningReleases.status, "active")).limit(1);
+  if (!release) throw new LearningError(409, "nothing_active", "No release is active.");
+  const rows = await db.select({ candidateId: learningCandidates.id, organisationId: learningCandidates.organisationId, jobId: learningCandidates.jobId, contributorKey: learningCandidates.contributorKey, groupKey: learningCandidates.groupKey, sharedCaseId: learningReleaseItems.sharedCaseId, elementKey: sharedCases.elementKey, observedFeature: sharedCases.observedFeature, ratingExample: sharedCases.ratingExample, reviewedAt: learningCandidates.createdAt })
+    .from(learningReleaseItems).innerJoin(learningCandidates, eq(learningCandidates.id, learningReleaseItems.candidateId)).innerJoin(sharedCases, eq(sharedCases.id, learningReleaseItems.sharedCaseId))
+    .where(and(eq(learningReleaseItems.releaseId, release.id), eq(learningReleaseItems.status, "included")));
+  const evaluationRights = await rightsByCandidate(rows, programme.status.policyVersion!, "evaluation");
+  const eligible = rows.filter((row) => evaluationRights.get(row.candidateId));
+  const contributors = [...new Set(eligible.map((row) => row.contributorKey))].sort((a, b) => createHash("sha256").update(`${options.seed}:${a}`).digest("hex").localeCompare(createHash("sha256").update(`${options.seed}:${b}`).digest("hex")));
+  const heldOut = contributors.slice(0, Math.floor(contributors.length * options.heldOutContributorShare));
+  const splitItems = eligible.map((row) => ({ candidateId: row.candidateId, contributorKey: row.contributorKey, groupKey: row.groupKey, reviewedAt: row.reviewedAt.toISOString().slice(0, 10) }));
+  const assignments = planEvaluationSplits(splitItems, { heldOutContributors: heldOut, testFromDate: options.testFromDate, testShare: options.testShare, seed: options.seed });
+  const test = new Set(assignments.filter((item) => item.split === "test").map((item) => item.candidateId));
+  // A property with any test case contributes nothing to the training side.
+  const testGroups = new Set(rows.filter((row) => test.has(row.candidateId)).map((row) => row.groupKey));
+  const heldOutSet = new Set(heldOut);
+  const train = rows.filter((row) => !test.has(row.candidateId) && !testGroups.has(row.groupKey) && !heldOutSet.has(row.contributorKey));
+  const leakage = { ...splitLeakage(splitItems, assignments, heldOut), retrievedFromTestProperty: 0 };
+  const segments = contributorSegments(rows.reduce((all, row) => all.set(row.contributorKey, (all.get(row.contributorKey) ?? 0) + 1), new Map<string, number>()), options.segmentThresholds);
+  const outcomes: { segment: string; answered: boolean; agreed: boolean }[] = [];
+  const trainIds = train.map((row) => row.sharedCaseId);
+  for (const row of rows.filter((entry) => test.has(entry.candidateId))) {
+    const [best] = trainIds.length ? await db.select({ id: sharedCases.id, ratingExample: sharedCases.ratingExample }).from(sharedCases)
+      .where(and(inArray(sharedCases.id, trainIds), eq(sharedCases.elementKey, row.elementKey), sql`${sharedCases.search} @@ plainto_tsquery('english', ${row.observedFeature})`))
+      .orderBy(sql`ts_rank(${sharedCases.search}, plainto_tsquery('english', ${row.observedFeature})) desc`, sharedCases.id).limit(1) : [];
+    if (best && testGroups.has(train.find((entry) => entry.sharedCaseId === best.id)?.groupKey ?? "")) leakage.retrievedFromTestProperty += 1;
+    outcomes.push({ segment: segments.get(row.contributorKey) ?? "unknown", answered: Boolean(best), agreed: Boolean(best && best.ratingExample === row.ratingExample) });
+  }
+  const summarise = (items: typeof outcomes) => {
+    const answered = items.filter((item) => item.answered).length;
+    return { testCases: items.length, answered, abstained: items.length - answered, coverage: items.length ? answered / items.length : null, ratingAgreementAt1: answered ? items.filter((item) => item.agreed).length / answered : null };
+  };
+  const metrics = { overall: summarise(outcomes), bySegment: Object.fromEntries(["small", "medium", "large"].map((segment) => [segment, summarise(outcomes.filter((item) => item.segment === segment))])) };
+  const plan = { testCases: test.size, trainCases: train.length, excludedWithoutEvaluationGrant: rows.length - eligible.length, heldOutContributors: heldOut.length, reasons: assignments.reduce<Record<string, number>>((all, item) => ({ ...all, [item.reason]: (all[item.reason] ?? 0) + 1 }), {}) };
+  const [run] = await db.insert(learningEvaluationRuns).values({ releaseId: release.id, method: "retrieval-baseline-v1", options, plan, metrics, leakage, createdByStaffId: operator.platformStaffId }).returning();
+  await restrictedAudit(db, operator, "evaluation.run", { releaseId: release.id, metadata: { runId: run.id, testCases: test.size } });
+  return run;
+}
+
+export async function loadEvaluationRuns() {
+  const db = learningDb();
+  if (!db) return null;
+  const runs = await db.select({ id: learningEvaluationRuns.id, method: learningEvaluationRuns.method, plan: learningEvaluationRuns.plan, metrics: learningEvaluationRuns.metrics, leakage: learningEvaluationRuns.leakage, createdAt: learningEvaluationRuns.createdAt, version: learningReleases.version })
+    .from(learningEvaluationRuns).innerJoin(learningReleases, eq(learningReleases.id, learningEvaluationRuns.releaseId)).orderBy(desc(learningEvaluationRuns.createdAt)).limit(10);
+  return runs.map((run) => ({ ...run, createdAt: run.createdAt.toISOString() }));
+}
+
+// L4: the fine-tuning gate. Reported, never acted on: nothing trains.
+
+export async function loadFineTuningGate() {
+  const db = learningDb();
+  const [approvedModels] = await Promise.all([adminDb().select({ id: aiModelRegister.id }).from(aiModelRegister).where(eq(aiModelRegister.status, "approved")).limit(1)]);
+  const programme = await loadProgramme(adminDb());
+  let eligibleCases = 0;
+  let evaluated = false;
+  if (db && programme.status.policyVersion) {
+    const released = await db.select({ candidateId: learningCandidates.id, organisationId: learningCandidates.organisationId, jobId: learningCandidates.jobId, status: learningCandidates.status, releaseVersion: learningReleases.version })
+      .from(learningCandidates).innerJoin(learningReleaseItems, and(eq(learningReleaseItems.candidateId, learningCandidates.id), eq(learningReleaseItems.status, "included"))).innerJoin(learningReleases, eq(learningReleases.id, learningReleaseItems.releaseId))
+      .where(eq(learningReleases.status, "active"));
+    const rights = await rightsByCandidate(released, programme.status.policyVersion, "model_training");
+    eligibleCases = released.filter((row) => trainingEligibility({ status: row.status, releasedIn: row.releaseVersion, modelTrainingGrant: rights.get(row.candidateId) ? { status: "granted", policyVersion: programme.status.policyVersion! } : null, currentPolicyVersion: programme.status.policyVersion }).eligible).length;
+    evaluated = (await db.select({ id: learningEvaluationRuns.id }).from(learningEvaluationRuns).limit(1)).length > 0;
+  }
+  return { eligibleCases, ...fineTuningGate({ providerRegistered: approvedModels.length > 0, retrievalBaselineEvaluated: evaluated, specificFailuresIdentified: false, measuredBenefitOverBaseline: false, memorisationAndLeakageTestsPassed: false, retirementAndRetrainingProcedureApproved: false, eligibleCases, minimumEligibleCases: null }) };
 }

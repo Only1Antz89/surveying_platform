@@ -177,5 +177,44 @@ export function LearningConsole({ initial, role, demo }: { initial: Console | nu
         <div className="form-actions"><button className="button button-secondary" disabled={busy}>Prepare draft</button></div>
       </form> : null}
     </section>
+
+    <section className="panel">
+      <div className="panel-header"><div><h2>Feedback and corrections</h2><p>What firms said about released cases, without saying which firm. Feedback informs reviewers; it never trains anything. Cases reported as identifying are already out of retrieval and back in the privacy queue.</p></div></div>
+      {data.feedback.length ? <ul className="ai-list">{data.feedback.map((item) => <li key={item.sharedCaseId}>
+        <div className="wording-head"><strong>Shared case {item.sharedCaseId.slice(0, 8)}</strong><span className="cell-sub">release {item.releaseVersion} · {Object.entries(item.ratings).map(([rating, count]) => `${rating.replace("_", " ")} ×${count}`).join(", ")}</span></div>
+        {item.notes.map((note, index) => <span key={index} className="cell-sub">{note.rating}: {note.note}</span>)}
+        {["release_manager", "privacy_reviewer", "technical_reviewer"].includes(role) ? <div className="row-actions">
+          <button type="button" className="button button-secondary" disabled={busy} onClick={() => { const reason = window.prompt("What needs correcting?"); if (reason?.trim()) void send(`/api/platform/learning/shared-cases/${item.sharedCaseId}/retract`, "POST", { reason, reviewAgain: true }, "Retracted and returned for review."); }}>Retract for correction</button>
+          <button type="button" className="button button-quiet danger" disabled={busy} onClick={() => { const reason = window.prompt("Why is this case being rejected?"); if (reason?.trim()) void send(`/api/platform/learning/shared-cases/${item.sharedCaseId}/retract`, "POST", { reason, reviewAgain: false }, "Retracted and rejected."); }}>Retract and reject</button>
+        </div> : null}
+      </li>)}</ul> : <p className="form-help assistant-empty">No feedback yet.</p>}
+    </section>
+
+    <section className="panel">
+      <div className="panel-header"><div><h2>Held-out evaluation</h2><p>Measures the shared-retrieval baseline on held-out firms and properties, using only cases whose firms grant evaluation. Pass marks are set by qualified reviewers; none are set.</p></div></div>
+      {data.evaluations === null ? <p className="form-help assistant-empty">The learning service is not configured.</p> : data.evaluations.length ? <ul className="ai-list">{data.evaluations.map((run) => {
+        const overall = (run.metrics as { overall?: { testCases: number; answered: number; coverage: number | null; ratingAgreementAt1: number | null } }).overall;
+        const leakage = run.leakage as { groups?: string[]; contributors?: string[]; retrievedFromTestProperty?: number };
+        const clean = !leakage.groups?.length && !leakage.contributors?.length && !leakage.retrievedFromTestProperty;
+        return <li key={run.id}><div className="wording-head"><strong>Release {run.version} · {run.method}</strong><StatusDot tone={clean ? "green" : "red"}>{clean ? "No leakage" : "Leakage found"}</StatusDot></div>
+          <span className="cell-sub">{overall ? `${overall.testCases} test cases · ${overall.answered} answered · coverage ${overall.coverage === null ? "—" : `${Math.round(overall.coverage * 100)}%`} · rating agreement ${overall.ratingAgreementAt1 === null ? "—" : `${Math.round(overall.ratingAgreementAt1 * 100)}%`}` : ""}</span></li>;
+      })}</ul> : <p className="form-help assistant-empty">No evaluation has been run.</p>}
+      {role === "release_manager" || role === "technical_reviewer" ? <form className="form-section" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); void send("/api/platform/learning/evaluations", "POST", { seed: String(form.get("seed") ?? ""), testShare: Number(form.get("testShare")), heldOutContributorShare: Number(form.get("heldOut")), testFromDate: String(form.get("testFrom") ?? "") || null, segmentThresholds: { small: Number(form.get("small")), large: Number(form.get("large")) } }, "Evaluation stored."); }}>
+        <div className="form-grid">
+          <div className="field"><label htmlFor="eval-seed">Seed</label><input id="eval-seed" name="seed" className="input" required minLength={3} defaultValue="baseline-1" /></div>
+          <div className="field"><label htmlFor="eval-share">Test share of properties</label><input id="eval-share" name="testShare" type="number" step="0.05" min="0.05" max="0.5" className="input" defaultValue="0.2" /></div>
+          <div className="field"><label htmlFor="eval-held">Held-out firm share</label><input id="eval-held" name="heldOut" type="number" step="0.05" min="0" max="0.5" className="input" defaultValue="0.2" /></div>
+          <div className="field"><label htmlFor="eval-from">Later-date test set from</label><input id="eval-from" name="testFrom" type="date" className="input" /></div>
+          <div className="field"><label htmlFor="eval-small">Small firm below (cases)</label><input id="eval-small" name="small" type="number" min="1" className="input" defaultValue="5" /></div>
+          <div className="field"><label htmlFor="eval-large">Large firm from (cases)</label><input id="eval-large" name="large" type="number" min="2" className="input" defaultValue="50" /></div>
+        </div>
+        <div className="form-actions"><button className="button button-secondary" disabled={busy}>Run evaluation</button></div>
+      </form> : null}
+    </section>
+
+    <section className="panel">
+      <div className="panel-header"><div><h2>Fine-tuning (L4)</h2><p>Not implemented. Shown so the gate is visible: an experiment could only be proposed when every condition below is met. {data.fineTuning.eligibleCases} released case{data.fineTuning.eligibleCases === 1 ? "" : "s"} currently come from firms granting model training.</p></div><StatusDot tone="slate">{data.fineTuning.allowed ? "Gate met" : "Not permitted"}</StatusDot></div>
+      <ul className="learning-problems">{data.fineTuning.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
+    </section>
   </div>;
 }
