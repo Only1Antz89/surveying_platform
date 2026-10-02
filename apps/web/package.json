@@ -9,7 +9,7 @@
     "lint": "eslint . --max-warnings=0",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run --dir src",
-    "test:integration": "vitest run --dir test"
+    "test:integration": "vitest run --dir test --no-file-parallelism"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.0.1",
@@ -17,6 +17,7 @@
     "@surveynt/db": "workspace:*",
     "@surveynt/domain": "workspace:*",
     "@surveynt/evidence": "workspace:*",
+    "@surveynt/learning": "workspace:*",
     "@surveynt/property-data": "workspace:*",
     "@surveynt/ui": "workspace:*",
     "@vercel/blob": "^2.8.0",

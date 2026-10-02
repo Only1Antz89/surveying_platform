@@ -30,7 +30,7 @@ const timestamps = {
 export const organisationStatus = pgEnum("organisation_status", ["provisioning", "active", "suspended", "closed"]);
 export const subscriptionStatus = pgEnum("subscription_status", ["incomplete", "trialing", "active", "past_due", "unpaid", "canceled"]);
 export const organisationRole = pgEnum("organisation_role", ["owner", "administrator", "surveyor", "coordinator", "finance", "read_only"]);
-export const platformRole = pgEnum("platform_role", ["super_admin", "support", "billing", "compliance"]);
+export const platformRole = pgEnum("platform_role", ["super_admin", "support", "billing", "compliance", "privacy_reviewer", "technical_reviewer", "release_manager"]);
 export const jobStage = pgEnum("job_stage", ["enquiry", "quoted", "instructed", "scheduled", "inspection_complete", "report_drafting", "internal_review", "issued", "paid", "archived"]);
 export const supportPermission = pgEnum("support_permission", ["read", "write"]);
 export const incidentSeverity = pgEnum("incident_severity", ["low", "medium", "high", "critical"]);
@@ -1119,3 +1119,145 @@ export const aiIncidents = pgTable("ai_incidents", {
   check("ai_incidents_status_chk", sql`status in ('open', 'investigating', 'corrected', 'closed')`),
   check("ai_incidents_closure_chk", sql`status not in ('corrected', 'closed') or (correction_note is not null and length(btrim(correction_note)) > 0)`),
 ]);
+
+// Shared learning (L0-L4). Disabled by default: nothing is copied out of a
+// workspace unless the platform flag is on, a policy with release criteria is
+// published, and the firm has granted the specific scope with confirmations.
+// Restricted staging lives in its own schema with no tenant-role grant; only
+// released, generalised cases reach the shared schema.
+
+const learningScopeCheck = (column: string) => sql.raw(`${column} in ('structured_cases', 'photos', 'evaluation', 'model_training')`);
+
+export const learningPolicyVersions = pgTable("learning_policy_versions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  version: text("version").notNull().unique(),
+  status: text("status").notNull().default("draft"),
+  summary: text("summary").notNull(),
+  policyDocumentRef: text("policy_document_ref").notNull(),
+  privacyAssessmentRef: text("privacy_assessment_ref"),
+  releaseCriteria: jsonb("release_criteria").$type<Record<string, unknown>>().notNull().default({}),
+  publishedByStaffId: uuid("published_by_staff_id").references(() => platformStaff.id, { onDelete: "set null" }),
+  publishedAt: timestamp("published_at", { withTimezone: true }),
+  ...timestamps,
+}, () => [
+  check("learning_policy_versions_status_chk", sql`status in ('draft', 'published', 'retired')`),
+  check("learning_policy_versions_published_chk", sql`status = 'draft' or (published_at is not null and privacy_assessment_ref is not null)`),
+]);
+
+export const learningContributionGrants = pgTable("learning_contribution_grants", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  scope: text("scope").notNull(),
+  status: text("status").notNull(),
+  policyVersion: text("policy_version").notNull(),
+  confirmations: text("confirmations").array().notNull().default(sql`'{}'::text[]`),
+  basis: text("basis"),
+  recordedByUserId: uuid("recorded_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("learning_contribution_grants_org_scope_idx").on(table.organisationId, table.scope, table.createdAt),
+  check("learning_contribution_grants_scope_chk", learningScopeCheck("scope")),
+  check("learning_contribution_grants_status_chk", sql`status in ('granted', 'revoked')`),
+  check("learning_contribution_grants_confirmed_chk", sql`status = 'revoked' or (confirmations @> array['client_information_authority', 'third_party_rights', 'policy_accepted']::text[] and basis is not null and length(btrim(basis)) >= 10)`),
+]);
+
+export const learningWithdrawalRequests = pgTable("learning_withdrawal_requests", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  scope: text("scope"),
+  jobId: uuid("job_id"),
+  reason: text("reason").notNull(),
+  status: text("status").notNull().default("requested"),
+  outcome: jsonb("outcome").$type<Record<string, unknown>>().notNull().default({}),
+  requestedByUserId: uuid("requested_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+}, (table) => [
+  foreignKey({ name: "learning_withdrawal_requests_job_fk", columns: [table.organisationId, table.jobId], foreignColumns: [jobs.organisationId, jobs.id] }).onDelete("restrict"),
+  index("learning_withdrawal_requests_org_idx").on(table.organisationId, table.status),
+  check("learning_withdrawal_requests_scope_chk", sql`scope is null or ${learningScopeCheck("scope")}`),
+  check("learning_withdrawal_requests_status_chk", sql`status in ('requested', 'completed')`),
+  check("learning_withdrawal_requests_completed_chk", sql`status = 'requested' or completed_at is not null`),
+]);
+
+export const learningRestricted = pgSchema("learning_restricted");
+
+/** Pseudonymous contributor key per firm. Restricted: it links back to the firm for withdrawal. */
+export const learningContributors = learningRestricted.table("contributors", {
+  organisationId: uuid("organisation_id").primaryKey(),
+  contributorKey: uuid("contributor_key").notNull().unique().defaultRandom(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const learningCandidates = learningRestricted.table("candidates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull(),
+  contributorKey: uuid("contributor_key").notNull(),
+  jobId: uuid("job_id").notNull(),
+  surveyId: uuid("survey_id").notNull(),
+  elementId: uuid("element_id").notNull(),
+  elementRef: text("element_ref").notNull(),
+  scope: text("scope").notNull(),
+  grantId: uuid("grant_id").notNull(),
+  policyVersion: text("policy_version").notNull(),
+  /** Report version and element; the same signed-off material is never extracted twice. */
+  sourceFingerprint: text("source_fingerprint").notNull().unique(),
+  dedupKey: text("dedup_key").notNull(),
+  groupKey: text("group_key").notNull(),
+  content: jsonb("content").$type<Record<string, unknown>>().notNull(),
+  status: text("status").notNull(),
+  statusReason: text("status_reason"),
+  ...timestamps,
+}, (table) => [
+  index("learning_candidates_status_idx").on(table.status, table.createdAt),
+  index("learning_candidates_org_idx").on(table.organisationId, table.scope, table.jobId),
+  check("learning_candidates_scope_chk", learningScopeCheck("scope")),
+  check("learning_candidates_status_chk", sql`status in ('awaiting_privacy_review', 'quarantined', 'awaiting_technical_review', 'approved', 'released', 'rejected', 'withdrawn')`),
+]);
+
+export const learningSanitisationRuns = learningRestricted.table("sanitisation_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  candidateId: uuid("candidate_id").notNull().references(() => learningCandidates.id, { onDelete: "cascade" }),
+  transformer: text("transformer").notNull(),
+  output: jsonb("output").$type<Record<string, unknown>>().notNull(),
+  findings: jsonb("findings").$type<{ field: string; kind: string; count: number }[]>().notNull().default([]),
+  residualTerms: text("residual_terms").array().notNull().default(sql`'{}'::text[]`),
+  flags: text("flags").array().notNull().default(sql`'{}'::text[]`),
+  quasiKey: text("quasi_key").notNull(),
+  outcome: text("outcome").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("learning_sanitisation_runs_candidate_idx").on(table.candidateId, table.createdAt),
+  index("learning_sanitisation_runs_quasi_idx").on(table.quasiKey),
+  check("learning_sanitisation_runs_outcome_chk", sql`outcome in ('passed', 'quarantined')`),
+]);
+
+export const learningReviews = learningRestricted.table("reviews", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  candidateId: uuid("candidate_id").notNull().references(() => learningCandidates.id, { onDelete: "cascade" }),
+  stage: text("stage").notNull(),
+  reviewerStaffId: uuid("reviewer_staff_id").notNull(),
+  decision: text("decision").notNull(),
+  checks: text("checks").array().notNull().default(sql`'{}'::text[]`),
+  reviewed: jsonb("reviewed").$type<Record<string, unknown>>(),
+  note: text("note"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("learning_reviews_candidate_idx").on(table.candidateId, table.stage, table.createdAt),
+  check("learning_reviews_stage_chk", sql`stage in ('privacy', 'technical')`),
+  check("learning_reviews_decision_chk", sql`decision in ('approved', 'rejected')`),
+  check("learning_reviews_reviewed_chk", sql`stage = 'privacy' or decision = 'rejected' or reviewed is not null`),
+]);
+
+/** Restricted audit: who extracted, reviewed, released or withdrew what. Append-only. */
+export const learningAuditLog = learningRestricted.table("audit_log", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  actorStaffId: uuid("actor_staff_id"),
+  actor: text("actor").notNull(),
+  action: text("action").notNull(),
+  organisationId: uuid("organisation_id"),
+  candidateId: uuid("candidate_id"),
+  releaseId: uuid("release_id"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [index("learning_audit_log_created_idx").on(table.createdAt)]);

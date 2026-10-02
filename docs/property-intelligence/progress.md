@@ -266,6 +266,30 @@ Acceptance:
 Blockers: choosing an AI provider; reviewing its data-processing terms; legal review of the client disclosure; pilot thresholds from qualified surveyors.
 ## L0–L4 — Shared learning (disabled by default)
 
+### L0–L1 — Policy, controls, restricted staging and privacy review
+
+| Item | Code | Configured | Imported | Live |
+|---|---|---|---|---|
+| Policy documents: [`policy.md`](../shared-learning/policy.md), [`privacy-assessment.md`](../shared-learning/privacy-assessment.md) (working draft, not a DPIA), [`seed-corpus.md`](../shared-learning/seed-corpus.md) | ✅ | ❌ not reviewed by legal, DPO or qualified surveyors | — | — |
+| Migrations 0029–0030: `learning_policy_versions` (platform; one published; published immutable), `learning_contribution_grants` (append-only, confirmations required), `learning_withdrawal_requests` (can only be completed), platform roles `privacy_reviewer`, `technical_reviewer`, `release_manager`; `learning_restricted` schema (candidates with immutable lineage, append-only erasable sanitisation runs and reviews, append-only audit log); roles `surveynt_learning_write` and `surveynt_learning_read`; firm-scoped summary function | ✅ | ❌ not applied; no learning login role exists | — | — |
+| Programme gate: `SHARED_LEARNING_ENABLED`, a published policy with a privacy assessment reference and release criteria validated against `releaseCriteriaSchema` | ✅ | ❌ flag off, no policy | — | — |
+| `@surveynt/learning`: eligibility gate, minimal per-element extraction, deterministic sanitiser `sanitiser-v1` (known identifiers plus patterns, date and age generalisation, location labels dropped, residual capitalised terms listed), rare-combination generalisation and quarantine, photo metadata stripping and cropping (`photo-strip-v1`) | ✅ (15 unit tests) | — | — | — |
+| Learning service: extraction from signed-off surveys through the tenant connection, writes through the learning role, keyed-HMAC lineage, ledger in the restricted audit log | ✅ | ❌ `DATABASE_LEARNING_URL`, `LEARNING_LINEAGE_SECRET` unset | — | — |
+| Privacy review queue (privacy reviewers only; six checks to approve, a reason to reject) | ✅ | — | — | — |
+| Withdrawal propagation (copies cleared, sanitisation and reviews erased, lineage and audit kept; revocation withdraws; daily sweep retries) | ✅ | — | — | — |
+| Firm page Settings → Shared learning; platform page Shared learning (policy, pipeline counts, privacy queue, sweep) | ✅ (demo smoke-tested) | — | — | — |
+
+Acceptance (L1 gate: "identifier/linkage tests, access isolation and rejection paths pass"):
+
+- Off by default: nothing can be granted or extracted. Publishing needs a privacy assessment reference and complete criteria. Published policies are immutable (integration-tested).
+- Extraction needs the flag, the policy, the firm's confirmed grant and a signed-off report. It runs once per report version. Staged output contains none of the seeded names, address, phone or reference. The first cases of a combination are held as rare (integration-tested; sanitiser unit-tested for identifiers and dates).
+- The tenant role cannot read restricted staging. The learning role cannot read tenant tables. Lineage, reviews and sanitisation results cannot be edited (integration-tested).
+- Only privacy reviewers decide. Approval needs every check and rejection needs a reason. Decisions are audited (integration-tested).
+- Withdrawal clears copies and keeps only lineage and audit. Revocation withdraws (integration-tested).
+- Linkage testing against real public sources is a **manual reviewer step**. It is not automated, and no real data exists to test it on.
+
+Blockers: legal and DPO review of the policy and privacy assessment; release criteria from qualified reviewers; a learning login role and secrets; reviewers appointed. The ICO pages could not be read from this environment.
+
 ## Validation log
 
 | Date | Command | Result |
@@ -308,3 +332,6 @@ Blockers: choosing an AI provider; reviewing its data-processing terms; legal re
 | 2026-10-02 | `pnpm check` (A6) | ✅ lint, typecheck, 123 unit tests (4 new gate tests), build |
 | 2026-10-02 | `pnpm test:integration` (A6, all suites) | ✅ 81 tests (db 3, property-data 28, web 50), including 8 new governance tests: blocked by default with every reason; disclosure required and permitted uses only; full allow path with a test provider key, register approval and suspension; outdated disclosure and withdrawal; critical incident suspension and correction note; immutability, supersession and tenant isolation; app role cannot change the register; metrics name no firm |
 | 2026-10-02 | Playwright A6 smoke (demo mode, production build) | ✅ Settings → AI and assistant (off, provider warning, demo label), job record consent panel (four blocked uses with reasons; recording disabled in demo), platform Assistant page and nav entry, no console errors, no overflow at 390 px. Found and fixed: stage-history timeline styles leaked into the consent list |
+| 2026-10-02 | `pnpm check` (L0–L1) | ✅ lint, typecheck, 138 unit tests (15 new learning tests: programme and eligibility gates, sanitiser identifiers and dates, minimal extraction, generalisation, rarity quarantine, review schemas, curation weights, evaluation splits, training gate, EXIF and GPS stripping), build |
+| 2026-10-02 | `pnpm test:integration` (L0–L1, all suites) | ✅ 87 tests (db 3, property-data 28, web 56), including 6 new shared-learning tests. The first run failed 4 unrelated web tests with "remaining connection slots are reserved": with 11 files in parallel the local server's 100 connections ran out. Web integration files now run one at a time (`--no-file-parallelism`) |
+| 2026-10-02 | Playwright L0–L1 smoke (demo mode, production build) | ✅ Settings → Shared learning (inactive banner listing reasons, four scopes off, no grant or withdrawal controls in demo), settings navigation link, platform Shared learning page and navigation entry, demo grant API refused with `programme_inactive`, no overflow at 390 px. The only console error was that deliberate 409 |

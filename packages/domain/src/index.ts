@@ -21,7 +21,7 @@ export const organisationRoles = [
 ] as const;
 export type OrganisationRole = (typeof organisationRoles)[number];
 
-export const platformRoles = ["super_admin", "support", "billing", "compliance"] as const;
+export const platformRoles = ["super_admin", "support", "billing", "compliance", "privacy_reviewer", "technical_reviewer", "release_manager"] as const;
 export type PlatformRole = (typeof platformRoles)[number];
 
 export const platformRoleLabels: Record<PlatformRole, string> = {
@@ -29,6 +29,9 @@ export const platformRoleLabels: Record<PlatformRole, string> = {
   support: "Support",
   billing: "Billing",
   compliance: "Compliance",
+  privacy_reviewer: "Privacy reviewer",
+  technical_reviewer: "Technical reviewer",
+  release_manager: "Release manager",
 };
 
 export const jobStages = [

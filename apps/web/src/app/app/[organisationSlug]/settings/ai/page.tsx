@@ -19,7 +19,7 @@ export default async function AiSettingsPage({ params }: PageProps<"/app/[organi
   return <main className="page">
     <PageHeader title="AI and assistant" description="Control whether AI may assist your surveyors, for which purposes, and record risk assessments and incidents." />
     <div className="settings-grid">
-      <nav className="settings-nav" aria-label="Settings"><Link href={`/app/${organisationSlug}/settings`}>Practice details</Link><Link href={`/app/${organisationSlug}/settings/billing`}>Billing</Link><Link className="active" href={`/app/${organisationSlug}/settings/ai`}>AI and assistant</Link><Link href={`/app/${organisationSlug}/team`}>Security</Link></nav>
+      <nav className="settings-nav" aria-label="Settings"><Link href={`/app/${organisationSlug}/settings`}>Practice details</Link><Link href={`/app/${organisationSlug}/settings/billing`}>Billing</Link><Link className="active" href={`/app/${organisationSlug}/settings/ai`}>AI and assistant</Link><Link href={`/app/${organisationSlug}/settings/learning`}>Shared learning</Link><Link href={`/app/${organisationSlug}/team`}>Security</Link></nav>
       <AiGovernancePanel initial={governance} canManage={full && canManageTeam(access.userRole)} canReport={full && canMutateOperations(access.userRole)} demo={demo} />
     </div>
   </main>;

@@ -83,6 +83,8 @@ export type TestDatabase = {
   appUrl: string;
   /** Reference-data importer connection, equivalent to DATABASE_IMPORTER_URL. */
   importerUrl: string;
+  /** Shared-learning service connection, equivalent to DATABASE_LEARNING_URL. */
+  learningUrl: string;
   name: string;
   /** Opens a tracked Drizzle connection that is closed before the database is dropped. */
   connect(url: string): ReturnType<typeof createDatabase>;
@@ -103,6 +105,7 @@ export async function createTestDatabase(): Promise<TestDatabase> {
   await server.query(`do $$ begin
     if not exists (select 1 from pg_roles where rolname = 'surveynt_it_app') then create role surveynt_it_app login password 'app' nobypassrls nosuperuser; end if;
     if not exists (select 1 from pg_roles where rolname = 'surveynt_it_importer') then create role surveynt_it_importer login password 'importer' nobypassrls nosuperuser; end if;
+    if not exists (select 1 from pg_roles where rolname = 'surveynt_it_learning') then create role surveynt_it_learning login password 'learning' nobypassrls nosuperuser; end if;
   end $$`);
   await server.end();
   const adminUrl = withDatabase(integrationDatabaseUrl, name);
@@ -114,6 +117,8 @@ export async function createTestDatabase(): Promise<TestDatabase> {
     do $$ begin
       if exists (select 1 from pg_roles where rolname = 'surveynt_reference_read') then execute 'grant surveynt_reference_read to surveynt_it_app'; end if;
       if exists (select 1 from pg_roles where rolname = 'surveynt_reference_write') then execute 'grant surveynt_reference_write to surveynt_it_importer'; end if;
+      if exists (select 1 from pg_roles where rolname = 'surveynt_learning_write') then execute 'grant surveynt_learning_write to surveynt_it_learning'; end if;
+      if exists (select 1 from pg_roles where rolname = 'surveynt_learning_read') then execute 'grant surveynt_learning_read to surveynt_it_app'; end if;
     end $$;`);
   await admin.end();
   const opened: ReturnType<typeof createDatabase>[] = [];
@@ -127,6 +132,7 @@ export async function createTestDatabase(): Promise<TestDatabase> {
     adminUrl,
     appUrl: withCredentials(adminUrl, "surveynt_it_app", "app"),
     importerUrl: withCredentials(adminUrl, "surveynt_it_importer", "importer"),
+    learningUrl: withCredentials(adminUrl, "surveynt_it_learning", "learning"),
     async drop() {
       await Promise.all(opened.map((db) => db.$client.end().catch(() => undefined)));
       const cleanup = new Pool({ connectionString: integrationDatabaseUrl });

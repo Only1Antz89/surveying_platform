@@ -1,5 +1,6 @@
 import { and, asc, count, desc, eq, gt, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
 import { auditEvents, backgroundJobs, createDatabase, clients, invitations, jobs, onboardingSteps, organisationBranding, organisationMemberships, organisations, platformIncidentOrganisations, platformIncidents, platformStaff, practicePacks, practicePackVersions, properties, serviceDefinitions, subscriptions, supportSessions, users, webhookEvents } from "@surveynt/db";
+import type { PlatformRole } from "@surveynt/domain";
 import type { Client, Job, Member, Property, Tenant } from "./demo-data";
 import { activities as demoActivities, clients as demoClients, jobs as demoJobs, members as demoMembers, properties as demoProperties, tenants as demoTenants } from "./demo-data";
 import { isClerkConfigured, requireFirmAccess, requirePlatformAccess } from "./access";
@@ -86,7 +87,7 @@ export type PlatformStaffRecord = {
   clerkUserId: string;
   name: string;
   email: string;
-  role: "super_admin" | "support" | "billing" | "compliance";
+  role: PlatformRole;
   active: boolean;
   createdAt: string;
   updatedAt: string;

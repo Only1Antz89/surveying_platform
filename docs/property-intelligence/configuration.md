@@ -15,7 +15,11 @@ CREATE ROLE <importer_login_role> LOGIN PASSWORD '<generated>' NOBYPASSRLS;
 GRANT surveynt_reference_write TO <importer_login_role>;
 
 -- Shared-learning service role (L1+). Leave unassigned while shared learning is disabled.
-GRANT surveynt_learning_service TO <learning_login_role>;
+-- Never grant surveynt_learning_write to the tenant runtime role.
+CREATE ROLE <learning_login_role> LOGIN PASSWORD '<generated>' NOBYPASSRLS;
+GRANT surveynt_learning_write TO <learning_login_role>;
+-- Released shared cases (L2) are readable by the tenant runtime role.
+GRANT surveynt_learning_read TO <app_login_role>;
 ```
 
 Grant the tenant runtime role DML on new `public` tables after each migration (or keep `ALTER DEFAULT PRIVILEGES … GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO <app_login_role>` in place). P1 adds `property_identity_events`, `address_lookups`, `provider_rate_limits` and `provider_response_cache`. Existing operator grants on `public` tenant tables are otherwise unchanged. The integration harness (`packages/db/test/harness.ts`) applies the same grants to its throwaway roles.
@@ -44,7 +48,9 @@ The P1 migration runs `CREATE EXTENSION IF NOT EXISTS postgis` as the owner. Bef
 | `MEDIA_MAX_UPLOAD_MB` | A1 | Per-file upload limit | `25` |
 | `ASSISTANT_ENABLED` | A2 | Platform kill-switch for suggestions and discrepancy checks: generation, listing and review (review returns 503 when off). Reinspection reminders from history are not affected | Off |
 | `AI_PROVIDER` | A2, A6 | Model adapter key. No adapter ships yet. Even with a key set, a use runs only when the platform model register has an approved entry for that provider and use, the firm has enabled it, an approved risk assessment is in date, the job has current client consent and no critical incident is open (see [`pilot.md`](../assistant/pilot.md)) | `none`: AI features report "unavailable"; deterministic sourced suggestions still work |
-| `SHARED_LEARNING_ENABLED` | L0 | Global shared-learning gate | `false`; must stay false until the L0 gates are met |
+| `SHARED_LEARNING_ENABLED` | L0 | Global shared-learning gate. Even when `true`, nothing runs until a policy version with a privacy assessment reference and release criteria is published, and a firm grants a scope with its confirmations | `false`; must stay false until the L0 gates are met |
+| `DATABASE_LEARNING_URL` | L1 | Login role holding `surveynt_learning_write`; used by the learning service and platform review actions | Staging, review and withdrawal processing unavailable (withdrawal requests are recorded and processed later) |
+| `LEARNING_LINEAGE_SECRET` | L1 | At least 32 random characters; keys the HMAC used for property grouping and de-duplication in restricted staging. Rotating it breaks de-duplication against earlier candidates | Extraction refuses to run |
 
 ## Importers
 

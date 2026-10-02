@@ -2,12 +2,13 @@ import { clerkClient } from "@clerk/nextjs/server";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { auditEvents, createDatabase, platformStaff, users } from "@surveynt/db";
+import { platformRoles } from "@surveynt/domain";
 import { platformApiContext } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
 
 const createStaff = z.object({
   email: z.email(),
-  role: z.enum(["super_admin", "support", "billing", "compliance"]),
+  role: z.enum(platformRoles),
 });
 
 export async function POST(request: Request) {

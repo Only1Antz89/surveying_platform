@@ -204,6 +204,20 @@
       "when": 1790934678977,
       "tag": "0028_ai_governance_security",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1790948572427,
+      "tag": "0029_learning_controls",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1790948617849,
+      "tag": "0030_learning_controls_security",
+      "breakpoints": true
     }
   ]
 }

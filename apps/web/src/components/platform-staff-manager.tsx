@@ -3,11 +3,12 @@
 import { type FormEvent, useState } from "react";
 import { Pencil, ShieldCheck, UserPlus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { platformRoleLabels, platformRoles } from "@surveynt/domain";
 import { StatusDot } from "@surveynt/ui";
 import type { PlatformStaffRecord } from "@/lib/data";
 
-const roles = ["super_admin", "support", "billing", "compliance"] as const;
-const roleLabel = (role: PlatformStaffRecord["role"]) => ({ super_admin: "Super administrator", support: "Support", billing: "Billing", compliance: "Compliance" })[role];
+const roles = platformRoles;
+const roleLabel = (role: PlatformStaffRecord["role"]) => platformRoleLabels[role];
 
 export function PlatformStaffManager({ staff, currentStaffId, canManage }: { staff: PlatformStaffRecord[]; currentStaffId: string; canManage: boolean }) {
   const router = useRouter();
