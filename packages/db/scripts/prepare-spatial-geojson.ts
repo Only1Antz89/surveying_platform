@@ -1,5 +1,5 @@
-import { createWriteStream } from "node:fs";
-import { access, readFile } from "node:fs/promises";
+import { createReadStream, createWriteStream } from "node:fs";
+import { access } from "node:fs/promises";
 import { once } from "node:events";
 import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -12,9 +12,9 @@ type Geometry = {
 };
 
 type Feature = { id?: string | number; geometry?: Geometry | null; properties?: Record<string, unknown> | null };
-type FeatureCollection = { type: "FeatureCollection"; features: Feature[]; crs?: { properties?: { name?: string } } };
 export type GeoJsonInput = { label: string; path: string };
-export type PrepareArguments = { output: string; sourceCrs: "EPSG:4326"; inputs: GeoJsonInput[] };
+export type PropertyFilter = { field: string; value: string };
+export type PrepareArguments = { output: string; sourceCrs: "EPSG:4326"; inputs: GeoJsonInput[]; where?: PropertyFilter };
 
 function coordinate(position: Position) {
   if (position.length < 2 || !position.slice(0, 2).every(Number.isFinite)) throw new Error("Geometry contains a non-finite or incomplete coordinate.");
@@ -55,6 +55,7 @@ function csv(value: unknown) {
 export function parsePrepareArguments(values: string[]): PrepareArguments {
   let output = "";
   let sourceCrs = "";
+  let where: PropertyFilter | undefined;
   const inputs: GeoJsonInput[] = [];
   for (let index = 0; index < values.length; index += 2) {
     const flag = values[index];
@@ -65,20 +66,80 @@ export function parsePrepareArguments(values: string[]): PrepareArguments {
       const separator = value.indexOf("=");
       if (separator < 1 || separator === value.length - 1) throw new Error("Each --input must use <stable-label>=<geojson-path>.");
       inputs.push({ label: value.slice(0, separator), path: value.slice(separator + 1) });
+    } else if (flag === "--where") {
+      const separator = value.indexOf("=");
+      if (separator < 1 || separator === value.length - 1) throw new Error("--where must use <property>=<value>.");
+      where = { field: value.slice(0, separator), value: value.slice(separator + 1) };
     } else throw new Error(`Unknown option: ${flag}`);
   }
   if (!output || sourceCrs !== "EPSG:4326" || !inputs.length) throw new Error("Usage: --output <csv> --source-crs EPSG:4326 --input <stable-label>=<geojson-path> [--input ...]");
   if (new Set(inputs.map(({ label }) => label)).size !== inputs.length) throw new Error("Input labels must be unique.");
   if (inputs.some(({ label }) => !/^[a-z0-9][a-z0-9_-]*$/.test(label))) throw new Error("Input labels may contain lowercase letters, numbers, underscores and hyphens only.");
-  return { output, sourceCrs, inputs };
+  return { output, sourceCrs, inputs, where };
 }
 
-function validateCrs(collection: FeatureCollection, sourceCrs: "EPSG:4326") {
-  const declared = collection.crs?.properties?.name;
+function validateCrsPreamble(preamble: string, sourceCrs: "EPSG:4326") {
+  const declared = preamble.match(/"name"\s*:\s*"([^"]*(?:EPSG|CRS)[^"]*)"/i)?.[1];
   if (declared && !/(?:EPSG(?::|::)4326|CRS84)$/i.test(declared)) throw new Error(`GeoJSON declares unsupported CRS ${declared}; expected ${sourceCrs}.`);
 }
 
-export async function prepareGeoJson({ output, sourceCrs, inputs }: PrepareArguments) {
+export async function streamGeoJsonFeatures(path: string, sourceCrs: "EPSG:4326", visit: (feature: Feature) => Promise<void>) {
+  let phase: "preamble" | "features" | "complete" = "preamble";
+  let pending = "";
+  let feature = "";
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for await (const chunk of createReadStream(path, { encoding: "utf8" })) {
+    pending += chunk;
+    if (phase === "preamble") {
+      const match = /"features"\s*:\s*\[/.exec(pending);
+      if (!match) {
+        if (pending.length > 1024 * 1024) throw new Error(`${path} has no FeatureCollection features array in its first MiB.`);
+        continue;
+      }
+      const preamble = pending.slice(0, match.index);
+      if (!/"type"\s*:\s*"FeatureCollection"/i.test(preamble)) throw new Error(`${path} is not a GeoJSON FeatureCollection.`);
+      validateCrsPreamble(preamble, sourceCrs);
+      pending = pending.slice(match.index + match[0].length);
+      phase = "features";
+    }
+    if (phase !== "features") continue;
+    for (let index = 0; index < pending.length; index += 1) {
+      const char = pending[index];
+      if (!feature) {
+        if (char === "]") { phase = "complete"; pending = ""; break; }
+        if (char !== "{") continue;
+        feature = char;
+        depth = 1;
+        continue;
+      }
+      feature += char;
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (char === "\\") escaped = true;
+        else if (char === '"') inString = false;
+      } else if (char === '"') inString = true;
+      else if (char === "{") depth += 1;
+      else if (char === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          await visit(JSON.parse(feature) as Feature);
+          feature = "";
+        }
+      }
+    }
+    pending = "";
+  }
+  if (phase !== "complete" || feature) throw new Error(`${path} ended before its GeoJSON features array was complete.`);
+}
+
+function matchingProperty(properties: Record<string, unknown>, field: string) {
+  const actual = Object.keys(properties).find((key) => key.toLowerCase() === field.toLowerCase());
+  return actual ? properties[actual] : undefined;
+}
+
+export async function prepareGeoJson({ output, sourceCrs, inputs, where }: PrepareArguments) {
   await access(dirname(output));
   try {
     await access(output);
@@ -92,16 +153,15 @@ export async function prepareGeoJson({ output, sourceCrs, inputs }: PrepareArgum
   try {
     stream.write("source_record_id,wkt,name,properties_json\n");
     for (const input of inputs) {
-      const collection = JSON.parse(await readFile(input.path, "utf8")) as FeatureCollection;
-      if (collection.type !== "FeatureCollection" || !Array.isArray(collection.features)) throw new Error(`${input.path} is not a GeoJSON FeatureCollection.`);
-      validateCrs(collection, sourceCrs);
       perInput[input.label] = 0;
-      for (let index = 0; index < collection.features.length; index += 1) {
-        const feature = collection.features[index];
-        if (!feature.geometry) throw new Error(`${input.label} feature ${index + 1} has no geometry.`);
+      let featureNumber = 0;
+      await streamGeoJsonFeatures(input.path, sourceCrs, async (feature) => {
+        featureNumber += 1;
+        if (!feature.geometry) throw new Error(`${input.label} feature ${featureNumber} has no geometry.`);
         const properties = feature.properties ?? {};
+        if (where && String(matchingProperty(properties, where.field) ?? "") !== where.value) return;
         const rawId = properties.ListEntry ?? properties.listentry ?? feature.id ?? properties.OBJECTID ?? properties.objectid;
-        if (rawId === undefined || rawId === null || String(rawId).trim() === "") throw new Error(`${input.label} feature ${index + 1} has no stable identifier.`);
+        if (rawId === undefined || rawId === null || String(rawId).trim() === "") throw new Error(`${input.label} feature ${featureNumber} has no stable identifier.`);
         const sourceRecordId = `${input.label}:${rawId}`;
         const name = properties.Name ?? properties.name ?? null;
         const enrichedProperties = { ...properties, designationType: input.label };
@@ -109,7 +169,7 @@ export async function prepareGeoJson({ output, sourceCrs, inputs }: PrepareArgum
         if (!stream.write(row)) await once(stream, "drain");
         records += 1;
         perInput[input.label] += 1;
-      }
+      });
     }
     stream.end();
     await once(stream, "finish");

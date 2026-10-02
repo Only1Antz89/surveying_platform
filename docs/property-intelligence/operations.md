@@ -27,6 +27,8 @@ For an official GeoJSON release, first create the canonical spatial CSV without 
 
 Each repeated input must have a stable, unique label. The preparer prefixes source identifiers with that label, converts supported GeoJSON geometry to WKT, preserves source properties, and records the designation type. It refuses non-WGS84 declarations, missing geometry, missing identifiers, duplicate labels, and existing output files.
 
+The preparer streams the features array, so national files are not loaded into memory. Use `--where Flood_zone=2` and a separate `--where Flood_zone=3` run for the Environment Agency product; never combine the two output files or infer Flood Zone 1 from their absence.
+
 For HMLR INSPIRE GML, extract each downloaded authority archive and prepare the national file with:
 
 `pnpm --filter @surveynt/db prepare:spatial-gml -- --output /private/tmp/hmlr.csv --source-crs EPSG:27700 --input adur=/path/Land_Registry_Cadastral_Parcels.gml --input amber_valley=/path/Land_Registry_Cadastral_Parcels.gml`
