@@ -162,7 +162,10 @@ export async function prepareGeoJson({ output, sourceCrs, inputs, where }: Prepa
         if (where && String(matchingProperty(properties, where.field) ?? "") !== where.value) return;
         const rawId = properties.ListEntry ?? properties.listentry ?? feature.id ?? properties.OBJECTID ?? properties.objectid;
         if (rawId === undefined || rawId === null || String(rawId).trim() === "") throw new Error(`${input.label} feature ${featureNumber} has no stable identifier.`);
-        const sourceRecordId = `${input.label}:${rawId}`;
+        const secondaryId = properties.OBJECTID ?? properties.objectid ?? feature.id;
+        const sourceRecordId = secondaryId === undefined || secondaryId === null || String(secondaryId) === String(rawId)
+          ? `${input.label}:${rawId}`
+          : `${input.label}:${rawId}:${secondaryId}`;
         const name = properties.Name ?? properties.name ?? null;
         const enrichedProperties = { ...properties, designationType: input.label };
         const row = [sourceRecordId, geometryToWkt(feature.geometry), name, JSON.stringify(enrichedProperties)].map(csv).join(",") + "\n";

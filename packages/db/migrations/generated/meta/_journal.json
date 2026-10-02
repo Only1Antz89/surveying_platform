@@ -64,6 +64,13 @@
       "when": 1790863110589,
       "tag": "0008_stiff_naoko",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790951980948,
+      "tag": "0009_sturdy_fantastic_four",
+      "breakpoints": true
     }
   ]
 }
