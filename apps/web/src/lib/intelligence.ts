@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, lte, or, sql } from "drizzle-orm";
-import { auditEvents, backgroundJobs, createDatabase, referenceDatasetSyncs, enrichmentRuns, properties, propertyIntelligenceSnapshots, withTenant, type TenantTransaction } from "@surveynt/db";
+import { auditEvents, backgroundJobs, createDatabase, datasetVersions, enrichmentRuns, properties, propertyIntelligenceSnapshots, withTenant, type TenantTransaction } from "@surveynt/db";
 import { getSourceDefinition, intelligenceProviders, runProviders, sourceCoversCountry, sourceDefinitions, type IntelligenceProvider, type ProviderResult } from "@surveynt/property-data";
 import { databaseHistoryQuery, databaseScottishEpcQuery, databaseSpatialQuery, getSourceStates } from "@surveynt/property-data/importers";
 import { intelligenceEnabled } from "./property-identity";
@@ -205,7 +205,7 @@ export async function loadPropertyIntelligence(context: TenantContext, propertyI
   }
   const now = Date.now();
   // Dataset versions now active, to flag results built from an older import (cache invalidation for stored snapshots).
-  const activeRows = await db.select({ sourceKey: referenceDatasetSyncs.sourceKey, datasetVersion: referenceDatasetSyncs.datasetVersion }).from(referenceDatasetSyncs).where(eq(referenceDatasetSyncs.status, "active"));
+  const activeRows = await db.select({ sourceKey: datasetVersions.sourceKey, datasetVersion: datasetVersions.version }).from(datasetVersions).where(eq(datasetVersions.active, true));
   const activeVersions = (key: string) => new Set(activeRows.filter((row) => row.sourceKey === key).map((row) => row.datasetVersion));
   const newerDataAvailable = (sourceKey: string, version: string | null) => {
     if (!version || getSourceDefinition(sourceKey)?.accessMethod !== "bulk_import") return false;

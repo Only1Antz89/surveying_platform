@@ -1,51 +1,63 @@
 import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
 import { eq, sql } from "drizzle-orm";
-import { referenceDatasetSyncs, type Database } from "@surveynt/db";
-import { activateSync } from "../db/reference";
+import { datasetVersions, type Database } from "@surveynt/db";
+import { activateSync, logSync, toReferenceVersion, type ReferenceVersion } from "../db/reference";
 import { getSourceDefinition } from "../registry/sources";
 import { sha256File, type ImportOutcome } from "./os-open-uprn";
 
-// Shared staging for tabular reference imports: a new dataset_syncs row, rows
-// loaded under it, validation, optional activation, and full clean-up on failure.
+// Shared staging for reference imports: a new dataset_versions row (inactive),
+// rows loaded under it, validation, optional activation. A failed import is
+// deleted with its rows, as the England import scripts do, and the job log
+// (dataset_syncs) records why. The active version is never touched.
 
-export type StagedTable = "price_paid_transactions" | "price_paid_uprn_links" | "scottish_epc_certificates";
+export type StagedTable = "os_uprn_points" | "spatial_reference_features" | "price_paid_transactions" | "price_paid_uprn_links" | "scottish_epc_certificates";
 
-type StagedSync = typeof referenceDatasetSyncs.$inferSelect;
-
-export async function createSync(db: Database, sourceKey: string, options: { filePath: string; datasetVersion: string; sourceUrl?: string; importedBy: string; extent: string }) {
+export async function createVersion(db: Database, sourceKey: string, options: { datasetVersion: string; layer?: string; checksum: string; sourceUrl?: string; sourceCrs?: string | null; importedBy: string; extent: string }) {
   const definition = getSourceDefinition(sourceKey);
   if (!definition) throw new Error(`${sourceKey} is not registered.`);
-  const checksum = await sha256File(options.filePath);
-  const [sync] = await db.insert(referenceDatasetSyncs).values({
-    sourceKey, datasetVersion: options.datasetVersion, sourceUrl: options.sourceUrl ?? definition.accessUrls[0] ?? null, checksum,
-    licence: definition.licence as unknown as Record<string, unknown>, sourceCrs: null, extent: options.extent, importedBy: options.importedBy,
+  const [row] = await db.insert(datasetVersions).values({
+    sourceKey, layer: options.layer ?? "", version: options.datasetVersion, checksum: options.checksum,
+    sourceUrl: options.sourceUrl ?? definition.accessUrls.find((url) => url.startsWith("http")) ?? definition.documentationUrl,
+    licenceSnapshot: definition.licence as unknown as Record<string, unknown>, sourceCrs: options.sourceCrs ?? null, extent: options.extent, importedBy: options.importedBy,
   }).returning();
-  return sync;
+  const version = toReferenceVersion(row);
+  await logSync(db, version, "validating");
+  return version;
 }
 
-export async function finish(db: Database, sync: StagedSync, table: StagedTable, run: () => Promise<{ stored: number; skipped: number; validation: Record<string, unknown> }>, activate: boolean | undefined): Promise<ImportOutcome> {
-  let skipped = 0;
+export async function createSync(db: Database, sourceKey: string, options: { filePath: string; datasetVersion: string; sourceUrl?: string; importedBy: string; extent: string }) {
+  return createVersion(db, sourceKey, { ...options, checksum: await sha256File(options.filePath) });
+}
+
+export async function completeVersion(db: Database, version: ReferenceVersion, outcome: { stored: number; skipped: number; validation: Record<string, unknown> }, activate: boolean | undefined): Promise<ImportOutcome> {
+  const [row] = await db.update(datasetVersions).set({ recordCount: outcome.stored, validation: outcome.validation, completedAt: new Date(), updatedAt: new Date() }).where(eq(datasetVersions.id, version.id)).returning();
+  if (activate) {
+    await activateSync(db, version.id);
+    return { syncId: version.id, status: "active", recordCount: outcome.stored, skipped: outcome.skipped, validation: outcome.validation };
+  }
+  await logSync(db, toReferenceVersion(row), "staged");
+  return { syncId: version.id, status: "staging", recordCount: outcome.stored, skipped: outcome.skipped, validation: outcome.validation };
+}
+
+export async function failVersion(db: Database, version: ReferenceVersion, reason: unknown, skipped: number, fallbackValidation: Record<string, unknown> = {}): Promise<ImportOutcome> {
+  const message = reason instanceof Error ? reason.message.slice(0, 1000) : "Import failed.";
+  const validation = (reason as { validation?: Record<string, unknown> }).validation ?? fallbackValidation;
+  await db.delete(datasetVersions).where(eq(datasetVersions.id, version.id));
+  await logSync(db, { ...version, recordCount: 0, validation: { ...validation, datasetVersion: version.datasetVersion, layer: version.layer } }, "failed", message);
+  return { syncId: version.id, status: "failed", recordCount: 0, skipped, validation, error: message };
+}
+
+export async function finish(db: Database, version: ReferenceVersion, _table: StagedTable, run: () => Promise<{ stored: number; skipped: number; validation: Record<string, unknown> }>, activate: boolean | undefined): Promise<ImportOutcome> {
   try {
-    const outcome = await run();
-    skipped = outcome.skipped;
-    await db.update(referenceDatasetSyncs).set({ recordCount: outcome.stored, validation: outcome.validation, completedAt: new Date() }).where(eq(referenceDatasetSyncs.id, sync.id));
-    if (activate) {
-      await activateSync(db, sync.id);
-      return { syncId: sync.id, status: "active", recordCount: outcome.stored, skipped, validation: outcome.validation };
-    }
-    return { syncId: sync.id, status: "staging", recordCount: outcome.stored, skipped, validation: outcome.validation };
+    return await completeVersion(db, version, await run(), activate);
   } catch (reason) {
-    const message = reason instanceof Error ? reason.message.slice(0, 1000) : "Import failed.";
-    const validation = (reason as { validation?: Record<string, unknown> }).validation ?? {};
-    await db.execute(sql`delete from ${sql.identifier("reference")}.${sql.identifier(table)} where dataset_sync_id = ${sync.id}`);
-    await db.update(referenceDatasetSyncs).set({ status: "failed", error: message, validation, completedAt: new Date() }).where(eq(referenceDatasetSyncs.id, sync.id));
-    return { syncId: sync.id, status: "failed", recordCount: 0, skipped, validation, error: message };
+    return failVersion(db, version, reason, 0);
   }
 }
 
 export async function countRows(db: Database, table: StagedTable, syncId: string) {
-  const result = await db.execute(sql`select count(*)::int as count from ${sql.identifier("reference")}.${sql.identifier(table)} where dataset_sync_id = ${syncId}`);
+  const result = await db.execute(sql`select count(*)::int as count from ${sql.identifier(table)} where dataset_version_id = ${syncId}`);
   return Number((result as unknown as { rows: { count: number }[] }).rows[0]?.count ?? 0);
 }
 

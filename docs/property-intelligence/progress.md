@@ -1,5 +1,7 @@
 # Progress checklist
 
+> Reference data was later unified onto the England release's `public` tables. Older rows below that name `reference.*` tables describe the state at the time; see [`architecture.md`](./architecture.md#reconciliation-with-the-england-release).
+
 Legend for every row:
 
 - **Code**: implemented and tested in the repository.

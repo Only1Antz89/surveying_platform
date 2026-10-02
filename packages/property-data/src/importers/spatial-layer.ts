@@ -1,11 +1,11 @@
 import { createReadStream } from "node:fs";
 import { open, readFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
-import { eq, sql } from "drizzle-orm";
-import { referenceDatasetSyncs, type Database } from "@surveynt/db";
+import { sql } from "drizzle-orm";
+import type { Database } from "@surveynt/db";
 import { getSourceDefinition } from "../registry/sources";
-import { activateSync } from "../db/reference";
 import { sha256File, type ImportOutcome } from "./os-open-uprn";
+import { completeVersion, createVersion, failVersion } from "./staged";
 
 export type LayerPreset = { idProperty: string; nameProperty?: string; keepProperties: string[] };
 
@@ -102,19 +102,18 @@ export async function importSpatialLayer(db: Database, options: SpatialLayerImpo
   if (definition.registerStatus === "blocked") throw new Error(`${options.sourceKey} is blocked in the source register and cannot be imported.`);
   const preset = options.preset ?? layerPresets[`${options.sourceKey}:${options.layer}`];
   if (!preset) throw new Error(`No attribute allowlist is defined for ${options.sourceKey}:${options.layer}.`);
-  const checksum = await sha256File(options.filePath);
-  const [sync] = await db.insert(referenceDatasetSyncs).values({
-    sourceKey: options.sourceKey, layer: options.layer, datasetVersion: options.datasetVersion, sourceUrl: options.sourceUrl ?? definition.accessUrls[0] ?? null, checksum,
-    licence: definition.licence as unknown as Record<string, unknown>, sourceCrs: options.sourceCrs ?? "converted to EPSG:4326 before import", extent: "file", importedBy: options.importedBy,
-  }).returning();
+  const sync = await createVersion(db, options.sourceKey, {
+    layer: options.layer, datasetVersion: options.datasetVersion, sourceUrl: options.sourceUrl, checksum: await sha256File(options.filePath),
+    sourceCrs: options.sourceCrs ?? "converted to EPSG:4326 before import", extent: "file", importedBy: options.importedBy,
+  });
   let skipped = 0;
   try {
     let batch: ParsedFeature[] = [];
     const flush = async () => {
       if (!batch.length) return;
       await db.execute(sql`
-        insert into reference.spatial_features (dataset_sync_id, source_key, layer, feature_id, name, attributes, geom)
-        select ${sync.id}::uuid, ${options.sourceKey}, ${options.layer}, t.id, t.name, t.attrs::jsonb, st_makevalid(st_setsrid(st_geomfromgeojson(t.geom), 4326))
+        insert into spatial_reference_features (dataset_version_id, source_key, source_record_id, name, properties, geometry)
+        select ${sync.id}::uuid, ${options.sourceKey}, t.id, t.name, t.attrs::jsonb, st_makevalid(st_setsrid(st_geomfromgeojson(t.geom), 4326))
         from unnest(${sql.param(batch.map((item) => item.id))}::text[], ${sql.param(batch.map((item) => item.name))}::text[], ${sql.param(batch.map((item) => JSON.stringify(item.attributes)))}::text[], ${sql.param(batch.map((item) => item.geometry))}::text[]) as t(id, name, attrs, geom)
         on conflict do nothing`);
       batch = [];
@@ -135,22 +134,16 @@ export async function importSpatialLayer(db: Database, options: SpatialLayerImpo
     await flush();
     const checks = await db.execute(sql`
       select count(*)::int as stored,
-        count(*) filter (where not st_isvalid(geom))::int as invalid,
-        count(*) filter (where st_xmin(geom) < -9.5 or st_xmax(geom) > 2.5 or st_ymin(geom) < 49 or st_ymax(geom) > 61.5)::int as outside
-      from reference.spatial_features where dataset_sync_id = ${sync.id}`);
+        count(*) filter (where not st_isvalid(geometry))::int as invalid,
+        count(*) filter (where st_xmin(geometry) < -9.5 or st_xmax(geometry) > 2.5 or st_ymin(geometry) < 49 or st_ymax(geometry) > 61.5)::int as outside
+      from spatial_reference_features where dataset_version_id = ${sync.id}`);
     const counts = (checks as unknown as { rows: { stored: number; invalid: number; outside: number }[] }).rows[0];
     const validation = { storedRows: counts.stored, skippedRows: skipped, invalidGeometries: counts.invalid, outsideUkExtent: counts.outside };
     if (counts.stored === 0) throw Object.assign(new Error("No usable features were found. Check the identifier property and geometry."), { validation });
     if (counts.outside > 0) throw Object.assign(new Error(`${counts.outside} features fall outside the UK extent. Reproject the source to EPSG:4326 before importing.`), { validation });
     if (counts.invalid > 0) throw Object.assign(new Error(`${counts.invalid} geometries are invalid after repair.`), { validation });
-    await db.update(referenceDatasetSyncs).set({ recordCount: counts.stored, validation, completedAt: new Date() }).where(eq(referenceDatasetSyncs.id, sync.id));
-    if (options.activate) await activateSync(db, sync.id);
-    return { syncId: sync.id, status: options.activate ? "active" : "staging", recordCount: counts.stored, skipped, validation };
+    return await completeVersion(db, sync, { stored: counts.stored, skipped, validation }, options.activate);
   } catch (reason) {
-    const message = reason instanceof Error ? reason.message.slice(0, 1000) : "Import failed.";
-    const validation = (reason as { validation?: Record<string, unknown> }).validation ?? { skippedRows: skipped };
-    await db.execute(sql`delete from reference.spatial_features where dataset_sync_id = ${sync.id}`);
-    await db.update(referenceDatasetSyncs).set({ status: "failed", error: message, validation, completedAt: new Date() }).where(eq(referenceDatasetSyncs.id, sync.id));
-    return { syncId: sync.id, status: "failed", recordCount: 0, skipped, validation, error: message };
+    return failVersion(db, sync, reason, skipped, { skippedRows: skipped });
   }
 }

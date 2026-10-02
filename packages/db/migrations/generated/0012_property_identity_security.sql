@@ -1,16 +1,44 @@
--- Reference data is global and read-only for tenant traffic.
-REVOKE ALL ON SCHEMA reference FROM PUBLIC;
+-- Reference data lives in the England release's public tables (migration 0006),
+-- readable by every role through their SELECT policies. Importers
+-- (surveynt_reference_write) also write versions, logs and rows; enabling a
+-- source stays an owner or platform action.
+GRANT SELECT ON data_sources TO surveynt_reference_read, surveynt_reference_write;
 --> statement-breakpoint
-GRANT USAGE ON SCHEMA reference TO surveynt_reference_read, surveynt_reference_write;
+GRANT SELECT ON dataset_versions, dataset_syncs, os_uprn_points, spatial_reference_features, price_paid_transactions, price_paid_uprn_links, scottish_epc_certificates TO surveynt_reference_read;
 --> statement-breakpoint
-GRANT SELECT ON ALL TABLES IN SCHEMA reference TO surveynt_reference_read;
+GRANT SELECT, INSERT, UPDATE, DELETE ON dataset_versions, dataset_syncs, os_uprn_points, spatial_reference_features, price_paid_transactions, price_paid_uprn_links, scottish_epc_certificates TO surveynt_reference_write;
 --> statement-breakpoint
-ALTER DEFAULT PRIVILEGES IN SCHEMA reference GRANT SELECT ON TABLES TO surveynt_reference_read;
+ALTER TABLE price_paid_transactions ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
--- Importers load reference rows and record syncs; enabling a source stays an owner/platform action.
-GRANT SELECT ON reference.data_sources TO surveynt_reference_write;
+CREATE POLICY price_paid_transactions_read_policy ON price_paid_transactions FOR SELECT USING (true);
 --> statement-breakpoint
-GRANT SELECT, INSERT, UPDATE, DELETE ON reference.dataset_syncs, reference.os_open_uprn TO surveynt_reference_write;
+ALTER TABLE price_paid_uprn_links ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
+CREATE POLICY price_paid_uprn_links_read_policy ON price_paid_uprn_links FOR SELECT USING (true);
+--> statement-breakpoint
+ALTER TABLE scottish_epc_certificates ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
+CREATE POLICY scottish_epc_certificates_read_policy ON scottish_epc_certificates FOR SELECT USING (true);
+--> statement-breakpoint
+CREATE POLICY dataset_versions_importer_write ON dataset_versions FOR ALL TO surveynt_reference_write USING (true) WITH CHECK (true);
+--> statement-breakpoint
+CREATE POLICY dataset_syncs_importer_write ON dataset_syncs FOR ALL TO surveynt_reference_write USING (true) WITH CHECK (true);
+--> statement-breakpoint
+CREATE POLICY os_uprn_points_importer_write ON os_uprn_points FOR ALL TO surveynt_reference_write USING (true) WITH CHECK (true);
+--> statement-breakpoint
+CREATE POLICY spatial_reference_features_importer_write ON spatial_reference_features FOR ALL TO surveynt_reference_write USING (true) WITH CHECK (true);
+--> statement-breakpoint
+CREATE POLICY price_paid_transactions_importer_write ON price_paid_transactions FOR ALL TO surveynt_reference_write USING (true) WITH CHECK (true);
+--> statement-breakpoint
+CREATE POLICY price_paid_uprn_links_importer_write ON price_paid_uprn_links FOR ALL TO surveynt_reference_write USING (true) WITH CHECK (true);
+--> statement-breakpoint
+CREATE POLICY scottish_epc_certificates_importer_write ON scottish_epc_certificates FOR ALL TO surveynt_reference_write USING (true) WITH CHECK (true);
+--> statement-breakpoint
+-- One active version per source and layer (the England release allowed one per source;
+-- its sources all use the default empty layer, so they behave exactly as before).
+DROP INDEX IF EXISTS dataset_versions_one_active_per_source_uidx;
+--> statement-breakpoint
+CREATE UNIQUE INDEX dataset_versions_one_active_per_layer_uidx ON dataset_versions (source_key, layer) WHERE active = true;
 --> statement-breakpoint
 DO $$
 DECLARE tenant_table text;
