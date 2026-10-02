@@ -10,6 +10,18 @@ const elementRef = z.object({ sectionKey: key, elementKey: key, locationLabel: z
 
 export const observationKinds = ["current_observation", "measurement", "client_claim"] as const;
 
+/** Surveynt-owned next actions for an observation the surveyor classifies as a defect. */
+export const nextActions = ["monitor", "repair", "replace", "further_investigation", "specialist_report", "obtain_documents"] as const;
+export type NextAction = (typeof nextActions)[number];
+export const nextActionLabels: Record<NextAction, string> = {
+  monitor: "Monitor",
+  repair: "Repair",
+  replace: "Replace",
+  further_investigation: "Further investigation",
+  specialist_report: "Specialist report",
+  obtain_documents: "Obtain documents or guarantees",
+};
+
 export const syncOperationSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("set_element"),
@@ -36,6 +48,8 @@ export const syncOperationSchema = z.discriminatedUnion("type", [
     kind: z.enum(observationKinds),
     text: z.string().trim().min(1).max(8000),
     measurement: z.object({ value: z.number().finite(), unit: z.string().trim().min(1).max(20), method: z.string().trim().max(200).optional() }).optional(),
+    /** A professional classification: only surveyor roles may record it. */
+    defect: z.object({ nextAction: z.enum(nextActions) }).optional(),
     observedAt: z.iso.datetime().optional(),
   }),
   z.object({

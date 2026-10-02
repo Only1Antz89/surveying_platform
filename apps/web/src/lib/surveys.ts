@@ -129,36 +129,39 @@ async function refreshHistoryTasks(tx: TenantTransaction, organisationId: string
 
 export async function loadSurveyPack(context: Pick<SurveyContext, "organisationId">, surveyId: string) {
   const db = createDatabase();
-  return withTenant(db, context.organisationId, async (tx) => {
-    const [row] = await tx.select({ survey: surveys, jobReference: jobs.reference, serviceName: jobs.serviceName, line1: properties.line1, city: properties.city, postcode: properties.postcode })
-      .from(surveys).innerJoin(jobs, eq(surveys.jobId, jobs.id)).innerJoin(properties, eq(surveys.propertyId, properties.id))
-      .where(and(eq(surveys.id, surveyId), eq(surveys.organisationId, context.organisationId))).limit(1);
-    if (!row) return null;
-    const template = await pinnedTemplate(tx, row.survey);
-    const [elements, values, observationRows, media, evidence, tasks] = await Promise.all([
-      tx.select().from(surveyElements).where(and(eq(surveyElements.surveyId, surveyId), eq(surveyElements.organisationId, context.organisationId))),
-      tx.select().from(surveyFieldValues).where(and(eq(surveyFieldValues.surveyId, surveyId), eq(surveyFieldValues.organisationId, context.organisationId), isNull(surveyFieldValues.supersededAt))),
-      tx.select().from(observations).where(and(eq(observations.surveyId, surveyId), eq(observations.organisationId, context.organisationId), eq(observations.status, "recorded"))).orderBy(asc(observations.createdAt)),
-      tx.select({ id: mediaAssets.id, kind: mediaAssets.kind, contentType: mediaAssets.contentType, byteSize: mediaAssets.byteSize, width: mediaAssets.width, height: mediaAssets.height, capturedAt: mediaAssets.capturedAt, captureContext: mediaAssets.captureContext, derivation: mediaAssets.derivation, clientGeneratedId: mediaAssets.clientGeneratedId, createdAt: mediaAssets.createdAt }).from(mediaAssets).where(and(eq(mediaAssets.surveyId, surveyId), eq(mediaAssets.organisationId, context.organisationId), eq(mediaAssets.status, "stored"))),
-      tx.select().from(evidenceLinks).where(and(eq(evidenceLinks.surveyId, surveyId), eq(evidenceLinks.organisationId, context.organisationId), isNull(evidenceLinks.removedAt))),
-      tx.select().from(assistantTasks).where(and(eq(assistantTasks.surveyId, surveyId), eq(assistantTasks.organisationId, context.organisationId))).orderBy(asc(assistantTasks.createdAt)),
-    ]);
-    const proposals = assistantEnabled() ? await tx.select().from(fieldProposals).where(and(eq(fieldProposals.surveyId, surveyId), eq(fieldProposals.organisationId, context.organisationId), eq(fieldProposals.reviewStatus, "pending"))).orderBy(asc(fieldProposals.createdAt)) : [];
-    return {
-      survey: { id: row.survey.id, jobId: row.survey.jobId, propertyId: row.survey.propertyId, status: row.survey.status, serviceLevel: row.survey.serviceLevel as ServiceLevel, jurisdiction: row.survey.jurisdiction, templateKey: row.survey.templateKey, templateVersion: row.survey.templateVersion, version: row.survey.version, createdAt: row.survey.createdAt.toISOString() },
-      job: { reference: row.jobReference, serviceName: row.serviceName },
-      property: { line1: row.line1, city: row.city, postcode: row.postcode },
-      template,
-      elements: elements.map((item) => ({ id: item.id, sectionKey: item.sectionKey, elementKey: item.elementKey, locationLabel: item.locationLabel, inspectionStatus: item.inspectionStatus, limitationReason: item.limitationReason, version: item.version })),
-      values: values.map((item) => ({ id: item.id, fieldPath: item.fieldPath, value: item.value, origin: item.origin, sourceKind: item.sourceKind, sourceRef: item.sourceRef, createdAt: item.createdAt.toISOString() })),
-      observations: observationRows.map((item) => ({ id: item.id, elementId: item.elementId, kind: item.kind, text: item.text, structured: item.structured, locationLabel: item.locationLabel, origin: item.origin, observedAt: item.observedAt?.toISOString() ?? null, version: item.version, clientGeneratedId: item.clientGeneratedId })),
-      media: media.map((item) => ({ ...item, capturedAt: item.capturedAt?.toISOString() ?? null, createdAt: item.createdAt.toISOString() })),
-      evidence: evidence.map((item) => ({ id: item.id, targetType: item.targetType, targetId: item.targetId, evidenceType: item.evidenceType, evidenceId: item.evidenceId, region: item.region, note: item.note })),
-      tasks: tasks.map((item) => ({ id: item.id, kind: item.kind, status: item.status, title: item.title, detail: item.detail, elementKey: item.elementKey, fieldPath: item.fieldPath, evidence: item.evidence })),
-      assistantEnabled: assistantEnabled(),
-      proposals: proposals.map((item) => ({ id: item.id, fieldPath: item.fieldPath, proposedValue: item.proposedValue, originClass: item.originClass, evidenceRefs: item.evidenceRefs, limitations: item.limitations, baseValueId: item.baseValueId, createdAt: item.createdAt.toISOString() })),
-    };
-  });
+  return withTenant(db, context.organisationId, (tx) => readSurveyPack(tx, context, surveyId));
+}
+
+/** Reads a survey pack inside an existing tenant transaction. */
+export async function readSurveyPack(tx: TenantTransaction, context: Pick<SurveyContext, "organisationId">, surveyId: string) {
+  const [row] = await tx.select({ survey: surveys, jobReference: jobs.reference, serviceName: jobs.serviceName, line1: properties.line1, city: properties.city, postcode: properties.postcode })
+    .from(surveys).innerJoin(jobs, eq(surveys.jobId, jobs.id)).innerJoin(properties, eq(surveys.propertyId, properties.id))
+    .where(and(eq(surveys.id, surveyId), eq(surveys.organisationId, context.organisationId))).limit(1);
+  if (!row) return null;
+  const template = await pinnedTemplate(tx, row.survey);
+  const [elements, values, observationRows, media, evidence, tasks] = await Promise.all([
+    tx.select().from(surveyElements).where(and(eq(surveyElements.surveyId, surveyId), eq(surveyElements.organisationId, context.organisationId))),
+    tx.select().from(surveyFieldValues).where(and(eq(surveyFieldValues.surveyId, surveyId), eq(surveyFieldValues.organisationId, context.organisationId), isNull(surveyFieldValues.supersededAt))),
+    tx.select().from(observations).where(and(eq(observations.surveyId, surveyId), eq(observations.organisationId, context.organisationId), eq(observations.status, "recorded"))).orderBy(asc(observations.createdAt)),
+    tx.select({ id: mediaAssets.id, kind: mediaAssets.kind, contentType: mediaAssets.contentType, byteSize: mediaAssets.byteSize, width: mediaAssets.width, height: mediaAssets.height, capturedAt: mediaAssets.capturedAt, captureContext: mediaAssets.captureContext, derivation: mediaAssets.derivation, clientGeneratedId: mediaAssets.clientGeneratedId, createdAt: mediaAssets.createdAt }).from(mediaAssets).where(and(eq(mediaAssets.surveyId, surveyId), eq(mediaAssets.organisationId, context.organisationId), eq(mediaAssets.status, "stored"))),
+    tx.select().from(evidenceLinks).where(and(eq(evidenceLinks.surveyId, surveyId), eq(evidenceLinks.organisationId, context.organisationId), isNull(evidenceLinks.removedAt))),
+    tx.select().from(assistantTasks).where(and(eq(assistantTasks.surveyId, surveyId), eq(assistantTasks.organisationId, context.organisationId))).orderBy(asc(assistantTasks.createdAt)),
+  ]);
+  const proposals = assistantEnabled() ? await tx.select().from(fieldProposals).where(and(eq(fieldProposals.surveyId, surveyId), eq(fieldProposals.organisationId, context.organisationId), eq(fieldProposals.reviewStatus, "pending"))).orderBy(asc(fieldProposals.createdAt)) : [];
+  return {
+    survey: { id: row.survey.id, jobId: row.survey.jobId, propertyId: row.survey.propertyId, status: row.survey.status, serviceLevel: row.survey.serviceLevel as ServiceLevel, jurisdiction: row.survey.jurisdiction, templateKey: row.survey.templateKey, templateVersion: row.survey.templateVersion, version: row.survey.version, createdAt: row.survey.createdAt.toISOString() },
+    job: { reference: row.jobReference, serviceName: row.serviceName },
+    property: { line1: row.line1, city: row.city, postcode: row.postcode },
+    template,
+    elements: elements.map((item) => ({ id: item.id, sectionKey: item.sectionKey, elementKey: item.elementKey, locationLabel: item.locationLabel, inspectionStatus: item.inspectionStatus, limitationReason: item.limitationReason, version: item.version })),
+    values: values.map((item) => ({ id: item.id, fieldPath: item.fieldPath, value: item.value, origin: item.origin, sourceKind: item.sourceKind, sourceRef: item.sourceRef, createdAt: item.createdAt.toISOString() })),
+    observations: observationRows.map((item) => ({ id: item.id, elementId: item.elementId, kind: item.kind, text: item.text, structured: item.structured, locationLabel: item.locationLabel, origin: item.origin, observedAt: item.observedAt?.toISOString() ?? null, version: item.version, clientGeneratedId: item.clientGeneratedId })),
+    media: media.map((item) => ({ ...item, capturedAt: item.capturedAt?.toISOString() ?? null, createdAt: item.createdAt.toISOString() })),
+    evidence: evidence.map((item) => ({ id: item.id, targetType: item.targetType, targetId: item.targetId, evidenceType: item.evidenceType, evidenceId: item.evidenceId, region: item.region, note: item.note })),
+    tasks: tasks.map((item) => ({ id: item.id, kind: item.kind, status: item.status, title: item.title, detail: item.detail, elementKey: item.elementKey, fieldPath: item.fieldPath, evidence: item.evidence })),
+    assistantEnabled: assistantEnabled(),
+    proposals: proposals.map((item) => ({ id: item.id, fieldPath: item.fieldPath, proposedValue: item.proposedValue, originClass: item.originClass, evidenceRefs: item.evidenceRefs, limitations: item.limitations, baseValueId: item.baseValueId, createdAt: item.createdAt.toISOString() })),
+  };
 }
 
 export type SurveyPack = NonNullable<Awaited<ReturnType<typeof loadSurveyPack>>>;
@@ -214,11 +217,13 @@ async function applyOperation(tx: TenantTransaction, context: SurveyContext, sur
       return { id: created.id, fieldPath: created.fieldPath, value: created.value, supersedesId: created.supersedesId };
     }
     case "add_observation": {
+      if (operation.defect && !canRecordProfessionalJudgement(context.role)) return reject(operationId, "Only surveyors, administrators and owners can classify a defect.");
+      if (operation.defect && operation.kind !== "current_observation") return reject(operationId, "Only a current observation can be classified as a defect.");
       const element = operation.element ? await elementRow(tx, context.organisationId, survey.id, template, operationId, operation.element, context.internalUserId) : null;
       if (element && !resolveElement(template, element.sectionKey, element.elementKey)?.element.inspectable) return reject(operationId, "Observations attach to building elements only.");
       const [created] = await tx.insert(observations).values({
         organisationId: context.organisationId, surveyId: survey.id, elementId: element?.id ?? null, kind: operation.kind, text: operation.text,
-        structured: operation.measurement ? { measurement: operation.measurement } : {}, locationLabel: operation.element?.locationLabel || null,
+        structured: { ...(operation.measurement ? { measurement: operation.measurement } : {}), ...(operation.defect ? { defect: operation.defect } : {}) }, locationLabel: operation.element?.locationLabel || null,
         observedAt: operation.observedAt ? new Date(operation.observedAt) : new Date(), authorUserId: context.internalUserId, clientGeneratedId: operationId,
         sourceKind: operation.kind === "client_claim" ? "client_statement" : "manual",
       }).returning();

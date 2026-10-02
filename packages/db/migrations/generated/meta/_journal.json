@@ -120,6 +120,20 @@
       "when": 1790896735602,
       "tag": "0016_property_history_security",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790930831203,
+      "tag": "0017_completion_overrides",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790930844147,
+      "tag": "0018_completion_overrides_security",
+      "breakpoints": true
     }
   ]
 }

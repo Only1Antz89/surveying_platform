@@ -854,3 +854,29 @@ export const fieldProposals = pgTable("field_proposals", {
   check("field_proposals_status_chk", sql`review_status in ('pending', 'accepted', 'edited', 'rejected', 'superseded')`),
   check("field_proposals_origin_chk", sql`origin_class in ('external_record', 'job_record', 'prior_survey', 'document_extraction', 'image_analysis', 'model_draft')`),
 ]);
+
+// Completion checks (A3). A surveyor may proceed past a failing hard gate only
+// with a permitted reason; every such decision is kept and cannot be edited.
+
+export const completionOverrides = pgTable("completion_overrides", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  jobId: uuid("job_id").notNull(),
+  surveyId: uuid("survey_id").notNull(),
+  itemId: text("item_id").notNull(),
+  category: text("category").notNull(),
+  ruleId: text("rule_id"),
+  ruleSetKey: text("rule_set_key").notNull(),
+  ruleSetVersion: text("rule_set_version").notNull(),
+  templateVersion: text("template_version").notNull(),
+  targetStage: jobStage("target_stage").notNull(),
+  reason: text("reason").notNull(),
+  note: text("note"),
+  overriddenByUserId: uuid("overridden_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  foreignKey({ name: "completion_overrides_job_fk", columns: [table.organisationId, table.jobId], foreignColumns: [jobs.organisationId, jobs.id] }).onDelete("restrict"),
+  foreignKey({ name: "completion_overrides_survey_fk", columns: [table.organisationId, table.surveyId], foreignColumns: [surveys.organisationId, surveys.id] }).onDelete("restrict"),
+  index("completion_overrides_job_idx").on(table.organisationId, table.jobId),
+  check("completion_overrides_reason_chk", sql`length(btrim(reason)) > 0`),
+]);

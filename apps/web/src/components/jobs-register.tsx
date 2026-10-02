@@ -7,6 +7,8 @@ import { canTransitionJob, jobStageLabels, jobStages, type JobStage } from "@sur
 import { StatusDot } from "@surveynt/ui";
 import type { Job } from "@/lib/demo-data";
 import type { JobFormOptions } from "@/lib/data";
+import type { CompletionOverride } from "@surveynt/assistant";
+import { StageGateDialog, type StageGateDetails } from "./stage-gate-dialog";
 
 type ApiJob = {
   id: string; clientId: string; propertyId: string; reference: string; serviceName: string; stage: JobStage;
@@ -39,6 +41,9 @@ export function JobsRegister({ slug, jobs: initialJobs, options, canEdit = true 
   const [saving, setSaving] = useState(false);
   const [workingId, setWorkingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // A stage change refused by the survey's completion checks, waiting for fixes or recorded reasons.
+  const [gate, setGate] = useState<{ jobId: string; body: Record<string, unknown>; details: StageGateDetails; message: string; onDone: (data: ApiJob) => Promise<void> | void } | null>(null);
+  const [gateBusy, setGateBusy] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState(options.clients[0]?.id ?? "");
   const selectableProperties = useMemo(() => options.properties.filter((property) => property.clientId === selectedClientId), [options.properties, selectedClientId]);
   const visible = useMemo(() => jobs.filter((job) => `${job.reference} ${job.client} ${job.address} ${job.service}`.toLowerCase().includes(query.toLowerCase()) && (stage === "All stages" || job.stage === stage)), [jobs, query, stage]);
@@ -68,12 +73,27 @@ export function JobsRegister({ slug, jobs: initialJobs, options, canEdit = true 
     setDetail(payload.data as JobDetail);
   }
 
+  /** PATCHes a job; a completion-check refusal opens the stage gate dialog instead of a plain error. */
+  async function patchJob(jobId: string, body: Record<string, unknown>, onDone: (data: ApiJob) => Promise<void> | void, fallback: string) {
+    const response = await fetch(`/api/v1/jobs/${jobId}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const payload = await response.json().catch(() => null);
+    if (response.ok) { setGate(null); await onDone(payload.data as ApiJob); return; }
+    if (response.status === 422 && payload?.error?.code === "completion_checks_failed") { setGate({ jobId, body, details: payload.error.details as StageGateDetails, message: payload.error.message, onDone }); return; }
+    setGate(null);
+    setError(payload?.error?.message ?? fallback);
+  }
+
   async function advanceStage(job: Job, nextStage: JobStage) {
     setWorkingId(job.id); setError(null);
-    const response = await fetch(`/api/v1/jobs/${job.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ stage: nextStage, version: job.version ?? 1 }) });
-    const payload = await response.json(); setWorkingId(null);
-    if (!response.ok) return setError(payload?.error?.message ?? "The job stage could not be changed.");
-    setJobs((current) => current.map((item) => item.id === job.id ? { ...item, stage: nextStage, version: payload.data.version } : item));
+    await patchJob(job.id, { stage: nextStage, version: job.version ?? 1 }, (data) => setJobs((current) => current.map((item) => item.id === job.id ? { ...item, stage: nextStage, version: data.version } : item)), "The job stage could not be changed.");
+    setWorkingId(null);
+  }
+
+  async function submitOverrides(overrides: CompletionOverride[]) {
+    if (!gate) return;
+    setGateBusy(true);
+    await patchJob(gate.jobId, { ...gate.body, completionOverrides: overrides }, gate.onDone, "The job stage could not be changed.");
+    setGateBusy(false);
   }
 
   async function updateJob(event: FormEvent<HTMLFormElement>) {
@@ -89,13 +109,12 @@ export function JobsRegister({ slug, jobs: initialJobs, options, canEdit = true 
       fee: value("fee") || null, notes: value("notes") || null, version: detail.job.version,
     };
     if (nextStage !== detail.job.stage) body.stage = nextStage;
-    const response = await fetch(`/api/v1/jobs/${detail.job.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-    const payload = await response.json(); setSaving(false);
-    if (!response.ok) return setError(payload?.error?.message ?? "The job could not be updated.");
-    const updated = payload.data as ApiJob;
-    const surveyor = options.surveyors.find((item) => item.id === updated.assignedSurveyorId);
-    setJobs((current) => current.map((item) => item.id === updated.id ? { ...item, service: updated.serviceName, stage: updated.stage, assignee: surveyor?.name ?? "Unassigned", target: formatTarget(updated.targetDate), fee: Number(updated.fee ?? 0), priority: updated.priority === "high" ? "High" : "Normal", version: updated.version } : item));
-    await loadDetail({ ...jobs.find((item) => item.id === updated.id)!, version: updated.version });
+    await patchJob(detail.job.id, body, async (updated) => {
+      const surveyor = options.surveyors.find((item) => item.id === updated.assignedSurveyorId);
+      setJobs((current) => current.map((item) => item.id === updated.id ? { ...item, service: updated.serviceName, stage: updated.stage, assignee: surveyor?.name ?? "Unassigned", target: formatTarget(updated.targetDate), fee: Number(updated.fee ?? 0), priority: updated.priority === "high" ? "High" : "Normal", version: updated.version } : item));
+      await loadDetail({ ...jobs.find((item) => item.id === updated.id)!, version: updated.version });
+    }, "The job could not be updated.");
+    setSaving(false);
   }
 
   const closeDetail = () => { setDetail(null); setDetailLoading(false); setError(null); };
@@ -137,5 +156,6 @@ export function JobsRegister({ slug, jobs: initialJobs, options, canEdit = true 
       <div className="field"><label htmlFor="edit-job-fee">Fee (£)</label><input id="edit-job-fee" name="fee" className="input" type="number" min="0" step="0.01" inputMode="decimal" defaultValue={detail.job.fee ?? ""} disabled={!canEdit} /></div>
       <div className="field full"><label htmlFor="edit-job-notes">Internal notes</label><textarea id="edit-job-notes" name="notes" className="input" rows={5} maxLength={5000} defaultValue={detail.job.notes ?? ""} disabled={!canEdit} /></div>
     </div>{error ? <p className="form-error" role="alert">{error}</p> : null}</div><aside className="job-history" aria-label="Stage history"><div className="job-history-heading"><Clock3 size={16} /><div><h3>Stage history</h3><p>{detail.stageHistory.length} recorded {detail.stageHistory.length === 1 ? "event" : "events"}</p></div></div>{detail.stageHistory.length ? <ol>{[...detail.stageHistory].reverse().map((event) => <li key={event.id}><i aria-hidden="true" /><div><strong>{jobStageLabels[event.toStage]}</strong><span>{event.reason || (event.fromStage ? `Moved from ${jobStageLabels[event.fromStage]}` : "Stage recorded")}</span><small>{event.changedBy} · {formatDateTime(event.createdAt)}</small></div></li>)}</ol> : <p className="job-history-empty">No stage events have been recorded.</p>}</aside></div>{canEdit ? <div className="modal-actions"><button type="button" className="button button-secondary" onClick={closeDetail}>Close</button><Link className="button button-secondary" href={`/app/${slug}/jobs/${detail.job.id}/survey`}><ClipboardList size={14} />Open survey</Link><button className="button button-primary" disabled={saving}><Pencil size={14} />{saving ? "Saving…" : "Save changes"}</button></div> : <div className="modal-actions"><button type="button" className="button button-secondary" onClick={closeDetail}>Close</button><Link className="button button-secondary" href={`/app/${slug}/jobs/${detail.job.id}/survey`}><ClipboardList size={14} />Open survey</Link></div>}</form></section></div> : null}
+    {gate ? <StageGateDialog details={gate.details} message={gate.message} surveyHref={`/app/${slug}/jobs/${gate.jobId}/survey`} busy={gateBusy} onSubmit={(overrides) => void submitOverrides(overrides)} onClose={() => setGate(null)} /> : null}
   </>;
 }

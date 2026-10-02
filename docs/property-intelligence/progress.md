@@ -156,6 +156,22 @@ Blockers:
 - The look-up was announced for 28 Aug 2026 (OGL). Its exact header names and release form could not be checked from this environment, so the importer detects or accepts them.
 - Real data needs the operator steps in [`configuration.md`](./configuration.md#importing-price-paid-data-and-the-transaction-to-uprn-look-up-p4) and source enablement after licence verification.
 ## A3 — Adaptive rules and completion checks
+
+| Item | Code | Configured | Imported | Live |
+|---|---|---|---|---|
+| Versioned, declarative rule set `surveynt-residential-rules@1.0.0`, pinned to template 1.0.0. Each rule has an id, trigger, requirements, justification, severity (`hard_gate`/`advisory`) and permitted override reasons. Covers flats (communal areas and tenure), extensions (approvals), limited inspections (limitation), rating 3 (commentary), defects (location, evidence, next action), listed grade and roof-space general limitation | ✅ (**requires qualified-surveyor review**) | — | — | — |
+| Pure completion engine shared by the browser (offline) and the server: required fields per service level, inspection statuses, status/rating contradictions, open discrepancies, unreviewed AI text, report photos, unreviewed suggestions and reminders, with a stable full checklist | ✅ | — | — | — |
+| Stage gate in `PATCH /api/v1/jobs/:id` for `internal_review` and `issued`: 422 `completion_checks_failed` with failures, unless every hard gate has a permitted reason from a surveyor role. Runs inside the stage-change transaction | ✅ | — | — | — |
+| Migrations 0017–0018: `completion_overrides` (tenant RLS, composite FKs, immutable) plus an audit event per override | ✅ | ❌ not applied to any Neon branch | — | — |
+| Defect classification on observations (next action; surveyor roles only), location, and linking photos to observations as evidence | ✅ | — | — | — |
+| UI: completion panel in the survey workspace (jump to element, full checklist); stage gate dialog in the jobs register with permitted reasons | ✅ (demo smoke-tested) | — | — | — |
+| `GET /api/v1/surveys/:id/completion`; [`docs/assistant/completion-rules.md`](../assistant/completion-rules.md) | ✅ | — | — | — |
+
+Acceptance:
+
+- Complete fixtures pass at every service level. Each rule fails in isolation when broken, and the checklist ids are stable (unit-tested).
+- Coordinators cannot override. Surveyors need a permitted reason, and "other" needs a note. Unreviewed AI text, missing limitations and contradictions cannot be overridden (unit and integration-tested).
+- Overrides are stored immutably, audited and tenant-isolated (integration-tested).
 ## A4 — Photo and document proposals
 ## P5 — Data engine and administration
 ## A5 — Wording library and report assembly
@@ -185,3 +201,6 @@ Blockers:
 | 2026-10-02 | `pnpm check` (P4) | ✅ lint, typecheck, 87 unit tests (11 new Price Paid parser and provider tests), build |
 | 2026-10-02 | `pnpm test:integration` (P4, all suites) | ✅ 51 tests: db 3, property-data 21 (7 new history tests: regional import with no address columns, header detection and multi-UPRN links, exact linkage with unresolved links counted, A/C/D update and rollback, failed import keeps active version, headerless look-up, app role read-only, disabled look-up reported as unavailable), web 27 (3 new timeline tests: merged sales and firm events with separate dates, unconfirmed UPRN explained, stale after identity change, cross-firm denial). The first run caught a "2026-09" release being widened to "2026-09-01" by the snapshot timestamp; the label is now kept as published |
 | 2026-10-02 | Playwright History smoke (demo mode, production build) | ✅ History tab, coverage notes, four labelled demo events in date order, event/published/retrieved dates shown separately (a month release shown as a month), no console errors, no overflow at 390 px |
+| 2026-10-02 | `pnpm check` (A3) | ✅ lint, typecheck, 99 unit tests (12 new rule-engine tests with complete fixtures for all four service levels), build |
+| 2026-10-02 | `pnpm test:integration` (A3, all suites) | ✅ 55 tests, including 4 new gate tests: not gated without a survey or for other stages; incomplete survey blocked, then passes when complete; coordinator cannot override; unlisted reason refused; permitted override stored immutably with audit and tenant isolation; defect classification limited to surveyors; defect gated until a photo is linked |
+| 2026-10-02 | Playwright A3 smoke (demo mode, production build) | ✅ completion panel (42 to resolve, 2 advisory, jump to element), defect classification options, jobs register move to internal review opens the gate dialog listing failures that must be resolved, no console errors, no overflow at 390 px |

@@ -422,6 +422,28 @@ a { color: inherit; text-decoration: none; }
 .map-legend-item > span { display: grid; gap: 2px; }
 .map-panel + .panel { margin-top: 18px; }
 
+/* Completion checks (A3) */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.completion-list { display: grid; gap: 8px; margin: 12px 20px 0; padding: 0; list-style: none; }
+.completion-list.full { margin-bottom: 16px; }
+.completion-item { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 8px; align-items: start; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; }
+.completion-item > div { display: grid; gap: 3px; font-size: 13px; }
+.completion-item.pass { color: var(--muted); background: var(--surface-2); }
+.completion-item.pass svg { color: var(--success, #137457); }
+.completion-item.fail.hard_gate { border-color: #f1c4ca; background: var(--danger-soft); }
+.completion-item.fail.hard_gate svg { color: var(--danger); }
+.completion-item.fail.advisory { background: var(--warning-soft); }
+.completion-item.fail.advisory svg { color: #9c5b05; }
+.completion-footer { padding: 10px 20px 14px; }
+.stage-gate-modal { max-width: 720px; }
+.stage-gate-summary { margin: 12px 20px 8px; font-size: 13px; font-weight: 600; }
+.stage-gate-list { display: grid; gap: 10px; max-height: 55vh; overflow: auto; margin: 0; padding: 0 20px 4px; list-style: none; }
+.stage-gate-list li { display: grid; gap: 4px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
+.stage-gate-list strong { display: flex; gap: 6px; align-items: center; }
+.stage-gate-override { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin-top: 4px; }
+.stage-gate-fixed { color: var(--danger); }
+.observation-link { max-width: 260px; margin-top: 4px; }
+
 /* Property history (P4) */
 .history-coverage { display: grid; gap: 8px; margin: 12px 20px 0; padding: 0; list-style: none; }
 .history-coverage li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
@@ -450,6 +472,8 @@ a { color: inherit; text-decoration: none; }
   .address-search-row { flex-direction: column; }
   .property-map { height: 280px; margin-inline: 12px; }
   .history-timeline, .history-coverage { margin-inline: 12px; }
+  .completion-list { margin-inline: 12px; }
+  .stage-gate-override { grid-template-columns: 1fr; }
   .survey-element-header { flex-direction: column; }
   .inspection-status { min-width: 0; width: 100%; }
   .sync-bar .row-actions { margin-left: 0; }

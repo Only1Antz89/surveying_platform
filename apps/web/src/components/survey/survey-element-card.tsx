@@ -2,11 +2,11 @@
 
 import { FormEvent, useState } from "react";
 import { Camera, MessageSquarePlus } from "lucide-react";
-import { inspectionStatusLabels, inspectionStatuses, type ElementDefinition, type FieldValue, type FormTemplate, type InspectionStatus, type SectionDefinition } from "@surveynt/assistant";
+import { inspectionStatusLabels, inspectionStatuses, nextActionLabels, nextActions, type ElementDefinition, type FieldValue, type FormTemplate, type InspectionStatus, type NextAction, type SectionDefinition } from "@surveynt/assistant";
 import { SurveyField, type FieldDisplay } from "./survey-field";
 
 export type ElementView = { serverId: string | null; version: number | null; inspectionStatus: InspectionStatus | null; limitationReason: string | null; pending: boolean };
-export type ObservationView = { key: string; text: string; kind: string; pending: boolean; measurement?: { value: number; unit: string } | null };
+export type ObservationView = { key: string; text: string; kind: string; pending: boolean; measurement?: { value: number; unit: string } | null; locationLabel?: string | null; defect?: { nextAction: string } | null; evidenceCount?: number };
 export type PhotoView = { key: string; src: string | null; pending: boolean; label: string };
 
 function PhotoThumb({ photo }: { photo: PhotoView }) {
@@ -19,7 +19,7 @@ function PhotoThumb({ photo }: { photo: PhotoView }) {
 const needsReason: InspectionStatus[] = ["partially_inspected", "not_inspected", "inaccessible"];
 const observationKindLabels: Record<string, string> = { current_observation: "Observation", measurement: "Measurement", client_claim: "Client statement (not inspected)" };
 
-export function SurveyElementCard({ section, element, template, view, fieldDisplay, observations, photos, canEdit, canJudge, onElement, onField, onObservation, onPhoto }: {
+export function SurveyElementCard({ section, element, template, view, fieldDisplay, observations, photos, canEdit, canJudge, onElement, onField, onObservation, onPhoto, onLinkPhoto }: {
   section: SectionDefinition;
   element: ElementDefinition;
   template: FormTemplate;
@@ -31,8 +31,10 @@ export function SurveyElementCard({ section, element, template, view, fieldDispl
   canJudge: boolean;
   onElement: (status: InspectionStatus | null, reason: string | null) => void;
   onField: (path: string, value: FieldValue) => void;
-  onObservation: (input: { kind: "current_observation" | "measurement" | "client_claim"; text: string; measurement?: { value: number; unit: string } }) => void;
+  onObservation: (input: { kind: "current_observation" | "measurement" | "client_claim"; text: string; measurement?: { value: number; unit: string }; locationLabel?: string; defect?: { nextAction: NextAction } }) => void;
   onPhoto: (file: File) => void;
+  /** Links an existing photo of this element to an observation as its evidence. */
+  onLinkPhoto?: (observationKey: string, pending: boolean, photoKey: string) => void;
 }) {
   const [reason, setReason] = useState(view.limitationReason ?? "");
   const [seenReason, setSeenReason] = useState(view.limitationReason);
@@ -52,7 +54,9 @@ export function SurveyElementCard({ section, element, template, view, fieldDispl
     if (!text) return;
     const value = Number(form.get("measurementValue"));
     const unit = String(form.get("measurementUnit") ?? "").trim();
-    onObservation({ kind, text, measurement: kind === "measurement" && Number.isFinite(value) && unit ? { value, unit } : undefined });
+    const nextAction = String(form.get("nextAction") ?? "") as NextAction | "";
+    const locationLabel = String(form.get("locationLabel") ?? "").trim();
+    onObservation({ kind, text, measurement: kind === "measurement" && Number.isFinite(value) && unit ? { value, unit } : undefined, locationLabel: locationLabel || undefined, defect: nextAction && kind === "current_observation" ? { nextAction } : undefined });
     event.currentTarget.reset();
     setAdding(false);
   }
@@ -89,11 +93,19 @@ export function SurveyElementCard({ section, element, template, view, fieldDispl
         <div className="form-grid">
           <div className="field"><label htmlFor={`${headingId}-kind`}>Type</label><select id={`${headingId}-kind`} name="kind" className="select" defaultValue="current_observation">{Object.entries(observationKindLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
           <div className="field"><label htmlFor={`${headingId}-value`}>Measurement (optional)</label><div className="measurement-row"><input id={`${headingId}-value`} name="measurementValue" className="input" type="number" step="any" placeholder="Value" /><input name="measurementUnit" className="input" maxLength={20} placeholder="Unit" aria-label="Unit" /></div></div>
+          <div className="field"><label htmlFor={`${headingId}-location`}>Where (optional)</label><input id={`${headingId}-location`} name="locationLabel" className="input" maxLength={120} placeholder="For example, rear elevation" /></div>
+          {canJudge ? <div className="field"><label htmlFor={`${headingId}-defect`}>Defect and next action</label><select id={`${headingId}-defect`} name="nextAction" className="select" defaultValue=""><option value="">Not classified as a defect</option>{nextActions.map((action) => <option key={action} value={action}>Defect: {nextActionLabels[action]}</option>)}</select></div> : null}
           <div className="field full"><label htmlFor={`${headingId}-text`}>What did you see?</label><textarea id={`${headingId}-text`} name="text" className="textarea" required maxLength={8000} rows={3} placeholder="Record the visible facts. Keep possible causes for your commentary." /></div>
         </div>
         <div className="form-actions"><button type="button" className="button button-secondary" onClick={() => setAdding(false)}>Cancel</button><button className="button button-primary">Save observation</button></div>
       </form> : null}
-      {observations.length ? <ul className="observation-list">{observations.map((observation) => <li key={observation.key}><span className="status status-slate">{observationKindLabels[observation.kind] ?? observation.kind}</span><p>{observation.text}{observation.measurement ? ` (${observation.measurement.value} ${observation.measurement.unit})` : ""}</p>{observation.pending ? <small>Saved on this device</small> : null}</li>)}</ul> : null}
+      {observations.length ? <ul className="observation-list">{observations.map((observation) => <li key={observation.key}>
+        <span className={`status ${observation.defect ? "status-amber" : "status-slate"}`}>{observation.defect ? `Defect: ${nextActionLabels[observation.defect.nextAction as NextAction] ?? "next action not recorded"}` : observationKindLabels[observation.kind] ?? observation.kind}</span>
+        <p>{observation.locationLabel ? <b>{observation.locationLabel}: </b> : null}{observation.text}{observation.measurement ? ` (${observation.measurement.value} ${observation.measurement.unit})` : ""}</p>
+        {observation.pending ? <small>Saved on this device</small> : null}
+        {observation.defect ? <small>{observation.evidenceCount ? `${observation.evidenceCount} item${observation.evidenceCount === 1 ? "" : "s"} of evidence` : "No evidence linked yet"}</small> : null}
+        {observation.defect && canEdit && onLinkPhoto && photos.length ? <select className="select observation-link" aria-label="Link a photo as evidence" value="" onChange={(event) => { if (event.target.value) onLinkPhoto(observation.key, observation.pending, event.target.value); }}><option value="">Link a photo as evidence…</option>{photos.map((photo, index) => <option key={photo.key} value={photo.key}>Photo {index + 1}{photo.pending ? " (waiting to upload)" : ""}</option>)}</select> : null}
+      </li>)}</ul> : null}
       {photos.length ? <ul className="photo-strip">{photos.map((photo) => <li key={photo.key}><PhotoThumb photo={photo} />{photo.pending ? <small>Waiting to upload</small> : null}</li>)}</ul> : null}
       {!observations.length && !photos.length ? <p className="form-help">No observations or photos recorded for this element.</p> : null}
     </div> : null}
