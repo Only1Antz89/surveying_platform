@@ -993,3 +993,23 @@ export const reportApprovals = pgTable("report_approvals", {
   uniqueIndex("report_approvals_version_uidx").on(table.reportVersionId),
   foreignKey({ name: "report_approvals_version_fk", columns: [table.organisationId, table.reportVersionId], foreignColumns: [reportVersions.organisationId, reportVersions.id] }).onDelete("restrict"),
 ]);
+
+// Scottish EPC Register extracts (P6). Certificate facts keyed by the
+// published UPRN reference only; no address field is stored.
+export const scottishEpcCertificates = referenceSchema.table("scottish_epc_certificates", {
+  datasetSyncId: uuid("dataset_sync_id").notNull().references(() => datasetSyncs.id, { onDelete: "cascade" }),
+  certificateKey: text("certificate_key").notNull(),
+  uprn: text("uprn").notNull(),
+  lodgementDate: date("lodgement_date"),
+  currentRating: text("current_rating"),
+  potentialRating: text("potential_rating"),
+  propertyType: text("property_type"),
+  builtForm: text("built_form"),
+  constructionAgeBand: text("construction_age_band"),
+  totalFloorAreaM2: doublePrecision("total_floor_area_m2"),
+}, (table) => [
+  primaryKey({ name: "scottish_epc_certificates_pk", columns: [table.datasetSyncId, table.certificateKey] }),
+  index("scottish_epc_certificates_uprn_idx").on(table.datasetSyncId, table.uprn),
+  check("scottish_epc_certificates_uprn_chk", sql`uprn ~ '^[0-9]{1,12}$'`),
+  check("scottish_epc_certificates_rating_chk", sql`(current_rating is null or current_rating ~ '^[A-G]$') and (potential_rating is null or potential_rating ~ '^[A-G]$')`),
+]);

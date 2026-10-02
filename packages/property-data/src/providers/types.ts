@@ -32,6 +32,13 @@ export interface HistoryQuery {
   >;
 }
 
+export type ScottishEpcRecord = { certificateKey: string; lodgementDate: string | null; currentRating: string | null; potentialRating: string | null; propertyType: string | null; builtForm: string | null; constructionAgeBand: string | null; totalFloorAreaM2: number | null };
+
+/** Exact UPRN look-ups against an imported Scottish EPC Register extract. */
+export interface ScottishEpcQuery {
+  certificatesForUprn(uprn: string): Promise<{ available: false } | { available: true; datasetVersion: string; certificates: ScottishEpcRecord[] }>;
+}
+
 /** Global cache for public-source responses. Keys must never contain tenant data. */
 export interface PublicCache {
   getOrLoad<T>(key: string, ttlDays: number, load: () => Promise<T>, cacheable: (value: T) => boolean): Promise<T>;
@@ -43,6 +50,7 @@ export type ProviderContext = {
   fetchImpl?: typeof fetch;
   spatial?: SpatialQuery;
   history?: HistoryQuery;
+  scottishEpc?: ScottishEpcQuery;
   cache?: PublicCache;
 };
 

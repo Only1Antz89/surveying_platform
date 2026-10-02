@@ -227,6 +227,23 @@ Acceptance:
 - An edit after composing makes the version out of date. Only the latest unchanged version can be signed off, and only by a surveyor role with the explicit statement (integration-tested).
 - Issue is blocked when the survey changed after sign-off (integration-tested).
 ## P6 — Country-specific expansion
+
+| Item | Code | Configured | Imported | Live |
+|---|---|---|---|---|
+| Registry: SEPA flood maps (pending); Northern Ireland EPC and Pointer (blocked, never used); existing NRW, Cadw, HES, Scottish EPC and NI listed-building entries | ✅ | ❌ all pending or blocked | — | ❌ hosts blocked |
+| Reference-layer providers with their own categories: NRW Flood Map for Planning (Wales), Cadw (Wales), HES designations (Scotland), SEPA flood likelihood (Scotland), DfC HED listed buildings (Northern Ireland); on the property map too | ✅ synthetic layer | ❌ | ❌ no real release imported | — |
+| Scottish EPC Register importer (header detection or explicit columns; UPRN-keyed; no address fields; impossible dates and ratings dropped) and provider (Scotland, confirmed UPRN only); migrations 0025–0026 | ✅ synthetic extract | ❌ | ❌ | — |
+| Country routing: providers decline outside registered coverage (`not_covered`); no category shared between nations; blocked sources never run | ✅ (unit-tested for every provider × country) | — | — | — |
+| Generated [`country-coverage.md`](./country-coverage.md) with a drift test; coverage line in the Intelligence panel | ✅ | — | — | — |
+| Northern Ireland address resolution and EPC | — **unsupported by design** (no licence or open data) | — | — | — |
+
+Acceptance:
+
+- A Welsh property gets NRW flood zones and never EA zones; an English property never gets NRW zones (integration-tested).
+- Scottish certificates match by exact UPRN only. Unlinked rows are counted, not guessed, and no address is stored (integration-tested).
+- England results are never shown as Wales, Scotland or Northern Ireland coverage (unit-tested for every provider).
+
+Blockers: every devolved source is pending verification, and the official hosts are blocked from this environment. Column names for the Scottish EPC extract and the layer presets are provisional; the importer accepts overrides.
 ## A6 — Pilot readiness and AI governance
 ## L0–L4 — Shared learning (disabled by default)
 
@@ -266,3 +283,6 @@ Acceptance:
 | 2026-10-02 | `pnpm check` (A5) | ✅ lint, typecheck, 115 unit tests (5 new composer tests), build |
 | 2026-10-02 | `pnpm test:integration` (A5, all suites) | ✅ 70 tests, including 4 new report tests (wording lifecycle and immutability; traced, immutable version from approved wording only; sign-off rules and capture closing; issue gate and reopening) and the A3 gate test updated for the issue requirement |
 | 2026-10-02 | Playwright A5 smoke (demo mode, production build) | ✅ side column beside the form at 1440 px; demo report composed with rating summary, limitation-only chimney text, recommendations and per-block sources; no sign-off in demo; wording library and editor; no console errors; no overflow at 390 px. Found and fixed: the preview was cleared by the reload after composing in demo |
+| 2026-10-02 | `pnpm check` (P6) | ✅ lint, typecheck, 119 unit tests (4 new country-routing and coverage-document tests), build |
+| 2026-10-02 | `pnpm test:integration` (P6, all suites) | ✅ 73 tests, including 3 new devolved-source tests (NRW-only flood answers for Wales, Scottish EPC import and exact-UPRN provider, header overrides) |
+| 2026-10-02 | Playwright P6 smoke (demo mode, production build) | ✅ coverage line "15 of 23 registered sources cover England", Sources tab lists 23 sources, no console errors |

@@ -130,6 +130,26 @@ DATABASE_IMPORTER_URL=… pnpm --filter @surveynt/property-data reference rollba
 - Each update copies the active version before applying changes. A national load is about 30 million rows, so budget for twice that during an update and prune retired versions afterwards (`prune --source hmlr_price_paid --keep 1`).
 - Not verified from this environment (gov.uk is blocked): the look-up's exact header names, and whether it is published as full files or change files. The importer assumes full files.
 
+## Country-specific sources (P6)
+
+Wales, Scotland and Northern Ireland use their own publishers only. See [`country-coverage.md`](./country-coverage.md), which is generated and checked by a test.
+
+- **Spatial layers** load through the same `spatial-layer` command. The source keys and layers are:
+  - `nrw_flood_map_planning`: `flood_zone_2`, `flood_zone_3`;
+  - `cadw_listed_buildings`: `listed_building`;
+  - `hes_designations`: `listed_building`, `scheduled_monument`, `conservation_area`, `garden_designed_landscape`, `battlefield`, `world_heritage_site`;
+  - `sepa_flood_maps`: `river_*`, `coastal_*` and `surface_water_*`, each `high`, `medium` or `low`;
+  - `ni_hed_listed_buildings`: `listed_building`.
+
+  The attribute presets are provisional. Check each download's column names and override them with `--id-property` and `--attributes`.
+- **Scottish EPC Register extract**, imported in full each quarter. It is matched by the published UPRN reference only. Rows without one are counted and not stored. No address field is stored.
+  ```bash
+  DATABASE_IMPORTER_URL=… pnpm --filter @surveynt/property-data reference scottish-epc --file ./domestic.csv --version 2026-Q3 --activate
+  # If the header names differ from the reported ones (osg_reference_number, report_reference_number, …):
+  … reference scottish-epc --file ./domestic.csv --version 2026-Q3 --column uprn=OSG_UPRN --column certificateKey=REPORT_REFERENCE_NUMBER
+  ```
+- **Northern Ireland** address resolution and energy certificates stay unsupported (`ni_pointer` and `ni_epc` are blocked in the register). Northern Ireland properties show "not covered" for every Great Britain source.
+
 ## Basemap
 
 The map draws imported layers on a plain background until `NEXT_PUBLIC_MAP_STYLE_URL` points at a MapLibre style from a contracted or self-hosted tile provider. Public OpenStreetMap tiles are not used: their usage policy rules out this kind of production traffic. Set `NEXT_PUBLIC_MAP_ATTRIBUTION` to the provider's required attribution. Layer attribution comes from the source register automatically.

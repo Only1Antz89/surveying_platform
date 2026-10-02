@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, lte, or, sql } from "drizzle-orm";
 import { auditEvents, backgroundJobs, createDatabase, datasetSyncs, enrichmentRuns, properties, propertyIntelligenceSnapshots, withTenant, type TenantTransaction } from "@surveynt/db";
 import { getSourceDefinition, intelligenceProviders, runProviders, sourceCoversCountry, sourceDefinitions, type IntelligenceProvider, type ProviderResult } from "@surveynt/property-data";
-import { databaseHistoryQuery, databaseSpatialQuery, getSourceStates } from "@surveynt/property-data/importers";
+import { databaseHistoryQuery, databaseScottishEpcQuery, databaseSpatialQuery, getSourceStates } from "@surveynt/property-data/importers";
 import { intelligenceEnabled } from "./property-identity";
 import { databasePublicCache } from "./provider-cache";
 import { propertyFingerprint, toLocation } from "./fingerprint";
@@ -116,7 +116,7 @@ export async function processIntelligenceRun(organisationId: string, runId: stri
     const providers = options.providers ?? intelligenceProviders;
     const enabled = await getSourceStates(db, providers.map((provider) => provider.key));
     const active = providers.filter((provider) => enabled[provider.key]);
-    const outcomes = await runProviders(active, toLocation(property), { now: new Date(), env: process.env, fetchImpl: options.fetchImpl, spatial: databaseSpatialQuery(db), history: databaseHistoryQuery(db), cache: databasePublicCache(db) }, { concurrency: 3, timeoutMs: 20_000 });
+    const outcomes = await runProviders(active, toLocation(property), { now: new Date(), env: process.env, fetchImpl: options.fetchImpl, spatial: databaseSpatialQuery(db), history: databaseHistoryQuery(db), scottishEpc: databaseScottishEpcQuery(db), cache: databasePublicCache(db) }, { concurrency: 3, timeoutMs: 20_000 });
     const results = outcomes.flatMap((outcome) => outcome.results);
     const providerStatuses = Object.fromEntries([
       ...providers.filter((provider) => !enabled[provider.key]).map((provider) => [provider.key, { status: "not_configured", message: "Source not enabled after verification." }]),

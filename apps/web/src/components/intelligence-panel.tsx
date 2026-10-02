@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, ExternalLink, RefreshCw } from "lucide-react";
 import { StatusDot } from "@surveynt/ui";
+import { ukCountryLabels, type UkCountry } from "@surveynt/domain";
 import { categoryGroupLabels, categoryInfo, informationClassLabels, providerStatusLabels, type CategoryGroup, type InformationClass, type ProviderStatus } from "@surveynt/property-data";
 import type { IntelligenceCategoryView, PropertyIntelligence } from "@/lib/intelligence";
 
@@ -16,7 +17,7 @@ function formatDate(value: string | null) {
 
 function RecordSummary({ category, record }: { category: string; record: IntelligenceCategoryView["records"][number] }) {
   const data = record.data;
-  if (category === "energy_certificate") {
+  if (category === "energy_certificate" || category === "energy_certificate_scotland") {
     return <div className="intel-record">
       <strong>Rating {String(data.currentRating ?? "—")}{data.potentialRating ? ` (potential ${String(data.potentialRating)})` : ""}{data.latest ? "" : " · earlier certificate"}</strong>
       <span className="cell-sub">Lodged {formatDate(String(data.lodgementDate ?? "") || null)} · {String(data.propertyType ?? "Type not recorded")} · {String(data.builtForm ?? "")} · {String(data.constructionAgeBand ?? "Age band not recorded")}</span>
@@ -112,6 +113,7 @@ export function IntelligencePanel({ propertyId, canRefresh, groups, title }: { p
     {demo ? <p className="address-demo-label intel-inline">Demo workspace: illustrative records, not live data.</p> : null}
     {!data.enabled && !demo ? <p className="identity-warning">Property intelligence is not enabled for this deployment. Stored results, if any, are shown with their dates.</p> : null}
     {approximate ? <p className="identity-warning">Location checks need an address-level or surveyor-confirmed location. Postcode centres are too approximate.</p> : null}
+    {data.location.country ? <p className="form-help intel-inline">{data.sources.filter((source) => source.coversProperty).length} of {data.sources.length} registered sources cover {ukCountryLabels[data.location.country as UkCountry]}. Sources from other nations are never used for this property; see the Sources tab.</p> : <p className="identity-warning">Set the property&apos;s country to see which sources apply.</p>}
     {error ? <p className="form-error intel-inline" role="alert">{error}</p> : null}
     {visible.length ? [...grouped.entries()].map(([group, items]) => <div key={group} className="intel-group"><h3>{categoryGroupLabels[group]}</h3><div className="intel-grid">{items.map((item) => <CategoryCard key={`${item.sourceKey}-${item.category}`} item={item} />)}</div></div>) : <div className="empty-state"><strong>Not checked yet</strong><span>No source has been checked for this property. This is not the same as “no record”.</span></div>}
   </section>;

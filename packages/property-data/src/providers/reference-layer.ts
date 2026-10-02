@@ -143,3 +143,59 @@ export const naturalEnglandProvider = referenceLayerProvider({
     { layer: "ancient_woodland", category: "ancient_woodland", label: "Ancient woodland", nearbyMetres: 50, caveat: "The inventory is indicative and incomplete for small sites." },
   ],
 });
+
+// Country-specific layers (P6). Each nation's own publisher only, with its own
+// categories, so an England result can never stand in for Wales, Scotland or
+// Northern Ireland. Each source stays disabled until verified and imported.
+
+export const nrwFloodZonesProvider = referenceLayerProvider({
+  sourceKey: "nrw_flood_map_planning",
+  countries: ["WLS"],
+  layers: [
+    { layer: "flood_zone_3", category: "wales_flood_zone_3", label: "Flood Zone 3 (Wales, planning)", caveat: "Natural Resources Wales planning flood zone, not a property flood risk assessment. Check which sources (rivers, sea, surface water) the imported layer combines." },
+    { layer: "flood_zone_2", category: "wales_flood_zone_2", label: "Flood Zone 2 (Wales, planning)", caveat: "Planning flood zone; not intersecting is not proof of no flood risk." },
+  ],
+});
+
+export const cadwProvider = referenceLayerProvider({
+  sourceKey: "cadw_listed_buildings",
+  countries: ["WLS"],
+  layers: [
+    { layer: "listed_building", category: "listed_building_cadw", label: "Listed building (Cadw)", nearbyMetres: 50, caveat: "Listing locations are indicative; the Cadw record is the legal description." },
+  ],
+});
+
+export const hesProvider = referenceLayerProvider({
+  sourceKey: "hes_designations",
+  countries: ["SCT"],
+  layers: [
+    { layer: "listed_building", category: "listed_building_hes", label: "Listed building (Historic Environment Scotland)", nearbyMetres: 50, caveat: "Check the designation record for the listed extent and category." },
+    { layer: "scheduled_monument", category: "scheduled_monument_hes", label: "Scheduled monument (Scotland)", caveat: "Check the designation record for the protected extent." },
+    { layer: "conservation_area", category: "conservation_area_hes", label: "Conservation area (Scotland)", caveat: "Confirm with the local planning authority." },
+    { layer: "garden_designed_landscape", category: "garden_designed_landscape_hes", label: "Garden and designed landscape", caveat: "Check the inventory record." },
+    { layer: "battlefield", category: "battlefield_hes", label: "Inventory battlefield", caveat: "Check the inventory record." },
+    { layer: "world_heritage_site", category: "world_heritage_site_hes", label: "World Heritage Site (Scotland)", caveat: "Check the boundary and buffer zone with the authority." },
+  ],
+});
+
+const sepaLayers = (["river", "coastal", "surface_water"] as const).flatMap((type) => (["high", "medium", "low"] as const).map((likelihood) => ({
+  layer: `${type}_${likelihood}`,
+  category: `sepa_${type}_${likelihood}`,
+  label: `SEPA ${type.replace("_", " ")} flood likelihood: ${likelihood}`,
+  caveat: "Modelled likelihood at a strategic scale; not a property flood risk assessment. Not intersecting is not proof of no flood risk.",
+})));
+
+export const sepaFloodProvider = referenceLayerProvider({
+  sourceKey: "sepa_flood_maps",
+  countries: ["SCT"],
+  informationClass: "indicative_external",
+  layers: sepaLayers,
+});
+
+export const niHedProvider = referenceLayerProvider({
+  sourceKey: "ni_hed_listed_buildings",
+  countries: ["NIR"],
+  layers: [
+    { layer: "listed_building", category: "listed_building_ni_hed", label: "Listed building (Northern Ireland)", nearbyMetres: 50, caveat: "Check the Historic Environment Division record for the listed extent and grade." },
+  ],
+});

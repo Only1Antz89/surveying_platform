@@ -34,6 +34,26 @@ export const layerPresets: Record<string, LayerPreset> = {
   "ne_designations:national_landscape": { idProperty: "code", nameProperty: "name", keepProperties: ["name", "code"] },
   "ne_designations:national_park": { idProperty: "code", nameProperty: "name", keepProperties: ["name", "code"] },
   "ne_designations:ancient_woodland": { idProperty: "fid", nameProperty: "name", keepProperties: ["name", "themname"] },
+  // Country-specific layers (P6). Field names are provisional: confirm against each download and override with --id-property/--attributes.
+  "nrw_flood_map_planning:flood_zone_2": { idProperty: "fid", keepProperties: ["flood_zone", "source"] },
+  "nrw_flood_map_planning:flood_zone_3": { idProperty: "fid", keepProperties: ["flood_zone", "source"] },
+  "cadw_listed_buildings:listed_building": { idProperty: "RecordNumber", nameProperty: "Name", keepProperties: ["RecordNumber", "Name", "Grade"] },
+  "hes_designations:listed_building": { idProperty: "DES_REF", nameProperty: "DES_TITLE", keepProperties: ["DES_REF", "DES_TITLE", "CATEGORY"] },
+  "hes_designations:scheduled_monument": { idProperty: "DES_REF", nameProperty: "DES_TITLE", keepProperties: ["DES_REF", "DES_TITLE"] },
+  "hes_designations:conservation_area": { idProperty: "DES_REF", nameProperty: "DES_TITLE", keepProperties: ["DES_REF", "DES_TITLE"] },
+  "hes_designations:garden_designed_landscape": { idProperty: "DES_REF", nameProperty: "DES_TITLE", keepProperties: ["DES_REF", "DES_TITLE"] },
+  "hes_designations:battlefield": { idProperty: "DES_REF", nameProperty: "DES_TITLE", keepProperties: ["DES_REF", "DES_TITLE"] },
+  "hes_designations:world_heritage_site": { idProperty: "DES_REF", nameProperty: "DES_TITLE", keepProperties: ["DES_REF", "DES_TITLE"] },
+  "ni_hed_listed_buildings:listed_building": { idProperty: "HB_NUMBER", keepProperties: ["HB_NUMBER", "GRADE"] },
+  "sepa_flood_maps:river_high": { idProperty: "fid", keepProperties: ["likelihood"] },
+  "sepa_flood_maps:river_medium": { idProperty: "fid", keepProperties: ["likelihood"] },
+  "sepa_flood_maps:river_low": { idProperty: "fid", keepProperties: ["likelihood"] },
+  "sepa_flood_maps:coastal_high": { idProperty: "fid", keepProperties: ["likelihood"] },
+  "sepa_flood_maps:coastal_medium": { idProperty: "fid", keepProperties: ["likelihood"] },
+  "sepa_flood_maps:coastal_low": { idProperty: "fid", keepProperties: ["likelihood"] },
+  "sepa_flood_maps:surface_water_high": { idProperty: "fid", keepProperties: ["likelihood"] },
+  "sepa_flood_maps:surface_water_medium": { idProperty: "fid", keepProperties: ["likelihood"] },
+  "sepa_flood_maps:surface_water_low": { idProperty: "fid", keepProperties: ["likelihood"] },
 };
 
 export type SpatialLayerImportOptions = {

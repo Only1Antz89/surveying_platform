@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { importOsOpenUprn, type Bbox } from "./os-open-uprn";
 import { importPricePaid, importPricePaidUprnLookup, parsePostcodeAreas } from "./price-paid";
+import { importScottishEpc, scottishEpcColumns, type ScottishEpcField } from "./scottish-epc";
 import { importSpatialLayer } from "./spatial-layer";
 
 /** Converts a shapefile, GML or GeoPackage to GeoJSONSeq in EPSG:4326 using GDAL (no shell). */
@@ -43,6 +44,7 @@ async function main() {
   const { values } = parseArgs({ args: rest, options: {
     file: { type: "string" }, version: { type: "string" }, "source-url": { type: "string" }, bbox: { type: "string" }, layer: { type: "string" }, convert: { type: "boolean", default: false }, "source-crs": { type: "string" }, "id-property": { type: "string" }, "name-property": { type: "string" }, attributes: { type: "string" },
     activate: { type: "boolean", default: false }, sync: { type: "string" }, source: { type: "string" }, keep: { type: "string" },
+    column: { type: "string", multiple: true },
     mode: { type: "string" }, "postcode-areas": { type: "string" }, "max-rejected": { type: "string" }, "transaction-column": { type: "string" }, "uprn-column": { type: "string" },
   } });
   const maxRejected = values["max-rejected"] === undefined ? undefined : Number(values["max-rejected"]);
@@ -89,6 +91,20 @@ async function main() {
       if (outcome.status === "failed") process.exitCode = 1;
       break;
     }
+    case "scottish-epc": {
+      if (!values.file || !values.version) throw new Error("--file and --version are required.");
+      const columns: Partial<Record<ScottishEpcField, string>> = {};
+      for (const entry of values.column ?? []) {
+        const [field, header] = entry.split("=");
+        if (!(field in scottishEpcColumns) || !header) throw new Error(`--column must be field=Header with field one of ${Object.keys(scottishEpcColumns).join(", ")}.`);
+        columns[field as ScottishEpcField] = header;
+      }
+      const db = createDatabase(requireEnv("DATABASE_IMPORTER_URL"));
+      const outcome = await importScottishEpc(db, { filePath: values.file, datasetVersion: values.version, columns, sourceUrl: values["source-url"], maxRejected, activate: values.activate, importedBy: process.env.USER ?? "operator" });
+      console.log(JSON.stringify(outcome, null, 2));
+      if (outcome.status === "failed") process.exitCode = 1;
+      break;
+    }
     case "activate": {
       if (!values.sync) throw new Error("--sync is required.");
       const db = createDatabase(requireEnv("DATABASE_IMPORTER_URL"));
@@ -108,7 +124,7 @@ async function main() {
       break;
     }
     default:
-      throw new Error("Commands: registry-sync | os-open-uprn --file --version [--bbox] [--activate] | spatial-layer --source --layer --file --version [--convert] [--activate] | price-paid --file --version --mode full|update [--postcode-areas BS,BA] [--max-rejected N] [--activate] | price-paid-lookup --file --version [--transaction-column --uprn-column] [--activate] | activate --sync | rollback --source [--layer] | prune --source [--layer] [--keep N]. spatial-layer also accepts --id-property --name-property --attributes a,b");
+      throw new Error("Commands: registry-sync | os-open-uprn --file --version [--bbox] [--activate] | spatial-layer --source --layer --file --version [--convert] [--activate] | price-paid --file --version --mode full|update [--postcode-areas BS,BA] [--max-rejected N] [--activate] | price-paid-lookup --file --version [--transaction-column --uprn-column] [--activate] | scottish-epc --file --version [--column field=Header ...] [--activate] | activate --sync | rollback --source [--layer] | prune --source [--layer] [--keep N]. spatial-layer also accepts --id-property --name-property --attributes a,b");
   }
 }
 
