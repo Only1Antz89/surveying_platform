@@ -19,7 +19,8 @@
 - [ ] Import and validate national datasets
 - [x] Full dry-run OS Open UPRN and Historic England; sample-validate HMLR GML without database writes
 - [x] Resolve the EA national source and complete separate Flood Zone 2 and Flood Zone 3 dry-runs
-- [ ] Materialise the England-only HMLR authority manifest and complete its national dry-run
+- [x] Materialise and validate the 296-authority England-only HMLR download manifest
+- [ ] Complete the HMLR national dry-run using sufficient scratch storage or an authorised staged streaming workflow
 - [ ] Live-test EPC after credentials/licence acceptance
 - [ ] Configure production geocoder and basemap providers
 - [ ] Measure national storage, index size and query latency before activation

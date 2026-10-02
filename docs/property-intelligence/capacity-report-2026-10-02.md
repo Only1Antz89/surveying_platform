@@ -49,12 +49,14 @@ Canonical CSV SHA-256: `003510636bc2fa313ecd471ae26f582d00e9496fa8ad7f7aaf6e2bcd
 ## HMLR INSPIRE evidence and national projection
 
 - Current catalogue publication: 6 September 2026; files are replaced on the first Sunday of each month.
-- Catalogue: 318 England and Wales authority archives. The England-first set is expected to be 296 after excluding the 22 Welsh principal areas; this selection must be materialised and reviewed before staging.
-- A deterministic manifest validator now enforces the current 318 total, all 22 named Welsh exclusions, 296 England results, unique filenames and official HTTPS download URLs. The official service's non-browser redirect loop prevented materialising the reviewed national manifest in this run, so the activation blocker remains.
+- Catalogue: 318 England and Wales authority archives. The reviewed England-first manifest contains 296 authorities after excluding the 22 Welsh principal areas.
+- A deterministic manifest validator enforced the current 318 total, all 22 named Welsh exclusions, 296 England results, unique filenames and official HTTPS download URLs. Manifest SHA-256: `37b9daf558e2364692bfb9d4e36972deeac97d329f8d7b15ec8bf4ac8d95b3c0`.
+- The official service's non-browser redirect loop required capture from its successfully rendered catalogue page. The resulting reviewed manifest is committed as `hmlr-england-authorities-2026-09.json`; the raw England and Wales capture is not retained.
 - Official service guidance gives an average file size of 13.66 MB. At 296 archives this is approximately 4,239,770,255 bytes of downloads.
 - Adur archive SHA-256: `0193a690dd0f05a7ca62d555d36450b2841c11ec8acfb256c88124a722a08d4d`.
 - Adur GML declared `EPSG:27700`, contained 26,429 parcels and converted to 26,429 valid rows.
 - Applying the sample table-to-ZIP ratio to the published average produces a deliberately provisional national estimate of 51,749,619,588 bytes and USD 16.8685 per month. Authority size and polygon complexity vary materially, so this is not sufficient for approval.
+- The projected canonical/table footprint is close to the current local scratch capacity, so a full 296-authority conversion was not started. It requires larger temporary storage or a separately authorised staged streaming workflow; this remains an activation blocker.
 - The national converter deduplicates repeated INSPIRE IDs across authority boundaries. Each record is labelled as an indicative, non-definitive freehold extent; it is not a legal title boundary or ownership record.
 
 ## Environment Agency evidence

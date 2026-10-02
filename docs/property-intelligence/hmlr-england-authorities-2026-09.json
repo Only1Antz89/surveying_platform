@@ -1,0 +1,1787 @@
+{
+  "source": "hmlr_inspire",
+  "coverage": "ENG",
+  "release": "2026-09",
+  "publishedAt": "2026-09-06",
+  "catalogueUrl": "https://use-land-property-data.service.gov.uk/datasets/inspire/download",
+  "catalogueCount": 318,
+  "excludedWelshAuthorities": 22,
+  "entries": [
+    {
+      "authority": "Adur District Council",
+      "label": "adur-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Adur_District_Council.zip",
+      "archive": "Adur_District_Council.zip"
+    },
+    {
+      "authority": "Amber Valley Borough Council",
+      "label": "amber-valley-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Amber_Valley_Borough_Council.zip",
+      "archive": "Amber_Valley_Borough_Council.zip"
+    },
+    {
+      "authority": "Arun District Council",
+      "label": "arun-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Arun_District_Council.zip",
+      "archive": "Arun_District_Council.zip"
+    },
+    {
+      "authority": "Ashfield District Council",
+      "label": "ashfield-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Ashfield_District_Council.zip",
+      "archive": "Ashfield_District_Council.zip"
+    },
+    {
+      "authority": "Ashford Borough Council",
+      "label": "ashford-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Ashford_Borough_Council.zip",
+      "archive": "Ashford_Borough_Council.zip"
+    },
+    {
+      "authority": "Babergh District Council",
+      "label": "babergh-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Babergh_District_Council.zip",
+      "archive": "Babergh_District_Council.zip"
+    },
+    {
+      "authority": "Barnsley Metropolitan Borough Council",
+      "label": "barnsley-metropolitan-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Barnsley_Metropolitan_Borough_Council.zip",
+      "archive": "Barnsley_Metropolitan_Borough_Council.zip"
+    },
+    {
+      "authority": "Basildon Borough Council",
+      "label": "basildon-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Basildon_Borough_Council.zip",
+      "archive": "Basildon_Borough_Council.zip"
+    },
+    {
+      "authority": "Basingstoke and Deane Borough Council",
+      "label": "basingstoke-and-deane-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Basingstoke_and_Deane_Borough_Council.zip",
+      "archive": "Basingstoke_and_Deane_Borough_Council.zip"
+    },
+    {
+      "authority": "Bassetlaw District Council",
+      "label": "bassetlaw-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Bassetlaw_District_Council.zip",
+      "archive": "Bassetlaw_District_Council.zip"
+    },
+    {
+      "authority": "Bath and North East Somerset Council",
+      "label": "bath-and-north-east-somerset-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Bath_and_North_East_Somerset_Council.zip",
+      "archive": "Bath_and_North_East_Somerset_Council.zip"
+    },
+    {
+      "authority": "Bedford Borough Council",
+      "label": "bedford-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Bedford_Borough_Council.zip",
+      "archive": "Bedford_Borough_Council.zip"
+    },
+    {
+      "authority": "Birmingham City Council",
+      "label": "birmingham-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Birmingham_City_Council.zip",
+      "archive": "Birmingham_City_Council.zip"
+    },
+    {
+      "authority": "Blaby District Council",
+      "label": "blaby-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Blaby_District_Council.zip",
+      "archive": "Blaby_District_Council.zip"
+    },
+    {
+      "authority": "Blackburn with Darwen Borough Council",
+      "label": "blackburn-with-darwen-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Blackburn_with_Darwen_Borough_Council.zip",
+      "archive": "Blackburn_with_Darwen_Borough_Council.zip"
+    },
+    {
+      "authority": "Blackpool Borough Council",
+      "label": "blackpool-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Blackpool_Borough_Council.zip",
+      "archive": "Blackpool_Borough_Council.zip"
+    },
+    {
+      "authority": "Bolsover District Council",
+      "label": "bolsover-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Bolsover_District_Council.zip",
+      "archive": "Bolsover_District_Council.zip"
+    },
+    {
+      "authority": "Bolton Metropolitan Borough Council",
+      "label": "bolton-metropolitan-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Bolton_Metropolitan_Borough_Council.zip",
+      "archive": "Bolton_Metropolitan_Borough_Council.zip"
+    },
+    {
+      "authority": "Borough Council of Kings Lynn and West Norfolk",
+      "label": "borough-council-of-kings-lynn-and-west-norfolk",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Borough_Council_of_Kings_Lynn_and_West_Norfolk.zip",
+      "archive": "Borough_Council_of_Kings_Lynn_and_West_Norfolk.zip"
+    },
+    {
+      "authority": "Boston Borough Council",
+      "label": "boston-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Boston_Borough_Council.zip",
+      "archive": "Boston_Borough_Council.zip"
+    },
+    {
+      "authority": "Bournemouth Christchurch and Poole Council",
+      "label": "bournemouth-christchurch-and-poole-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Bournemouth_Christchurch_and_Poole_Council.zip",
+      "archive": "Bournemouth_Christchurch_and_Poole_Council.zip"
+    },
+    {
+      "authority": "Bracknell Forest Council",
+      "label": "bracknell-forest-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Bracknell_Forest_Council.zip",
+      "archive": "Bracknell_Forest_Council.zip"
+    },
+    {
+      "authority": "Braintree District Council",
+      "label": "braintree-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Braintree_District_Council.zip",
+      "archive": "Braintree_District_Council.zip"
+    },
+    {
+      "authority": "Breckland District Council",
+      "label": "breckland-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Breckland_District_Council.zip",
+      "archive": "Breckland_District_Council.zip"
+    },
+    {
+      "authority": "Brentwood Borough Council",
+      "label": "brentwood-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Brentwood_Borough_Council.zip",
+      "archive": "Brentwood_Borough_Council.zip"
+    },
+    {
+      "authority": "Brighton and Hove City Council",
+      "label": "brighton-and-hove-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Brighton_and_Hove_City_Council.zip",
+      "archive": "Brighton_and_Hove_City_Council.zip"
+    },
+    {
+      "authority": "Bristol City Council",
+      "label": "bristol-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Bristol_City_Council.zip",
+      "archive": "Bristol_City_Council.zip"
+    },
+    {
+      "authority": "Broadland District Council",
+      "label": "broadland-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Broadland_District_Council.zip",
+      "archive": "Broadland_District_Council.zip"
+    },
+    {
+      "authority": "Bromsgrove District Council",
+      "label": "bromsgrove-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Bromsgrove_District_Council.zip",
+      "archive": "Bromsgrove_District_Council.zip"
+    },
+    {
+      "authority": "Broxbourne Borough Council",
+      "label": "broxbourne-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Broxbourne_Borough_Council.zip",
+      "archive": "Broxbourne_Borough_Council.zip"
+    },
+    {
+      "authority": "Broxtowe Borough Council",
+      "label": "broxtowe-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Broxtowe_Borough_Council.zip",
+      "archive": "Broxtowe_Borough_Council.zip"
+    },
+    {
+      "authority": "Buckinghamshire Council",
+      "label": "buckinghamshire-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Buckinghamshire_Council.zip",
+      "archive": "Buckinghamshire_Council.zip"
+    },
+    {
+      "authority": "Burnley Borough Council",
+      "label": "burnley-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Burnley_Borough_Council.zip",
+      "archive": "Burnley_Borough_Council.zip"
+    },
+    {
+      "authority": "Bury Metropolitan Borough Council",
+      "label": "bury-metropolitan-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Bury_Metropolitan_Borough_Council.zip",
+      "archive": "Bury_Metropolitan_Borough_Council.zip"
+    },
+    {
+      "authority": "Calderdale Metropolitan Borough Council",
+      "label": "calderdale-metropolitan-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Calderdale_Metropolitan_Borough_Council.zip",
+      "archive": "Calderdale_Metropolitan_Borough_Council.zip"
+    },
+    {
+      "authority": "Cambridge City Council",
+      "label": "cambridge-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Cambridge_City_Council.zip",
+      "archive": "Cambridge_City_Council.zip"
+    },
+    {
+      "authority": "Cannock Chase District Council",
+      "label": "cannock-chase-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Cannock_Chase_District_Council.zip",
+      "archive": "Cannock_Chase_District_Council.zip"
+    },
+    {
+      "authority": "Canterbury City Council",
+      "label": "canterbury-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Canterbury_City_Council.zip",
+      "archive": "Canterbury_City_Council.zip"
+    },
+    {
+      "authority": "Castle Point Borough Council",
+      "label": "castle-point-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Castle_Point_Borough_Council.zip",
+      "archive": "Castle_Point_Borough_Council.zip"
+    },
+    {
+      "authority": "Central Bedfordshire Council",
+      "label": "central-bedfordshire-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Central_Bedfordshire_Council.zip",
+      "archive": "Central_Bedfordshire_Council.zip"
+    },
+    {
+      "authority": "Charnwood Borough Council",
+      "label": "charnwood-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Charnwood_Borough_Council.zip",
+      "archive": "Charnwood_Borough_Council.zip"
+    },
+    {
+      "authority": "Chelmsford City Council",
+      "label": "chelmsford-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Chelmsford_City_Council.zip",
+      "archive": "Chelmsford_City_Council.zip"
+    },
+    {
+      "authority": "Cheltenham Borough Council",
+      "label": "cheltenham-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Cheltenham_Borough_Council.zip",
+      "archive": "Cheltenham_Borough_Council.zip"
+    },
+    {
+      "authority": "Cherwell District Council",
+      "label": "cherwell-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Cherwell_District_Council.zip",
+      "archive": "Cherwell_District_Council.zip"
+    },
+    {
+      "authority": "Cheshire East Council",
+      "label": "cheshire-east-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Cheshire_East_Council.zip",
+      "archive": "Cheshire_East_Council.zip"
+    },
+    {
+      "authority": "Cheshire West and Chester Council",
+      "label": "cheshire-west-and-chester-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Cheshire_West_and_Chester_Council.zip",
+      "archive": "Cheshire_West_and_Chester_Council.zip"
+    },
+    {
+      "authority": "Chesterfield Borough Council",
+      "label": "chesterfield-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Chesterfield_Borough_Council.zip",
+      "archive": "Chesterfield_Borough_Council.zip"
+    },
+    {
+      "authority": "Chichester District Council",
+      "label": "chichester-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Chichester_District_Council.zip",
+      "archive": "Chichester_District_Council.zip"
+    },
+    {
+      "authority": "Chorley Borough Council",
+      "label": "chorley-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Chorley_Borough_Council.zip",
+      "archive": "Chorley_Borough_Council.zip"
+    },
+    {
+      "authority": "City of Bradford Metropolitan District Council",
+      "label": "city-of-bradford-metropolitan-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/City_of_Bradford_Metropolitan_District_Council.zip",
+      "archive": "City_of_Bradford_Metropolitan_District_Council.zip"
+    },
+    {
+      "authority": "City of Lincoln Council",
+      "label": "city-of-lincoln-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/City_of_Lincoln_Council.zip",
+      "archive": "City_of_Lincoln_Council.zip"
+    },
+    {
+      "authority": "City of London Corporation",
+      "label": "city-of-london-corporation",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/City_of_London_Corporation.zip",
+      "archive": "City_of_London_Corporation.zip"
+    },
+    {
+      "authority": "City of Westminster",
+      "label": "city-of-westminster",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/City_of_Westminster.zip",
+      "archive": "City_of_Westminster.zip"
+    },
+    {
+      "authority": "City of Wolverhampton Council",
+      "label": "city-of-wolverhampton-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/City_of_Wolverhampton_Council.zip",
+      "archive": "City_of_Wolverhampton_Council.zip"
+    },
+    {
+      "authority": "City of York Council",
+      "label": "city-of-york-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/City_of_York_Council.zip",
+      "archive": "City_of_York_Council.zip"
+    },
+    {
+      "authority": "Colchester Borough Council",
+      "label": "colchester-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Colchester_Borough_Council.zip",
+      "archive": "Colchester_Borough_Council.zip"
+    },
+    {
+      "authority": "Cornwall Council",
+      "label": "cornwall-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Cornwall_Council.zip",
+      "archive": "Cornwall_Council.zip"
+    },
+    {
+      "authority": "Cotswold District Council",
+      "label": "cotswold-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Cotswold_District_Council.zip",
+      "archive": "Cotswold_District_Council.zip"
+    },
+    {
+      "authority": "Council of the Isles of Scilly",
+      "label": "council-of-the-isles-of-scilly",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Council_of_the_Isles_of_Scilly.zip",
+      "archive": "Council_of_the_Isles_of_Scilly.zip"
+    },
+    {
+      "authority": "Coventry City Council",
+      "label": "coventry-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Coventry_City_Council.zip",
+      "archive": "Coventry_City_Council.zip"
+    },
+    {
+      "authority": "Crawley Borough Council",
+      "label": "crawley-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Crawley_Borough_Council.zip",
+      "archive": "Crawley_Borough_Council.zip"
+    },
+    {
+      "authority": "Cumberland Council",
+      "label": "cumberland-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Cumberland_Council.zip",
+      "archive": "Cumberland_Council.zip"
+    },
+    {
+      "authority": "Dacorum Borough Council",
+      "label": "dacorum-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Dacorum_Borough_Council.zip",
+      "archive": "Dacorum_Borough_Council.zip"
+    },
+    {
+      "authority": "Darlington Borough Council",
+      "label": "darlington-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Darlington_Borough_Council.zip",
+      "archive": "Darlington_Borough_Council.zip"
+    },
+    {
+      "authority": "Dartford Borough Council",
+      "label": "dartford-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Dartford_Borough_Council.zip",
+      "archive": "Dartford_Borough_Council.zip"
+    },
+    {
+      "authority": "Derby City Council",
+      "label": "derby-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Derby_City_Council.zip",
+      "archive": "Derby_City_Council.zip"
+    },
+    {
+      "authority": "Derbyshire Dales District Council",
+      "label": "derbyshire-dales-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Derbyshire_Dales_District_Council.zip",
+      "archive": "Derbyshire_Dales_District_Council.zip"
+    },
+    {
+      "authority": "Doncaster Metropolitan Borough Council",
+      "label": "doncaster-metropolitan-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Doncaster_Metropolitan_Borough_Council.zip",
+      "archive": "Doncaster_Metropolitan_Borough_Council.zip"
+    },
+    {
+      "authority": "Dorset Council",
+      "label": "dorset-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Dorset_Council.zip",
+      "archive": "Dorset_Council.zip"
+    },
+    {
+      "authority": "Dover District Council",
+      "label": "dover-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Dover_District_Council.zip",
+      "archive": "Dover_District_Council.zip"
+    },
+    {
+      "authority": "Dudley Metropolitan Borough Council",
+      "label": "dudley-metropolitan-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Dudley_Metropolitan_Borough_Council.zip",
+      "archive": "Dudley_Metropolitan_Borough_Council.zip"
+    },
+    {
+      "authority": "Durham County Council",
+      "label": "durham-county-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Durham_County_Council.zip",
+      "archive": "Durham_County_Council.zip"
+    },
+    {
+      "authority": "East Cambridgeshire District Council",
+      "label": "east-cambridgeshire-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/East_Cambridgeshire_District_Council.zip",
+      "archive": "East_Cambridgeshire_District_Council.zip"
+    },
+    {
+      "authority": "East Devon District Council",
+      "label": "east-devon-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/East_Devon_District_Council.zip",
+      "archive": "East_Devon_District_Council.zip"
+    },
+    {
+      "authority": "East Hampshire District Council",
+      "label": "east-hampshire-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/East_Hampshire_District_Council.zip",
+      "archive": "East_Hampshire_District_Council.zip"
+    },
+    {
+      "authority": "East Hertfordshire District Council",
+      "label": "east-hertfordshire-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/East_Hertfordshire_District_Council.zip",
+      "archive": "East_Hertfordshire_District_Council.zip"
+    },
+    {
+      "authority": "East Lindsey District Council",
+      "label": "east-lindsey-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/East_Lindsey_District_Council.zip",
+      "archive": "East_Lindsey_District_Council.zip"
+    },
+    {
+      "authority": "East Riding of Yorkshire Council",
+      "label": "east-riding-of-yorkshire-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/East_Riding_of_Yorkshire_Council.zip",
+      "archive": "East_Riding_of_Yorkshire_Council.zip"
+    },
+    {
+      "authority": "East Staffordshire Borough Council",
+      "label": "east-staffordshire-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/East_Staffordshire_Borough_Council.zip",
+      "archive": "East_Staffordshire_Borough_Council.zip"
+    },
+    {
+      "authority": "East Suffolk Council",
+      "label": "east-suffolk-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/East_Suffolk_Council.zip",
+      "archive": "East_Suffolk_Council.zip"
+    },
+    {
+      "authority": "Eastbourne Borough Council",
+      "label": "eastbourne-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Eastbourne_Borough_Council.zip",
+      "archive": "Eastbourne_Borough_Council.zip"
+    },
+    {
+      "authority": "Eastleigh Borough Council",
+      "label": "eastleigh-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Eastleigh_Borough_Council.zip",
+      "archive": "Eastleigh_Borough_Council.zip"
+    },
+    {
+      "authority": "Elmbridge Borough Council",
+      "label": "elmbridge-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Elmbridge_Borough_Council.zip",
+      "archive": "Elmbridge_Borough_Council.zip"
+    },
+    {
+      "authority": "Epping Forest District Council",
+      "label": "epping-forest-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Epping_Forest_District_Council.zip",
+      "archive": "Epping_Forest_District_Council.zip"
+    },
+    {
+      "authority": "Epsom and Ewell Borough Council",
+      "label": "epsom-and-ewell-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Epsom_and_Ewell_Borough_Council.zip",
+      "archive": "Epsom_and_Ewell_Borough_Council.zip"
+    },
+    {
+      "authority": "Erewash Borough Council",
+      "label": "erewash-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Erewash_Borough_Council.zip",
+      "archive": "Erewash_Borough_Council.zip"
+    },
+    {
+      "authority": "Exeter City Council",
+      "label": "exeter-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Exeter_City_Council.zip",
+      "archive": "Exeter_City_Council.zip"
+    },
+    {
+      "authority": "Fareham Borough Council",
+      "label": "fareham-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Fareham_Borough_Council.zip",
+      "archive": "Fareham_Borough_Council.zip"
+    },
+    {
+      "authority": "Fenland District Council",
+      "label": "fenland-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Fenland_District_Council.zip",
+      "archive": "Fenland_District_Council.zip"
+    },
+    {
+      "authority": "Folkestone and Hythe District Council",
+      "label": "folkestone-and-hythe-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Folkestone_and_Hythe_District_Council.zip",
+      "archive": "Folkestone_and_Hythe_District_Council.zip"
+    },
+    {
+      "authority": "Forest of Dean District Council",
+      "label": "forest-of-dean-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Forest_of_Dean_District_Council.zip",
+      "archive": "Forest_of_Dean_District_Council.zip"
+    },
+    {
+      "authority": "Fylde Borough Council",
+      "label": "fylde-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Fylde_Borough_Council.zip",
+      "archive": "Fylde_Borough_Council.zip"
+    },
+    {
+      "authority": "Gateshead Metropolitan Borough Council",
+      "label": "gateshead-metropolitan-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Gateshead_Metropolitan_Borough_Council.zip",
+      "archive": "Gateshead_Metropolitan_Borough_Council.zip"
+    },
+    {
+      "authority": "Gedling Borough Council",
+      "label": "gedling-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Gedling_Borough_Council.zip",
+      "archive": "Gedling_Borough_Council.zip"
+    },
+    {
+      "authority": "Gloucester City Council",
+      "label": "gloucester-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Gloucester_City_Council.zip",
+      "archive": "Gloucester_City_Council.zip"
+    },
+    {
+      "authority": "Gosport Borough Council",
+      "label": "gosport-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Gosport_Borough_Council.zip",
+      "archive": "Gosport_Borough_Council.zip"
+    },
+    {
+      "authority": "Gravesham Borough Council",
+      "label": "gravesham-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Gravesham_Borough_Council.zip",
+      "archive": "Gravesham_Borough_Council.zip"
+    },
+    {
+      "authority": "Great Yarmouth Borough Council",
+      "label": "great-yarmouth-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Great_Yarmouth_Borough_Council.zip",
+      "archive": "Great_Yarmouth_Borough_Council.zip"
+    },
+    {
+      "authority": "Guildford Borough Council",
+      "label": "guildford-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Guildford_Borough_Council.zip",
+      "archive": "Guildford_Borough_Council.zip"
+    },
+    {
+      "authority": "Halton Borough Council",
+      "label": "halton-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Halton_Borough_Council.zip",
+      "archive": "Halton_Borough_Council.zip"
+    },
+    {
+      "authority": "Harborough District Council",
+      "label": "harborough-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Harborough_District_Council.zip",
+      "archive": "Harborough_District_Council.zip"
+    },
+    {
+      "authority": "Harlow District Council",
+      "label": "harlow-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Harlow_District_Council.zip",
+      "archive": "Harlow_District_Council.zip"
+    },
+    {
+      "authority": "Hart District Council",
+      "label": "hart-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Hart_District_Council.zip",
+      "archive": "Hart_District_Council.zip"
+    },
+    {
+      "authority": "Hartlepool Borough Council",
+      "label": "hartlepool-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Hartlepool_Borough_Council.zip",
+      "archive": "Hartlepool_Borough_Council.zip"
+    },
+    {
+      "authority": "Hastings Borough Council",
+      "label": "hastings-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Hastings_Borough_Council.zip",
+      "archive": "Hastings_Borough_Council.zip"
+    },
+    {
+      "authority": "Havant Borough Council",
+      "label": "havant-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Havant_Borough_Council.zip",
+      "archive": "Havant_Borough_Council.zip"
+    },
+    {
+      "authority": "Herefordshire Council",
+      "label": "herefordshire-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Herefordshire_Council.zip",
+      "archive": "Herefordshire_Council.zip"
+    },
+    {
+      "authority": "Hertsmere Borough Council",
+      "label": "hertsmere-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Hertsmere_Borough_Council.zip",
+      "archive": "Hertsmere_Borough_Council.zip"
+    },
+    {
+      "authority": "High Peak Borough Council",
+      "label": "high-peak-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/High_Peak_Borough_Council.zip",
+      "archive": "High_Peak_Borough_Council.zip"
+    },
+    {
+      "authority": "Hinckley and Bosworth Borough Council",
+      "label": "hinckley-and-bosworth-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Hinckley_and_Bosworth_Borough_Council.zip",
+      "archive": "Hinckley_and_Bosworth_Borough_Council.zip"
+    },
+    {
+      "authority": "Horsham District Council",
+      "label": "horsham-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Horsham_District_Council.zip",
+      "archive": "Horsham_District_Council.zip"
+    },
+    {
+      "authority": "Hull City Council",
+      "label": "hull-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Hull_City_Council.zip",
+      "archive": "Hull_City_Council.zip"
+    },
+    {
+      "authority": "Huntingdonshire District Council",
+      "label": "huntingdonshire-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Huntingdonshire_District_Council.zip",
+      "archive": "Huntingdonshire_District_Council.zip"
+    },
+    {
+      "authority": "Hyndburn Borough Council",
+      "label": "hyndburn-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Hyndburn_Borough_Council.zip",
+      "archive": "Hyndburn_Borough_Council.zip"
+    },
+    {
+      "authority": "Ipswich Borough Council",
+      "label": "ipswich-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Ipswich_Borough_Council.zip",
+      "archive": "Ipswich_Borough_Council.zip"
+    },
+    {
+      "authority": "Isle of Wight Council",
+      "label": "isle-of-wight-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Isle_of_Wight_Council.zip",
+      "archive": "Isle_of_Wight_Council.zip"
+    },
+    {
+      "authority": "Kirklees Council",
+      "label": "kirklees-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Kirklees_Council.zip",
+      "archive": "Kirklees_Council.zip"
+    },
+    {
+      "authority": "Knowsley Metropolitan Borough Council",
+      "label": "knowsley-metropolitan-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Knowsley_Metropolitan_Borough_Council.zip",
+      "archive": "Knowsley_Metropolitan_Borough_Council.zip"
+    },
+    {
+      "authority": "Lancaster City Council",
+      "label": "lancaster-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Lancaster_City_Council.zip",
+      "archive": "Lancaster_City_Council.zip"
+    },
+    {
+      "authority": "Leeds City Council",
+      "label": "leeds-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Leeds_City_Council.zip",
+      "archive": "Leeds_City_Council.zip"
+    },
+    {
+      "authority": "Leicester City Council",
+      "label": "leicester-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Leicester_City_Council.zip",
+      "archive": "Leicester_City_Council.zip"
+    },
+    {
+      "authority": "Lewes District Council",
+      "label": "lewes-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Lewes_District_Council.zip",
+      "archive": "Lewes_District_Council.zip"
+    },
+    {
+      "authority": "Lichfield District Council",
+      "label": "lichfield-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Lichfield_District_Council.zip",
+      "archive": "Lichfield_District_Council.zip"
+    },
+    {
+      "authority": "Liverpool City Council",
+      "label": "liverpool-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Liverpool_City_Council.zip",
+      "archive": "Liverpool_City_Council.zip"
+    },
+    {
+      "authority": "London Borough of Barking and Dagenham",
+      "label": "london-borough-of-barking-and-dagenham",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/London_Borough_of_Barking_and_Dagenham.zip",
+      "archive": "London_Borough_of_Barking_and_Dagenham.zip"
+    },
+    {
+      "authority": "London Borough of Barnet",
+      "label": "london-borough-of-barnet",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/London_Borough_of_Barnet.zip",
+      "archive": "London_Borough_of_Barnet.zip"
+    },
+    {
+      "authority": "London Borough of Bexley",
+      "label": "london-borough-of-bexley",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/London_Borough_of_Bexley.zip",
+      "archive": "London_Borough_of_Bexley.zip"
+    },
+    {
+      "authority": "London Borough of Brent",
+      "label": "london-borough-of-brent",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/London_Borough_of_Brent.zip",
+      "archive": "London_Borough_of_Brent.zip"
+    },
+    {
+      "authority": "London Borough of Bromley",
+      "label": "london-borough-of-bromley",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/London_Borough_of_Bromley.zip",
+      "archive": "London_Borough_of_Bromley.zip"
+    },
+    {
+      "authority": "London Borough of Camden",
+      "label": "london-borough-of-camden",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/London_Borough_of_Camden.zip",
+      "archive": "London_Borough_of_Camden.zip"
+    },
+    {
+      "authority": "London Borough of Croydon",
+      "label": "london-borough-of-croydon",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/London_Borough_of_Croydon.zip",
+      "archive": "London_Borough_of_Croydon.zip"
+    },
+    {
+      "authority": "London Borough of Ealing",
+      "label": "london-borough-of-ealing",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/London_Borough_of_Ealing.zip",
+      "archive": "London_Borough_of_Ealing.zip"
+    },
+    {
+      "authority": "London Borough of Enfield",
+      "label": "london-borough-of-enfield",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/London_Borough_of_Enfield.zip",
+      "archive": "London_Borough_of_Enfield.zip"
+    },
+    {
+      "authority": "London Borough of Hackney",
+      "label": "london-borough-of-hackney",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/London_Borough_of_Hackney.zip",
+      "archive": "London_Borough_of_Hackney.zip"
+    },
+    {
+      "authority": "London Borough of Hammersmith and Fulham",
+      "label": "london-borough-of-hammersmith-and-fulham",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/London_Borough_of_Hammersmith_and_Fulham.zip",
+      "archive": "London_Borough_of_Hammersmith_and_Fulham.zip"
+    },
+    {
+      "authority": "London Borough of Haringey",
+      "label": "london-borough-of-haringey",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/London_Borough_of_Haringey.zip",
+      "archive": "London_Borough_of_Haringey.zip"
+    },
+    {
+      "authority": "London Borough of Harrow",
+      "label": "london-borough-of-harrow",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/London_Borough_of_Harrow.zip",
+      "archive": "London_Borough_of_Harrow.zip"
+    },
+    {
+      "authority": "London Borough of Havering",
+      "label": "london-borough-of-havering",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/London_Borough_of_Havering.zip",
+      "archive": "London_Borough_of_Havering.zip"
+    },
+    {
+      "authority": "London Borough of Hillingdon",
+      "label": "london-borough-of-hillingdon",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/London_Borough_of_Hillingdon.zip",
+      "archive": "London_Borough_of_Hillingdon.zip"
+    },
+    {
+      "authority": "London Borough of Hounslow",
+      "label": "london-borough-of-hounslow",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/London_Borough_of_Hounslow.zip",
+      "archive": "London_Borough_of_Hounslow.zip"
+    },
+    {
+      "authority": "London Borough of Islington",
+      "label": "london-borough-of-islington",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/London_Borough_of_Islington.zip",
+      "archive": "London_Borough_of_Islington.zip"
+    },
+    {
+      "authority": "London Borough of Lambeth",
+      "label": "london-borough-of-lambeth",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/London_Borough_of_Lambeth.zip",
+      "archive": "London_Borough_of_Lambeth.zip"
+    },
+    {
+      "authority": "London Borough of Lewisham",
+      "label": "london-borough-of-lewisham",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/London_Borough_of_Lewisham.zip",
+      "archive": "London_Borough_of_Lewisham.zip"
+    },
+    {
+      "authority": "London Borough of Merton",
+      "label": "london-borough-of-merton",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/London_Borough_of_Merton.zip",
+      "archive": "London_Borough_of_Merton.zip"
+    },
+    {
+      "authority": "London Borough of Newham",
+      "label": "london-borough-of-newham",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/London_Borough_of_Newham.zip",
+      "archive": "London_Borough_of_Newham.zip"
+    },
+    {
+      "authority": "London Borough of Redbridge",
+      "label": "london-borough-of-redbridge",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/London_Borough_of_Redbridge.zip",
+      "archive": "London_Borough_of_Redbridge.zip"
+    },
+    {
+      "authority": "London Borough of Richmond upon Thames",
+      "label": "london-borough-of-richmond-upon-thames",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/London_Borough_of_Richmond_upon_Thames.zip",
+      "archive": "London_Borough_of_Richmond_upon_Thames.zip"
+    },
+    {
+      "authority": "London Borough of Southwark",
+      "label": "london-borough-of-southwark",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/London_Borough_of_Southwark.zip",
+      "archive": "London_Borough_of_Southwark.zip"
+    },
+    {
+      "authority": "London Borough of Sutton",
+      "label": "london-borough-of-sutton",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/London_Borough_of_Sutton.zip",
+      "archive": "London_Borough_of_Sutton.zip"
+    },
+    {
+      "authority": "London Borough of Tower Hamlets",
+      "label": "london-borough-of-tower-hamlets",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/London_Borough_of_Tower_Hamlets.zip",
+      "archive": "London_Borough_of_Tower_Hamlets.zip"
+    },
+    {
+      "authority": "London Borough of Waltham Forest",
+      "label": "london-borough-of-waltham-forest",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/London_Borough_of_Waltham_Forest.zip",
+      "archive": "London_Borough_of_Waltham_Forest.zip"
+    },
+    {
+      "authority": "London Borough of Wandsworth",
+      "label": "london-borough-of-wandsworth",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/London_Borough_of_Wandsworth.zip",
+      "archive": "London_Borough_of_Wandsworth.zip"
+    },
+    {
+      "authority": "Luton Borough Council",
+      "label": "luton-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Luton_Borough_Council.zip",
+      "archive": "Luton_Borough_Council.zip"
+    },
+    {
+      "authority": "Maidstone Borough Council",
+      "label": "maidstone-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Maidstone_Borough_Council.zip",
+      "archive": "Maidstone_Borough_Council.zip"
+    },
+    {
+      "authority": "Maldon District Council",
+      "label": "maldon-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Maldon_District_Council.zip",
+      "archive": "Maldon_District_Council.zip"
+    },
+    {
+      "authority": "Malvern Hills District Council",
+      "label": "malvern-hills-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Malvern_Hills_District_Council.zip",
+      "archive": "Malvern_Hills_District_Council.zip"
+    },
+    {
+      "authority": "Manchester City Council",
+      "label": "manchester-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Manchester_City_Council.zip",
+      "archive": "Manchester_City_Council.zip"
+    },
+    {
+      "authority": "Mansfield District Council",
+      "label": "mansfield-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Mansfield_District_Council.zip",
+      "archive": "Mansfield_District_Council.zip"
+    },
+    {
+      "authority": "Medway Council",
+      "label": "medway-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Medway_Council.zip",
+      "archive": "Medway_Council.zip"
+    },
+    {
+      "authority": "Melton Borough Council",
+      "label": "melton-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Melton_Borough_Council.zip",
+      "archive": "Melton_Borough_Council.zip"
+    },
+    {
+      "authority": "Mid Devon District Council",
+      "label": "mid-devon-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Mid_Devon_District_Council.zip",
+      "archive": "Mid_Devon_District_Council.zip"
+    },
+    {
+      "authority": "Mid Suffolk District Council",
+      "label": "mid-suffolk-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Mid_Suffolk_District_Council.zip",
+      "archive": "Mid_Suffolk_District_Council.zip"
+    },
+    {
+      "authority": "Mid Sussex District Council",
+      "label": "mid-sussex-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Mid_Sussex_District_Council.zip",
+      "archive": "Mid_Sussex_District_Council.zip"
+    },
+    {
+      "authority": "Middlesbrough Borough Council",
+      "label": "middlesbrough-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Middlesbrough_Borough_Council.zip",
+      "archive": "Middlesbrough_Borough_Council.zip"
+    },
+    {
+      "authority": "Milton Keynes Council",
+      "label": "milton-keynes-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Milton_Keynes_Council.zip",
+      "archive": "Milton_Keynes_Council.zip"
+    },
+    {
+      "authority": "Mole Valley District Council",
+      "label": "mole-valley-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Mole_Valley_District_Council.zip",
+      "archive": "Mole_Valley_District_Council.zip"
+    },
+    {
+      "authority": "New Forest District Council",
+      "label": "new-forest-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/New_Forest_District_Council.zip",
+      "archive": "New_Forest_District_Council.zip"
+    },
+    {
+      "authority": "Newark and Sherwood District Council",
+      "label": "newark-and-sherwood-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Newark_and_Sherwood_District_Council.zip",
+      "archive": "Newark_and_Sherwood_District_Council.zip"
+    },
+    {
+      "authority": "Newcastle-under-Lyme Borough Council",
+      "label": "newcastle-under-lyme-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Newcastle-under-Lyme_Borough_Council.zip",
+      "archive": "Newcastle-under-Lyme_Borough_Council.zip"
+    },
+    {
+      "authority": "Newcastle City Council",
+      "label": "newcastle-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Newcastle_City_Council.zip",
+      "archive": "Newcastle_City_Council.zip"
+    },
+    {
+      "authority": "North Devon District Council",
+      "label": "north-devon-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/North_Devon_District_Council.zip",
+      "archive": "North_Devon_District_Council.zip"
+    },
+    {
+      "authority": "North East Derbyshire District Council",
+      "label": "north-east-derbyshire-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/North_East_Derbyshire_District_Council.zip",
+      "archive": "North_East_Derbyshire_District_Council.zip"
+    },
+    {
+      "authority": "North East Lincolnshire Council",
+      "label": "north-east-lincolnshire-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/North_East_Lincolnshire_Council.zip",
+      "archive": "North_East_Lincolnshire_Council.zip"
+    },
+    {
+      "authority": "North Hertfordshire District Council",
+      "label": "north-hertfordshire-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/North_Hertfordshire_District_Council.zip",
+      "archive": "North_Hertfordshire_District_Council.zip"
+    },
+    {
+      "authority": "North Kesteven District Council",
+      "label": "north-kesteven-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/North_Kesteven_District_Council.zip",
+      "archive": "North_Kesteven_District_Council.zip"
+    },
+    {
+      "authority": "North Lincolnshire Council",
+      "label": "north-lincolnshire-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/North_Lincolnshire_Council.zip",
+      "archive": "North_Lincolnshire_Council.zip"
+    },
+    {
+      "authority": "North Norfolk District Council",
+      "label": "north-norfolk-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/North_Norfolk_District_Council.zip",
+      "archive": "North_Norfolk_District_Council.zip"
+    },
+    {
+      "authority": "North Northamptonshire Council",
+      "label": "north-northamptonshire-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/North_Northamptonshire_Council.zip",
+      "archive": "North_Northamptonshire_Council.zip"
+    },
+    {
+      "authority": "North Somerset Council",
+      "label": "north-somerset-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/North_Somerset_Council.zip",
+      "archive": "North_Somerset_Council.zip"
+    },
+    {
+      "authority": "North Tyneside Council",
+      "label": "north-tyneside-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/North_Tyneside_Council.zip",
+      "archive": "North_Tyneside_Council.zip"
+    },
+    {
+      "authority": "North Warwickshire Borough Council",
+      "label": "north-warwickshire-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/North_Warwickshire_Borough_Council.zip",
+      "archive": "North_Warwickshire_Borough_Council.zip"
+    },
+    {
+      "authority": "North West Leicestershire District Council",
+      "label": "north-west-leicestershire-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/North_West_Leicestershire_District_Council.zip",
+      "archive": "North_West_Leicestershire_District_Council.zip"
+    },
+    {
+      "authority": "Northumberland County Council",
+      "label": "northumberland-county-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Northumberland_County_Council.zip",
+      "archive": "Northumberland_County_Council.zip"
+    },
+    {
+      "authority": "Norwich City Council",
+      "label": "norwich-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Norwich_City_Council.zip",
+      "archive": "Norwich_City_Council.zip"
+    },
+    {
+      "authority": "Nottingham City Council",
+      "label": "nottingham-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Nottingham_City_Council.zip",
+      "archive": "Nottingham_City_Council.zip"
+    },
+    {
+      "authority": "Nuneaton and Bedworth Borough Council",
+      "label": "nuneaton-and-bedworth-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Nuneaton_and_Bedworth_Borough_Council.zip",
+      "archive": "Nuneaton_and_Bedworth_Borough_Council.zip"
+    },
+    {
+      "authority": "Oadby and Wigston Borough Council",
+      "label": "oadby-and-wigston-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Oadby_and_Wigston_Borough_Council.zip",
+      "archive": "Oadby_and_Wigston_Borough_Council.zip"
+    },
+    {
+      "authority": "Oldham Metropolitan Borough Council",
+      "label": "oldham-metropolitan-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Oldham_Metropolitan_Borough_Council.zip",
+      "archive": "Oldham_Metropolitan_Borough_Council.zip"
+    },
+    {
+      "authority": "Oxford City Council",
+      "label": "oxford-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Oxford_City_Council.zip",
+      "archive": "Oxford_City_Council.zip"
+    },
+    {
+      "authority": "Pendle Borough Council",
+      "label": "pendle-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Pendle_Borough_Council.zip",
+      "archive": "Pendle_Borough_Council.zip"
+    },
+    {
+      "authority": "Peterborough City Council",
+      "label": "peterborough-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Peterborough_City_Council.zip",
+      "archive": "Peterborough_City_Council.zip"
+    },
+    {
+      "authority": "Plymouth City Council",
+      "label": "plymouth-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Plymouth_City_Council.zip",
+      "archive": "Plymouth_City_Council.zip"
+    },
+    {
+      "authority": "Portsmouth City Council",
+      "label": "portsmouth-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Portsmouth_City_Council.zip",
+      "archive": "Portsmouth_City_Council.zip"
+    },
+    {
+      "authority": "Preston City Council",
+      "label": "preston-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Preston_City_Council.zip",
+      "archive": "Preston_City_Council.zip"
+    },
+    {
+      "authority": "Reading Borough Council",
+      "label": "reading-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Reading_Borough_Council.zip",
+      "archive": "Reading_Borough_Council.zip"
+    },
+    {
+      "authority": "Redcar and Cleveland Borough Council",
+      "label": "redcar-and-cleveland-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Redcar_and_Cleveland_Borough_Council.zip",
+      "archive": "Redcar_and_Cleveland_Borough_Council.zip"
+    },
+    {
+      "authority": "Redditch Borough Council",
+      "label": "redditch-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Redditch_Borough_Council.zip",
+      "archive": "Redditch_Borough_Council.zip"
+    },
+    {
+      "authority": "Reigate and Banstead Borough Council",
+      "label": "reigate-and-banstead-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Reigate_and_Banstead_Borough_Council.zip",
+      "archive": "Reigate_and_Banstead_Borough_Council.zip"
+    },
+    {
+      "authority": "Ribble Valley Borough Council",
+      "label": "ribble-valley-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Ribble_Valley_Borough_Council.zip",
+      "archive": "Ribble_Valley_Borough_Council.zip"
+    },
+    {
+      "authority": "Rochdale Metropolitan Borough Council",
+      "label": "rochdale-metropolitan-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Rochdale_Metropolitan_Borough_Council.zip",
+      "archive": "Rochdale_Metropolitan_Borough_Council.zip"
+    },
+    {
+      "authority": "Rochford District Council",
+      "label": "rochford-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Rochford_District_Council.zip",
+      "archive": "Rochford_District_Council.zip"
+    },
+    {
+      "authority": "Rossendale Borough Council",
+      "label": "rossendale-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Rossendale_Borough_Council.zip",
+      "archive": "Rossendale_Borough_Council.zip"
+    },
+    {
+      "authority": "Rother District Council",
+      "label": "rother-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Rother_District_Council.zip",
+      "archive": "Rother_District_Council.zip"
+    },
+    {
+      "authority": "Rotherham Metropolitan Borough Council",
+      "label": "rotherham-metropolitan-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Rotherham_Metropolitan_Borough_Council.zip",
+      "archive": "Rotherham_Metropolitan_Borough_Council.zip"
+    },
+    {
+      "authority": "Royal Borough of Greenwich",
+      "label": "royal-borough-of-greenwich",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Royal_Borough_of_Greenwich.zip",
+      "archive": "Royal_Borough_of_Greenwich.zip"
+    },
+    {
+      "authority": "Royal Borough of Kensington and Chelsea",
+      "label": "royal-borough-of-kensington-and-chelsea",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Royal_Borough_of_Kensington_and_Chelsea.zip",
+      "archive": "Royal_Borough_of_Kensington_and_Chelsea.zip"
+    },
+    {
+      "authority": "Royal Borough of Kingston upon Thames",
+      "label": "royal-borough-of-kingston-upon-thames",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Royal_Borough_of_Kingston_upon_Thames.zip",
+      "archive": "Royal_Borough_of_Kingston_upon_Thames.zip"
+    },
+    {
+      "authority": "Royal Borough of Windsor and Maidenhead",
+      "label": "royal-borough-of-windsor-and-maidenhead",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Royal_Borough_of_Windsor_and_Maidenhead.zip",
+      "archive": "Royal_Borough_of_Windsor_and_Maidenhead.zip"
+    },
+    {
+      "authority": "Rugby Borough Council",
+      "label": "rugby-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Rugby_Borough_Council.zip",
+      "archive": "Rugby_Borough_Council.zip"
+    },
+    {
+      "authority": "Runnymede Borough Council",
+      "label": "runnymede-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Runnymede_Borough_Council.zip",
+      "archive": "Runnymede_Borough_Council.zip"
+    },
+    {
+      "authority": "Rushcliffe Borough Council",
+      "label": "rushcliffe-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Rushcliffe_Borough_Council.zip",
+      "archive": "Rushcliffe_Borough_Council.zip"
+    },
+    {
+      "authority": "Rushmoor Borough Council",
+      "label": "rushmoor-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Rushmoor_Borough_Council.zip",
+      "archive": "Rushmoor_Borough_Council.zip"
+    },
+    {
+      "authority": "Rutland County Council District Council",
+      "label": "rutland-county-council-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Rutland_County_Council_District_Council.zip",
+      "archive": "Rutland_County_Council_District_Council.zip"
+    },
+    {
+      "authority": "Salford City Council",
+      "label": "salford-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Salford_City_Council.zip",
+      "archive": "Salford_City_Council.zip"
+    },
+    {
+      "authority": "Sandwell Metropolitan Borough Council",
+      "label": "sandwell-metropolitan-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Sandwell_Metropolitan_Borough_Council.zip",
+      "archive": "Sandwell_Metropolitan_Borough_Council.zip"
+    },
+    {
+      "authority": "Sefton Metropolitan Borough Council",
+      "label": "sefton-metropolitan-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Sefton_Metropolitan_Borough_Council.zip",
+      "archive": "Sefton_Metropolitan_Borough_Council.zip"
+    },
+    {
+      "authority": "Sevenoaks District Council",
+      "label": "sevenoaks-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Sevenoaks_District_Council.zip",
+      "archive": "Sevenoaks_District_Council.zip"
+    },
+    {
+      "authority": "Sheffield City Council",
+      "label": "sheffield-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Sheffield_City_Council.zip",
+      "archive": "Sheffield_City_Council.zip"
+    },
+    {
+      "authority": "Shropshire Council",
+      "label": "shropshire-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Shropshire_Council.zip",
+      "archive": "Shropshire_Council.zip"
+    },
+    {
+      "authority": "Slough Borough Council",
+      "label": "slough-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Slough_Borough_Council.zip",
+      "archive": "Slough_Borough_Council.zip"
+    },
+    {
+      "authority": "Solihull Metropolitan Borough Council",
+      "label": "solihull-metropolitan-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Solihull_Metropolitan_Borough_Council.zip",
+      "archive": "Solihull_Metropolitan_Borough_Council.zip"
+    },
+    {
+      "authority": "Somerset Council",
+      "label": "somerset-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Somerset_Council.zip",
+      "archive": "Somerset_Council.zip"
+    },
+    {
+      "authority": "South Cambridgeshire District Council",
+      "label": "south-cambridgeshire-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/South_Cambridgeshire_District_Council.zip",
+      "archive": "South_Cambridgeshire_District_Council.zip"
+    },
+    {
+      "authority": "South Derbyshire District Council",
+      "label": "south-derbyshire-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/South_Derbyshire_District_Council.zip",
+      "archive": "South_Derbyshire_District_Council.zip"
+    },
+    {
+      "authority": "South Gloucestershire Council",
+      "label": "south-gloucestershire-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/South_Gloucestershire_Council.zip",
+      "archive": "South_Gloucestershire_Council.zip"
+    },
+    {
+      "authority": "South Hams District Council",
+      "label": "south-hams-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/South_Hams_District_Council.zip",
+      "archive": "South_Hams_District_Council.zip"
+    },
+    {
+      "authority": "South Holland District Council",
+      "label": "south-holland-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/South_Holland_District_Council.zip",
+      "archive": "South_Holland_District_Council.zip"
+    },
+    {
+      "authority": "South Kesteven District Council",
+      "label": "south-kesteven-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/South_Kesteven_District_Council.zip",
+      "archive": "South_Kesteven_District_Council.zip"
+    },
+    {
+      "authority": "South Norfolk Council",
+      "label": "south-norfolk-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/South_Norfolk_Council.zip",
+      "archive": "South_Norfolk_Council.zip"
+    },
+    {
+      "authority": "South Oxfordshire District Council",
+      "label": "south-oxfordshire-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/South_Oxfordshire_District_Council.zip",
+      "archive": "South_Oxfordshire_District_Council.zip"
+    },
+    {
+      "authority": "South Ribble Borough Council",
+      "label": "south-ribble-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/South_Ribble_Borough_Council.zip",
+      "archive": "South_Ribble_Borough_Council.zip"
+    },
+    {
+      "authority": "South Staffordshire Council",
+      "label": "south-staffordshire-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/South_Staffordshire_Council.zip",
+      "archive": "South_Staffordshire_Council.zip"
+    },
+    {
+      "authority": "South Tyneside Council",
+      "label": "south-tyneside-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/South_Tyneside_Council.zip",
+      "archive": "South_Tyneside_Council.zip"
+    },
+    {
+      "authority": "Southampton City Council",
+      "label": "southampton-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Southampton_City_Council.zip",
+      "archive": "Southampton_City_Council.zip"
+    },
+    {
+      "authority": "Southend-on-Sea Borough Council",
+      "label": "southend-on-sea-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Southend-on-Sea_Borough_Council.zip",
+      "archive": "Southend-on-Sea_Borough_Council.zip"
+    },
+    {
+      "authority": "Spelthorne Borough Council",
+      "label": "spelthorne-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Spelthorne_Borough_Council.zip",
+      "archive": "Spelthorne_Borough_Council.zip"
+    },
+    {
+      "authority": "St Albans City and District Council",
+      "label": "st-albans-city-and-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/St_Albans_City_and_District_Council.zip",
+      "archive": "St_Albans_City_and_District_Council.zip"
+    },
+    {
+      "authority": "St Helens Council",
+      "label": "st-helens-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/St_Helens_Council.zip",
+      "archive": "St_Helens_Council.zip"
+    },
+    {
+      "authority": "Stafford Borough Council",
+      "label": "stafford-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Stafford_Borough_Council.zip",
+      "archive": "Stafford_Borough_Council.zip"
+    },
+    {
+      "authority": "Staffordshire Moorlands District Council",
+      "label": "staffordshire-moorlands-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Staffordshire_Moorlands_District_Council.zip",
+      "archive": "Staffordshire_Moorlands_District_Council.zip"
+    },
+    {
+      "authority": "Stevenage Borough Council",
+      "label": "stevenage-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Stevenage_Borough_Council.zip",
+      "archive": "Stevenage_Borough_Council.zip"
+    },
+    {
+      "authority": "Stockport Metropolitan Borough Council",
+      "label": "stockport-metropolitan-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Stockport_Metropolitan_Borough_Council.zip",
+      "archive": "Stockport_Metropolitan_Borough_Council.zip"
+    },
+    {
+      "authority": "Stockton-on-Tees Borough Council",
+      "label": "stockton-on-tees-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Stockton-on-Tees_Borough_Council.zip",
+      "archive": "Stockton-on-Tees_Borough_Council.zip"
+    },
+    {
+      "authority": "Stoke-on-Trent City Council",
+      "label": "stoke-on-trent-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Stoke-on-Trent_City_Council.zip",
+      "archive": "Stoke-on-Trent_City_Council.zip"
+    },
+    {
+      "authority": "Stratford-on-Avon District Council",
+      "label": "stratford-on-avon-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Stratford-on-Avon_District_Council.zip",
+      "archive": "Stratford-on-Avon_District_Council.zip"
+    },
+    {
+      "authority": "Stroud District Council",
+      "label": "stroud-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Stroud_District_Council.zip",
+      "archive": "Stroud_District_Council.zip"
+    },
+    {
+      "authority": "Sunderland City Council",
+      "label": "sunderland-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Sunderland_City_Council.zip",
+      "archive": "Sunderland_City_Council.zip"
+    },
+    {
+      "authority": "Surrey Heath Borough Council",
+      "label": "surrey-heath-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Surrey_Heath_Borough_Council.zip",
+      "archive": "Surrey_Heath_Borough_Council.zip"
+    },
+    {
+      "authority": "Swale Borough Council",
+      "label": "swale-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Swale_Borough_Council.zip",
+      "archive": "Swale_Borough_Council.zip"
+    },
+    {
+      "authority": "Swindon Borough Council",
+      "label": "swindon-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Swindon_Borough_Council.zip",
+      "archive": "Swindon_Borough_Council.zip"
+    },
+    {
+      "authority": "Tameside Metropolitan Borough Council",
+      "label": "tameside-metropolitan-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Tameside_Metropolitan_Borough_Council.zip",
+      "archive": "Tameside_Metropolitan_Borough_Council.zip"
+    },
+    {
+      "authority": "Tamworth Borough Council",
+      "label": "tamworth-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Tamworth_Borough_Council.zip",
+      "archive": "Tamworth_Borough_Council.zip"
+    },
+    {
+      "authority": "Tandridge District Council",
+      "label": "tandridge-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Tandridge_District_Council.zip",
+      "archive": "Tandridge_District_Council.zip"
+    },
+    {
+      "authority": "Teignbridge District Council",
+      "label": "teignbridge-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Teignbridge_District_Council.zip",
+      "archive": "Teignbridge_District_Council.zip"
+    },
+    {
+      "authority": "Telford and Wrekin Council",
+      "label": "telford-and-wrekin-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Telford_and_Wrekin_Council.zip",
+      "archive": "Telford_and_Wrekin_Council.zip"
+    },
+    {
+      "authority": "Tendring District Council",
+      "label": "tendring-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Tendring_District_Council.zip",
+      "archive": "Tendring_District_Council.zip"
+    },
+    {
+      "authority": "Test Valley Borough Council",
+      "label": "test-valley-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Test_Valley_Borough_Council.zip",
+      "archive": "Test_Valley_Borough_Council.zip"
+    },
+    {
+      "authority": "Tewkesbury Borough Council",
+      "label": "tewkesbury-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Tewkesbury_Borough_Council.zip",
+      "archive": "Tewkesbury_Borough_Council.zip"
+    },
+    {
+      "authority": "Thanet District Council",
+      "label": "thanet-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Thanet_District_Council.zip",
+      "archive": "Thanet_District_Council.zip"
+    },
+    {
+      "authority": "The North Yorkshire Council",
+      "label": "the-north-yorkshire-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/The_North_Yorkshire_Council.zip",
+      "archive": "The_North_Yorkshire_Council.zip"
+    },
+    {
+      "authority": "Three Rivers District Council",
+      "label": "three-rivers-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Three_Rivers_District_Council.zip",
+      "archive": "Three_Rivers_District_Council.zip"
+    },
+    {
+      "authority": "Thurrock Council",
+      "label": "thurrock-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Thurrock_Council.zip",
+      "archive": "Thurrock_Council.zip"
+    },
+    {
+      "authority": "Tonbridge and Malling Borough Council",
+      "label": "tonbridge-and-malling-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Tonbridge_and_Malling_Borough_Council.zip",
+      "archive": "Tonbridge_and_Malling_Borough_Council.zip"
+    },
+    {
+      "authority": "Torbay Council",
+      "label": "torbay-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Torbay_Council.zip",
+      "archive": "Torbay_Council.zip"
+    },
+    {
+      "authority": "Torridge District Council",
+      "label": "torridge-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Torridge_District_Council.zip",
+      "archive": "Torridge_District_Council.zip"
+    },
+    {
+      "authority": "Trafford Borough Council",
+      "label": "trafford-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Trafford_Borough_Council.zip",
+      "archive": "Trafford_Borough_Council.zip"
+    },
+    {
+      "authority": "Tunbridge Wells Borough Council",
+      "label": "tunbridge-wells-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Tunbridge_Wells_Borough_Council.zip",
+      "archive": "Tunbridge_Wells_Borough_Council.zip"
+    },
+    {
+      "authority": "Uttlesford District Council",
+      "label": "uttlesford-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Uttlesford_District_Council.zip",
+      "archive": "Uttlesford_District_Council.zip"
+    },
+    {
+      "authority": "Vale of White Horse District Council",
+      "label": "vale-of-white-horse-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Vale_of_White_Horse_District_Council.zip",
+      "archive": "Vale_of_White_Horse_District_Council.zip"
+    },
+    {
+      "authority": "Wakefield Metropolitan District Council",
+      "label": "wakefield-metropolitan-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Wakefield_Metropolitan_District_Council.zip",
+      "archive": "Wakefield_Metropolitan_District_Council.zip"
+    },
+    {
+      "authority": "Walsall Metropolitan Borough Council",
+      "label": "walsall-metropolitan-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Walsall_Metropolitan_Borough_Council.zip",
+      "archive": "Walsall_Metropolitan_Borough_Council.zip"
+    },
+    {
+      "authority": "Warrington Borough Council",
+      "label": "warrington-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Warrington_Borough_Council.zip",
+      "archive": "Warrington_Borough_Council.zip"
+    },
+    {
+      "authority": "Warwick District Council",
+      "label": "warwick-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Warwick_District_Council.zip",
+      "archive": "Warwick_District_Council.zip"
+    },
+    {
+      "authority": "Watford Borough Council",
+      "label": "watford-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Watford_Borough_Council.zip",
+      "archive": "Watford_Borough_Council.zip"
+    },
+    {
+      "authority": "Waverley Borough Council",
+      "label": "waverley-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Waverley_Borough_Council.zip",
+      "archive": "Waverley_Borough_Council.zip"
+    },
+    {
+      "authority": "Wealden District Council",
+      "label": "wealden-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Wealden_District_Council.zip",
+      "archive": "Wealden_District_Council.zip"
+    },
+    {
+      "authority": "Welwyn Hatfield Borough Council",
+      "label": "welwyn-hatfield-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Welwyn_Hatfield_Borough_Council.zip",
+      "archive": "Welwyn_Hatfield_Borough_Council.zip"
+    },
+    {
+      "authority": "West Berkshire Council",
+      "label": "west-berkshire-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/West_Berkshire_Council.zip",
+      "archive": "West_Berkshire_Council.zip"
+    },
+    {
+      "authority": "West Devon Borough Council",
+      "label": "west-devon-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/West_Devon_Borough_Council.zip",
+      "archive": "West_Devon_Borough_Council.zip"
+    },
+    {
+      "authority": "West Lancashire Borough Council",
+      "label": "west-lancashire-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/West_Lancashire_Borough_Council.zip",
+      "archive": "West_Lancashire_Borough_Council.zip"
+    },
+    {
+      "authority": "West Lindsey District Council",
+      "label": "west-lindsey-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/West_Lindsey_District_Council.zip",
+      "archive": "West_Lindsey_District_Council.zip"
+    },
+    {
+      "authority": "West Northamptonshire Council",
+      "label": "west-northamptonshire-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/West_Northamptonshire_Council.zip",
+      "archive": "West_Northamptonshire_Council.zip"
+    },
+    {
+      "authority": "West Oxfordshire District Council",
+      "label": "west-oxfordshire-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/West_Oxfordshire_District_Council.zip",
+      "archive": "West_Oxfordshire_District_Council.zip"
+    },
+    {
+      "authority": "West Suffolk Council",
+      "label": "west-suffolk-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/West_Suffolk_Council.zip",
+      "archive": "West_Suffolk_Council.zip"
+    },
+    {
+      "authority": "Westmorland and Furness Council",
+      "label": "westmorland-and-furness-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Westmorland_and_Furness_Council.zip",
+      "archive": "Westmorland_and_Furness_Council.zip"
+    },
+    {
+      "authority": "Wigan Metropolitan Borough Council",
+      "label": "wigan-metropolitan-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Wigan_Metropolitan_Borough_Council.zip",
+      "archive": "Wigan_Metropolitan_Borough_Council.zip"
+    },
+    {
+      "authority": "Wiltshire Council",
+      "label": "wiltshire-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Wiltshire_Council.zip",
+      "archive": "Wiltshire_Council.zip"
+    },
+    {
+      "authority": "Winchester City Council",
+      "label": "winchester-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Winchester_City_Council.zip",
+      "archive": "Winchester_City_Council.zip"
+    },
+    {
+      "authority": "Wirral Borough Council",
+      "label": "wirral-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Wirral_Borough_Council.zip",
+      "archive": "Wirral_Borough_Council.zip"
+    },
+    {
+      "authority": "Woking Borough Council",
+      "label": "woking-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Woking_Borough_Council.zip",
+      "archive": "Woking_Borough_Council.zip"
+    },
+    {
+      "authority": "Wokingham Borough Council",
+      "label": "wokingham-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Wokingham_Borough_Council.zip",
+      "archive": "Wokingham_Borough_Council.zip"
+    },
+    {
+      "authority": "Worcester City Council",
+      "label": "worcester-city-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Worcester_City_Council.zip",
+      "archive": "Worcester_City_Council.zip"
+    },
+    {
+      "authority": "Worthing Borough Council",
+      "label": "worthing-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Worthing_Borough_Council.zip",
+      "archive": "Worthing_Borough_Council.zip"
+    },
+    {
+      "authority": "Wychavon District Council",
+      "label": "wychavon-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Wychavon_District_Council.zip",
+      "archive": "Wychavon_District_Council.zip"
+    },
+    {
+      "authority": "Wyre Borough Council",
+      "label": "wyre-borough-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Wyre_Borough_Council.zip",
+      "archive": "Wyre_Borough_Council.zip"
+    },
+    {
+      "authority": "Wyre Forest District Council",
+      "label": "wyre-forest-district-council",
+      "url": "https://use-land-property-data.service.gov.uk/datasets/inspire/download/Wyre_Forest_District_Council.zip",
+      "archive": "Wyre_Forest_District_Council.zip"
+    }
+  ]
+}
