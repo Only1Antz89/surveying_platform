@@ -908,3 +908,88 @@ export const mediaAnalyses = pgTable("media_analyses", {
   index("media_analyses_survey_idx").on(table.organisationId, table.surveyId),
   check("media_analyses_status_chk", sql`status in ('completed', 'unavailable', 'failed')`),
 ]);
+
+// Wording library and report assembly (A5). Clauses are the firm's own
+// approved wording; an approved clause never changes (a new version supersedes
+// it). Report versions freeze exactly what was composed and from which inputs;
+// sign-off is a separate, immutable record made by a person.
+
+export const wordingClauses = pgTable("wording_clauses", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  clauseKey: text("clause_key").notNull(),
+  version: integer("version").notNull(),
+  status: text("status").notNull().default("draft"),
+  purpose: text("purpose").notNull(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  /** "section.element", or null for any element. */
+  elementKey: text("element_key"),
+  conditionRatings: text("condition_ratings").array().notNull().default(sql`'{}'::text[]`),
+  nextActions: text("next_actions").array().notNull().default(sql`'{}'::text[]`),
+  inspectionStatuses: text("inspection_statuses").array().notNull().default(sql`'{}'::text[]`),
+  jurisdictions: text("jurisdictions").array().notNull().default(sql`'{}'::text[]`),
+  serviceLevels: text("service_levels").array().notNull().default(sql`'{}'::text[]`),
+  source: text("source").notNull().default("firm_authored"),
+  licenceReference: text("licence_reference"),
+  supersedesId: uuid("supersedes_id"),
+  createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  approvedByUserId: uuid("approved_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  retiredByUserId: uuid("retired_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  retiredAt: timestamp("retired_at", { withTimezone: true }),
+  ...timestamps,
+}, (table) => [
+  unique("wording_clauses_org_id_uidx").on(table.organisationId, table.id),
+  uniqueIndex("wording_clauses_key_version_uidx").on(table.organisationId, table.clauseKey, table.version),
+  uniqueIndex("wording_clauses_one_approved_uidx").on(table.organisationId, table.clauseKey).where(sql`status = 'approved'`),
+  index("wording_clauses_org_status_idx").on(table.organisationId, table.status),
+  check("wording_clauses_status_chk", sql`status in ('draft', 'approved', 'retired')`),
+  check("wording_clauses_purpose_chk", sql`purpose in ('element_narrative', 'recommendation', 'limitation', 'summary', 'legal_matter')`),
+  check("wording_clauses_key_chk", sql`clause_key ~ '^[a-z0-9][a-z0-9_.-]{1,80}$'`),
+  check("wording_clauses_source_chk", sql`source = 'firm_authored' or (source = 'licensed_third_party' and licence_reference is not null and length(btrim(licence_reference)) > 0)`),
+  check("wording_clauses_approval_chk", sql`status = 'draft' or (approved_by_user_id is not null and approved_at is not null)`),
+]);
+
+export const reportVersions = pgTable("report_versions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  surveyId: uuid("survey_id").notNull(),
+  jobId: uuid("job_id").notNull(),
+  versionNumber: integer("version_number").notNull(),
+  composer: text("composer").notNull(),
+  templateKey: text("template_key").notNull(),
+  templateVersion: text("template_version").notNull(),
+  templateFingerprint: text("template_fingerprint").notNull(),
+  ruleSetVersion: text("rule_set_version"),
+  /** Hash of every input the composer read; a later change makes this version out of date. */
+  inputFingerprint: text("input_fingerprint").notNull(),
+  content: jsonb("content").$type<Record<string, unknown>>().notNull(),
+  /** Ids and versions of field values, observations, clauses, media and snapshots used. */
+  trace: jsonb("trace").$type<Record<string, unknown>>().notNull(),
+  contentSha256: text("content_sha256").notNull(),
+  createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique("report_versions_org_id_uidx").on(table.organisationId, table.id),
+  uniqueIndex("report_versions_survey_version_uidx").on(table.surveyId, table.versionNumber),
+  foreignKey({ name: "report_versions_survey_fk", columns: [table.organisationId, table.surveyId], foreignColumns: [surveys.organisationId, surveys.id] }).onDelete("restrict"),
+  foreignKey({ name: "report_versions_job_fk", columns: [table.organisationId, table.jobId], foreignColumns: [jobs.organisationId, jobs.id] }).onDelete("restrict"),
+]);
+
+export const reportApprovals = pgTable("report_approvals", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  reportVersionId: uuid("report_version_id").notNull(),
+  approvedByUserId: uuid("approved_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  approverRole: text("approver_role").notNull(),
+  statement: text("statement").notNull(),
+  note: text("note"),
+  contentSha256: text("content_sha256").notNull(),
+  /** Completion checks at the moment of sign-off, including any recorded overrides. */
+  completion: jsonb("completion").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("report_approvals_version_uidx").on(table.reportVersionId),
+  foreignKey({ name: "report_approvals_version_fk", columns: [table.organisationId, table.reportVersionId], foreignColumns: [reportVersions.organisationId, reportVersions.id] }).onDelete("restrict"),
+]);

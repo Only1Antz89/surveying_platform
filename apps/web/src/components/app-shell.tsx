@@ -18,6 +18,7 @@ const firmItems = (slug: string): Item[] => [
   { label: "Clients", href: `/app/${slug}/clients`, icon: Users },
   { label: "Properties", href: `/app/${slug}/properties`, icon: Building2 },
   { label: "Jobs", href: `/app/${slug}/jobs`, icon: BriefcaseBusiness },
+  { label: "Wording", href: `/app/${slug}/wording`, icon: BookOpenCheck },
   { label: "Team", href: `/app/${slug}/team`, icon: ShieldCheck },
   { label: "Settings", href: `/app/${slug}/settings`, icon: Settings },
 ];

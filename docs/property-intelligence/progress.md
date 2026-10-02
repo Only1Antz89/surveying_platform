@@ -209,6 +209,23 @@ Acceptance:
 - Release checks reset freshness; a source with no import or check in its window is listed as due (integration-tested).
 - The app and importer roles cannot change operator metadata; the importer cannot write cache entries (integration-tested).
 ## A5 — Wording library and report assembly
+
+| Item | Code | Configured | Imported | Live |
+|---|---|---|---|---|
+| Migrations 0023–0024: `wording_clauses` (versioned; one approved per key; drafts editable; approved immutable except retirement; licensed wording needs a licence reference), `report_versions` (immutable content, trace, input fingerprint, hashes), `report_approvals` (immutable sign-off); RLS and composite tenant FKs | ✅ | ❌ not applied to any Neon branch | — | — |
+| Deterministic composer: recorded values, current observations and approved clauses only; limitation text only for uninspected elements; client statements labelled; recommendations from defect next actions; rating summary; placeholders filled or the clause skipped; every block traced | ✅ | — | — | — |
+| Wording library page and API: drafts (surveyor roles), approval and retirement (owners and administrators), version history | ✅ (demo smoke-tested) | — | — | — |
+| Report panel: compose, preview with per-block sources, explicit sign-off statement, reopen; survey workspace side column | ✅ (demo smoke-tested) | — | — | — |
+| Sign-off rules: latest version, unchanged inputs, completion hard gates resolved or overridden, surveyor role; capture closes on sign-off | ✅ | — | — | — |
+| Issue gate: a current signed-off version, or a recorded reason (A3 override) | ✅ | — | — | — |
+| [`docs/assistant/report-assembly.md`](../assistant/report-assembly.md) | ✅ | — | — | — |
+
+Acceptance:
+
+- Drafts, retired wording and other jurisdictions' wording never appear. Uninspected elements carry limitation text only (unit-tested).
+- Approved wording cannot be edited or deleted. Report versions and sign-offs cannot be edited (integration-tested).
+- An edit after composing makes the version out of date. Only the latest unchanged version can be signed off, and only by a surveyor role with the explicit statement (integration-tested).
+- Issue is blocked when the survey changed after sign-off (integration-tested).
 ## P6 — Country-specific expansion
 ## A6 — Pilot readiness and AI governance
 ## L0–L4 — Shared learning (disabled by default)
@@ -246,3 +263,6 @@ Acceptance:
 | 2026-10-02 | `pnpm test:integration` (P5, all suites) | ✅ 66 tests, including 4 new operations tests (verified enablement, blocked refusal, atomic activation and rollback clearing only that source's cache, freshness and release checks, probes, role denial) and 3 new admin tests (audited actions, "newer dataset version" flag through activation and rollback, daily sweep) |
 | 2026-10-02 | `pnpm --filter @surveynt/property-data benchmark` | ✅ synthetic: UPRN ~41,700 rows/s; spatial ~22,500 rows/s; Price Paid ~43,100 rows/s; look-up ~50,700 rows/s; p95 queries 5–15 ms (see runbook) |
 | 2026-10-02 | Playwright P5 smoke (demo mode, production build) | ✅ Data sources page and navigation entry, 20 sources, blocked source cannot be enabled, demo action labelled as not saved, no console errors, no overflow at 390 px |
+| 2026-10-02 | `pnpm check` (A5) | ✅ lint, typecheck, 115 unit tests (5 new composer tests), build |
+| 2026-10-02 | `pnpm test:integration` (A5, all suites) | ✅ 70 tests, including 4 new report tests (wording lifecycle and immutability; traced, immutable version from approved wording only; sign-off rules and capture closing; issue gate and reopening) and the A3 gate test updated for the issue requirement |
+| 2026-10-02 | Playwright A5 smoke (demo mode, production build) | ✅ side column beside the form at 1440 px; demo report composed with rating summary, limitation-only chimney text, recommendations and per-block sources; no sign-off in demo; wording library and editor; no console errors; no overflow at 390 px. Found and fixed: the preview was cleared by the reload after composing in demo |

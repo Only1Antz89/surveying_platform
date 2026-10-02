@@ -10,6 +10,7 @@ import type { FieldDisplay } from "./survey-field";
 import { AssistantPanel } from "./assistant-panel";
 import { CompletionPanel } from "./completion-panel";
 import { DocumentsPanel } from "./documents-panel";
+import { ReportPanel } from "./report-panel";
 
 const elementKey = (section: string, element: string, location = "") => `${section}.${element}.${location}`;
 
@@ -201,9 +202,14 @@ export function SurveyWorkspace({ surveyId, canEdit, canJudge }: { surveyId: str
     {notice ? <p className="form-success" role="status">{notice}</p> : null}
     {attention.length ? <section className="panel attention-panel" aria-labelledby="attention-heading"><div className="panel-header"><div><h2 id="attention-heading">Changes needing attention</h2><p>Nothing is overwritten silently. Choose which value to keep.</p></div></div><ul>{attention.map((entry) => <li key={entry.operationId}><strong>{entry.operation.type === "set_field" ? entry.operation.fieldPath : entry.operation.type.replace(/_/g, " ")}</strong><span>{entry.message}</span>{entry.status === "conflict" && entry.operation.type === "set_field" ? <span className="cell-sub">Yours: {describeValue(entry.operation.value)} · Current: {describeValue(entry.current?.value)}</span> : null}<div className="row-actions">{entry.status === "conflict" ? <><button type="button" className="button button-secondary" onClick={() => void resolveConflict(entry, true)}>Keep mine</button><button type="button" className="button button-quiet" onClick={() => void resolveConflict(entry, false)}>Use current</button></> : <button type="button" className="button button-quiet danger" onClick={() => void resolveConflict(entry, false)}>Discard</button>}</div></li>)}</ul></section> : null}
     {openTasks.length ? <section className="panel tasks-panel" aria-labelledby="tasks-heading"><div className="panel-header"><div><h2 id="tasks-heading">Reminders from earlier surveys</h2><p>Historical context only. These are not current findings.</p></div><History size={17} color="#3b82f6" aria-hidden="true" /></div><ul>{openTasks.map((task) => <li key={task.id}><strong>{task.title}</strong><span>{task.detail}</span></li>)}</ul></section> : null}
-    <CompletionPanel pack={pack} pendingCount={pendingCount} onGoTo={(sectionKey, elementKey) => { setSection(sectionKey); window.setTimeout(() => document.getElementById(`element-${sectionKey}-${elementKey}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 50); }} />
-    <DocumentsPanel surveyId={surveyId} pack={pack} canEdit={canEdit && pack.survey.status === "in_progress"} online={online} demo={demo} onChanged={fetchPack} />
-    <AssistantPanel surveyId={surveyId} pack={pack} canEdit={canEdit && pack.survey.status === "in_progress"} canJudge={canJudge} online={online} onChanged={fetchPack} />
+    <div className="survey-layout">
+    <aside className="survey-side" aria-label="Checks, suggestions, documents and report">
+      <CompletionPanel pack={pack} pendingCount={pendingCount} onGoTo={(sectionKey, elementKey) => { setSection(sectionKey); window.setTimeout(() => document.getElementById(`element-${sectionKey}-${elementKey}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 50); }} />
+      <DocumentsPanel surveyId={surveyId} pack={pack} canEdit={canEdit && pack.survey.status === "in_progress"} online={online} demo={demo} onChanged={fetchPack} />
+      <AssistantPanel surveyId={surveyId} pack={pack} canEdit={canEdit && pack.survey.status === "in_progress"} canJudge={canJudge} online={online} onChanged={fetchPack} />
+      <ReportPanel surveyId={surveyId} canEdit={canEdit} canJudge={canJudge} online={online} demo={demo} onChanged={fetchPack} />
+    </aside>
+    <div className="survey-main">
     <nav className="workspace-tabs survey-sections" role="tablist" aria-label="Survey sections">
       {pack.template.sections.map((item) => <button key={item.key} type="button" role="tab" aria-selected={item.key === activeSection.key} className={`workspace-tab ${item.key === activeSection.key ? "active" : ""}`} onClick={() => setSection(item.key)}>{item.label}</button>)}
     </nav>
@@ -250,6 +256,8 @@ export function SurveyWorkspace({ surveyId, canEdit, canJudge }: { surveyId: str
           })()}
         />;
       })}
+    </div>
+    </div>
     </div>
   </div>;
 }

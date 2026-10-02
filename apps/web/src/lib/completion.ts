@@ -1,8 +1,9 @@
 import { and, desc, eq, ne } from "drizzle-orm";
-import { checkOverrides, type CompletionOverride, type CompletionReport, type OverrideCheck } from "@surveynt/assistant";
+import { checkOverrides, OTHER_OVERRIDE, type CheckItem, type CompletionOverride, type CompletionReport, type OverrideCheck } from "@surveynt/assistant";
 import { auditEvents, completionOverrides, createDatabase, surveys, withTenant, type TenantTransaction } from "@surveynt/db";
 import type { JobStage } from "@surveynt/domain";
 import { completionReportFromPack } from "./completion-input";
+import { approvedReportIsCurrent } from "./reports";
 import { canRecordProfessionalJudgement, readSurveyPack, type SurveyContext } from "./surveys";
 
 /** Stages that need the survey's completion checks to pass (or an audited override). */
@@ -33,8 +34,22 @@ export async function enforceStageGate(tx: TenantTransaction, context: SurveyCon
     .orderBy(desc(surveys.createdAt)).limit(1);
   if (!survey) return { kind: "not_gated" };
   const pack = await readSurveyPack(tx, context, survey.id);
-  const report = pack ? completionReportFromPack(pack) : null;
-  if (!report) throw new Error("No completion rule set is available for this survey's template.");
+  const computed = pack ? completionReportFromPack(pack) : null;
+  if (!computed) throw new Error("No completion rule set is available for this survey's template.");
+  let report = computed;
+  if (input.targetStage === "issued") {
+    // Issuing needs a signed-off report version that still matches the survey; a report produced elsewhere needs a recorded reason.
+    const approval = await approvedReportIsCurrent(tx, context, survey.id);
+    const item: CheckItem = {
+      id: "report:approved", category: "report_approval", severity: "hard_gate", status: approval.approved && approval.current ? "pass" : "fail",
+      title: "Signed-off report version", detail: !approval.approved ? "No report version has been signed off." : approval.current ? null : "The survey changed after sign-off. Compose a new version and sign it off.",
+      ruleId: null, justification: "A report is issued only after a person has reviewed and signed off the exact version.", fieldPath: null, elementKey: null,
+      overrideReasons: ["Report produced and signed off outside Surveynt", OTHER_OVERRIDE],
+    };
+    const items = [...computed.items, item];
+    const hardGateFailures = items.filter((entry) => entry.status === "fail" && entry.severity === "hard_gate").length;
+    report = { ...computed, items, hardGateFailures, ready: hardGateFailures === 0 };
+  }
   if (report.ready) return { kind: "passed", surveyId: survey.id, report, overridden: 0 };
   const mayOverride = canRecordProfessionalJudgement(context.role);
   const check = checkOverrides(report, mayOverride ? input.overrides : []);

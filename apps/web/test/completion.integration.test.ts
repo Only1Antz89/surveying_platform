@@ -100,10 +100,12 @@ describe.skipIf(!integrationEnabled)("completion checks and the stage gate", () 
     const reason = { itemId: "rule:EXTENSION-APPROVALS:survey", reason: "Alterations predate any approval requirement" };
     expect(await gate(coordinator, "internal_review", [reason])).toMatchObject({ kind: "blocked", mayOverride: false });
     expect(await gate(surveyor, "internal_review", [{ ...reason, reason: "Because I said so" }])).toMatchObject({ kind: "blocked", check: { invalid: [{ itemId: reason.itemId }] } });
-    expect(await gate(surveyor, "issued", [reason])).toMatchObject({ kind: "passed", overridden: 1 });
+    // Issuing also needs a signed-off report version (A5); without one, a recorded reason is required.
+    expect(await gate(surveyor, "issued", [reason])).toMatchObject({ kind: "blocked", check: { unresolved: [{ id: "report:approved" }] } });
+    expect(await gate(surveyor, "issued", [reason, { itemId: "report:approved", reason: "Report produced and signed off outside Surveynt" }])).toMatchObject({ kind: "passed", overridden: 2 });
     const admin = database.connect(database.adminUrl);
     const rows = await admin.select().from(completionOverrides).where(eq(completionOverrides.surveyId, surveyId));
-    expect(rows).toMatchObject([{ itemId: reason.itemId, ruleId: "EXTENSION-APPROVALS", ruleSetVersion: "1.0.0", templateVersion: "1.0.0", targetStage: "issued", overriddenByUserId: surveyor.internalUserId }]);
+    expect(rows).toMatchObject([{ itemId: reason.itemId, ruleId: "EXTENSION-APPROVALS", ruleSetVersion: "1.0.0", templateVersion: "1.0.0", targetStage: "issued", overriddenByUserId: surveyor.internalUserId }, { itemId: "report:approved", category: "report_approval", targetStage: "issued" }]);
     expect(await admin.select().from(auditEvents).where(eq(auditEvents.action, "survey.completion_overridden"))).toHaveLength(1);
     await expect(admin.update(completionOverrides).set({ reason: "edited" }).where(eq(completionOverrides.surveyId, surveyId))).rejects.toThrow();
     const otherFirm = await withTenant(createDatabase(), firmB, (tx) => tx.select().from(completionOverrides));
@@ -124,6 +126,6 @@ describe.skipIf(!integrationEnabled)("completion checks and the stage gate", () 
     expect(applied(await applySyncOperations(surveyor, surveyId, [{ type: "link_evidence", operationId: op(), target: { type: "observation", observationId }, evidence: { type: "media", id: "media_gate_0001" } }]))).toEqual([]);
     expect(await gate(surveyor, "internal_review", [{ itemId: "rule:EXTENSION-APPROVALS:survey", reason: "Alterations predate any approval requirement" }])).toMatchObject({ kind: "passed", overridden: 1 });
     const count = await database.connect(database.adminUrl).execute(sql`select count(*)::int as count from completion_overrides`);
-    expect((count as unknown as { rows: { count: number }[] }).rows[0].count).toBe(2);
+    expect((count as unknown as { rows: { count: number }[] }).rows[0].count).toBe(3);
   });
 });

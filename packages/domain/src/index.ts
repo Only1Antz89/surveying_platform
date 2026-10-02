@@ -75,6 +75,11 @@ export function canManageTeam(role: OrganisationRole) {
   return role === "owner" || role === "administrator";
 }
 
+/** Approving firm wording makes it available to every report, so it is limited to owners and administrators. */
+export function canApproveWording(role: OrganisationRole) {
+  return role === "owner" || role === "administrator";
+}
+
 export function membershipChangeBlocker(
   actorRole: OrganisationRole,
   targetRole: OrganisationRole,

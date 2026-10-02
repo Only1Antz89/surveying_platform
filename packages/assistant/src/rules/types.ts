@@ -83,7 +83,7 @@ export const ruleSetSchema = z.object({
 });
 export type RuleSet = z.infer<typeof ruleSetSchema>;
 
-export const checkCategories = ["required_field", "inspection_status", "contradiction", "rule", "discrepancy", "ai_review", "suggestions", "report_photo", "reinspection"] as const;
+export const checkCategories = ["required_field", "inspection_status", "contradiction", "rule", "discrepancy", "ai_review", "suggestions", "report_photo", "reinspection", "report_approval"] as const;
 export type CheckCategory = (typeof checkCategories)[number];
 
 export type CheckItem = {

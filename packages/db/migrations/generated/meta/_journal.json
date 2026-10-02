@@ -162,6 +162,20 @@
       "when": 1790932822569,
       "tag": "0022_reference_cache_invalidation",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1790933110354,
+      "tag": "0023_report_assembly",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1790933124020,
+      "tag": "0024_report_assembly_security",
+      "breakpoints": true
     }
   ]
 }
