@@ -50,6 +50,7 @@ Canonical CSV SHA-256: `003510636bc2fa313ecd471ae26f582d00e9496fa8ad7f7aaf6e2bcd
 
 - Current catalogue publication: 6 September 2026; files are replaced on the first Sunday of each month.
 - Catalogue: 318 England and Wales authority archives. The England-first set is expected to be 296 after excluding the 22 Welsh principal areas; this selection must be materialised and reviewed before staging.
+- A deterministic manifest validator now enforces the current 318 total, all 22 named Welsh exclusions, 296 England results, unique filenames and official HTTPS download URLs. The official service's non-browser redirect loop prevented materialising the reviewed national manifest in this run, so the activation blocker remains.
 - Official service guidance gives an average file size of 13.66 MB. At 296 archives this is approximately 4,239,770,255 bytes of downloads.
 - Adur archive SHA-256: `0193a690dd0f05a7ca62d555d36450b2841c11ec8acfb256c88124a722a08d4d`.
 - Adur GML declared `EPSG:27700`, contained 26,429 parcels and converted to 26,429 valid rows.

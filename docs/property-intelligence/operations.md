@@ -40,6 +40,12 @@ For HMLR INSPIRE GML, extract each downloaded authority archive and prepare the 
 `pnpm --filter @surveynt/db prepare:spatial-gml -- --output /private/tmp/hmlr.csv --source-crs EPSG:27700 --input adur=/path/Land_Registry_Cadastral_Parcels.gml --input amber_valley=/path/Land_Registry_Cadastral_Parcels.gml`
 
 The GML preparer streams each authority file, requires British National Grid polygons, retains INSPIRE provenance, marks boundaries as indicative and non-definitive, and deduplicates INSPIRE identifiers repeated across local-authority boundaries.
+
+Before downloading nationally, capture the 318 current download links from the official HMLR catalogue as a JSON array of `{ "href": "...", "rowText": "Authority name\\tDownload .gml" }` objects. Build the reviewed England-only manifest with:
+
+`pnpm --filter @surveynt/db prepare:hmlr-manifest -- --output /private/tmp/hmlr-england.json --release 2026-09 --published-at 2026-09-06 < /private/tmp/hmlr-catalogue.json`
+
+The command deliberately fails if the catalogue is not exactly 318 unique official-host archives, any of the 22 Welsh principal-area files is absent, or the England result is not exactly 296 authorities. This is a catalogue-drift gate, not a permanent assertion about future local-government structure; update and review the exclusions when HMLR changes the catalogue. Direct automated access to the catalogue currently enters a redirect loop, so capture must come from a successfully rendered official page rather than bypassing the service's browser controls.
 4. Review record count, bounded row diagnostics, duplicate or missing headers, invalid UPRNs/coordinates/geometries, file bytes, estimated table bytes and projected storage cost. Empty or semantically invalid files do not reach staging.
 5. Import without `--activate` using `--expected-checksum ... --licence-confirmed true --neon-storage-usd-per-gb-month ...`. All three gates are mandatory for a staged import. Review the measured table/index size and sample spatial-query latency printed and stored with the version.
 6. Activate the staged version with `pnpm --filter @surveynt/db activate:property-data -- --source ... --version ... --capacity-approved true`. The command rejects versions without a verified checksum, recorded licence confirmation and measured capacity report, then switches the active version atomically. An existing version is never overwritten.

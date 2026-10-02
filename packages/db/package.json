@@ -20,6 +20,7 @@
     "prepare:spatial-geojson": "tsx scripts/prepare-spatial-geojson.ts",
     "prepare:spatial-gml": "tsx scripts/prepare-spatial-gml.ts",
     "prepare:ogc-features": "tsx scripts/prepare-ogc-features.ts",
+    "prepare:hmlr-manifest": "tsx scripts/prepare-hmlr-manifest.ts",
     "import:property-data": "tsx scripts/import-property-data.ts",
     "activate:property-data": "tsx scripts/activate-property-data.ts",
     "rollback:property-data": "tsx scripts/rollback-property-data.ts"
