@@ -1,6 +1,6 @@
 # Source register
 
-Checked: **2026-10-01**. Every source's licence, coverage, access and attribution must be re-checked against the official page before it is enabled. The machine-readable copy lives in `packages/property-data/src/registry/sources.ts` and is seeded into `reference.data_sources` with `enabled = false`.
+Checked: **2026-10-01**. Every source's licence, coverage, access and attribution must be re-checked against the official page before it is enabled. The machine-readable copy lives in `packages/property-data/src/registry/sources.ts` and is seeded into `data_sources` with `enabled = false` (rows created by the England release keep their own enablement).
 
 ## Status meanings
 

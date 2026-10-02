@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
-import { referenceDatasetSyncs } from "@surveynt/db";
+import { datasetVersions } from "@surveynt/db";
 import { createTestDatabase, integrationEnabled, stopRelay, type TestDatabase } from "@surveynt/db/testing";
 import type { PropertyLocation } from "../src/contract";
 import { syncSourceRegistry } from "../src/db/reference";
@@ -78,8 +78,8 @@ describe.skipIf(!integrationEnabled)("spatial reference layers", () => {
     const failed = await importSpatialLayer(importer, { sourceKey: "ea_flood_zones", layer: "flood_zone_3", filePath: await write("bad.geojson", collection([{ id: "x", ring: ring(40.0, 10.0, 40.1, 10.1) }])), datasetVersion: "wrong-crs", activate: true, importedBy: "test" });
     expect(failed.status).toBe("failed");
     expect(failed.error).toMatch(/outside the UK/);
-    const active = await importer.select().from(referenceDatasetSyncs).where(and(eq(referenceDatasetSyncs.sourceKey, "ea_flood_zones"), eq(referenceDatasetSyncs.status, "active")));
-    expect(active.map((row) => `${row.layer}:${row.datasetVersion}`).sort()).toEqual(["flood_zone_2:synthetic-fz2", "flood_zone_3:synthetic-fz3"]);
+    const active = await importer.select().from(datasetVersions).where(and(eq(datasetVersions.sourceKey, "ea_flood_zones"), eq(datasetVersions.active, true)));
+    expect(active.map((row) => `${row.layer}:${row.version}`).sort()).toEqual(["flood_zone_2:synthetic-fz2", "flood_zone_3:synthetic-fz3"]);
     expect(await run(floodZonesProvider, location(51.451, -2.601))).toMatchObject({ planning_flood_zone_3: "matched" });
   });
 

@@ -34,7 +34,7 @@ Browser (firm portal, offline outbox)
 /api/v1/* route handlers ── apiContext(): membership, role, billing access
   │                         withTenant(): set_config('app.current_organisation_id')
   ├─► address search/resolve ─► @surveynt/property-data adapters (allowlisted fetch)
-  │                              └─► reference.* (OS Open UPRN, spatial layers)  [read-only]
+  │                              └─► reference tables (OS Open UPRN, spatial layers)  [read-only]
   ├─► intelligence refresh ──► enrichment_runs + background_jobs(queue=property_intelligence)
   │                              └─► worker: orchestrator → adapters/reference queries
   │                                         → immutable property_intelligence_snapshots
@@ -44,7 +44,7 @@ Browser (firm portal, offline outbox)
   └─► reports: approved observations + approved wording → frozen report_versions
 
 Platform admin (/platform/*) ── platformApiContext() ── data sources, imports, reviews
-Operator CLI importers ── DATABASE_IMPORTER_URL ── reference.* staging → atomic activation
+Operator CLI importers ── DATABASE_IMPORTER_URL ── dataset_versions staging → atomic activation
 Shared learning (disabled) ── learning_restricted.* ── reviewed releases → shared_cases
 ```
 
@@ -64,7 +64,7 @@ Database persistence, route handlers and UI stay in `apps/web/src/lib/**`, `apps
 - **Additive only.** New nullable columns, new tables and new enum values. No column drops, renames or type narrowing. Each phase adds drizzle-kit generated SQL plus journaled custom SQL for extensions, roles, grants, RLS and triggers.
 - **Schemas**
   - `public`: tenant tables (RLS on `organisation_id`) and existing global tables.
-  - `reference`: global, read-only reference data and dataset version metadata. App connections read it through the group role `surveynt_reference_read`. Only `surveynt_reference_write` (importers) and the owner can write.
+  - Reference data (also `public`, from migration 0006): `data_sources`, `dataset_versions`, `dataset_syncs`, `os_uprn_points`, `spatial_reference_features`, `price_paid_*` and `scottish_epc_certificates`. Every role reads them through a SELECT policy; only `surveynt_reference_write` (importers, by write policy) and the owner can write.
   - `learning_restricted`: shared-learning staging. It has no grant to the tenant runtime role; only `surveynt_learning_service` and the owner can access it.
 - **Group roles** are created idempotently in migrations as `NOLOGIN` roles. Operators grant membership to real login roles (see [`configuration.md`](./configuration.md)). This keeps role names stable across Neon branches without embedding credentials.
 - **RLS:** every new tenant table gets `ENABLE` + `FORCE ROW LEVEL SECURITY` and the existing `organisation_id = current_setting(...)` policy. Cross-table consistency (for example, a property and its job in the same firm) is enforced with composite foreign keys on `(organisation_id, id)` where a child references a tenant parent.
@@ -94,7 +94,7 @@ If the Vercel plan allows only daily cron, interactive refreshes still complete 
 |---|---|---|
 | Platform | `PROPERTY_INTELLIGENCE_ENABLED`, `ASSISTANT_ENABLED`, `SHARED_LEARNING_ENABLED` env vars | intelligence/assistant off until configured; shared learning **always off** until the L0 gates are met |
 | Firm | `entitlements` keys (`property_intelligence`, `assistant`, `assistant_ai`, `shared_learning_contribution`) | off |
-| Source | `reference.data_sources.enabled` | off until the source register status is `verified` and any credentials are configured |
+| Source | `data_sources.enabled` | off until the source register status is `verified` and any credentials are configured |
 
 Manual property entry, survey capture and report preparation never depend on any flag.
 
@@ -132,7 +132,7 @@ Media originals, `media_analyses` and the other append-only tables can be delete
 
 `main` shipped an independent England property-intelligence release (migrations 0006–0009, applied to a non-production Neon database). When this branch merged, main's schema was kept as the base and this branch's work was rebuilt on top of it:
 
-- **Migrations.** Main's 0006–0009 are unchanged. This branch's schema arrives as one generated migration, `0010_surveynt_assistant_and_learning`. Its hand-written security migrations follow as 0011–0025, in their original order. Nothing in 0010–0025 drops, renames or retypes anything main created.
+- **Migrations.** Main's 0006–0009 are unchanged. This branch's schema arrives as one generated migration, `0010_surveynt_assistant_and_learning`. Its hand-written security migrations follow as 0011–0022, in their original order. Nothing in 0010–0022 drops, renames or retypes anything main created.
 - **Shared columns and tables.** `properties` identity columns, `enrichment_runs` and `property_intelligence_snapshots` are main's.
   - This branch adds columns: `uprn_confirmed_at`, `uprn_evidence_type`, `identity_address_fingerprint`, `input_fingerprint`, `error`, `message`, `licence` and `confidence_label`.
   - It appends enum values: `location_confidence`, `enrichment_status`, `information_class` and `coverage_status`.
@@ -140,11 +140,12 @@ Media originals, `media_analyses` and the other append-only tables can be delete
   - `properties.location` is kept up to date by main's `properties_sync_location` trigger.
 - **Database rules dropped from this branch.** The UK-bounds, confidence-versus-point and UPRN-confirmation checks are enforced by the identity service only, because main's code writes those columns under its own rules. Main's coordinate, range and UPRN-format checks remain.
 - **Confidence vocabulary.** `normaliseLocationConfidence` maps main's `approximate` to "geocoded, unconfirmed", and `confirmed`/`exact` to "surveyor confirmed".
-- **Reference data.** Two stores coexist:
-  - Main's `public` tables (`data_sources`, `dataset_versions`, `dataset_syncs`, `os_uprn_points`, `spatial_reference_features`) are fed by the import scripts in `packages/db/scripts`.
-  - This branch's `reference` schema is fed by `@surveynt/property-data` importers.
-
-  Snapshots reference main's `data_sources` by key, so `syncSourceRegistry` also inserts any missing registry key there, disabled. Unifying the two stores is follow-up work.
+- **Reference data: one store.** Main's `public` tables hold everything, whichever tool loads it:
+  - `data_sources` gains this branch's register and operations columns (`register_status`, `definition`, verification, probe and release-check fields). `syncSourceRegistry` upserts register metadata and never changes `enabled` except to disable a blocked source.
+  - `dataset_versions` gains `layer`, `source_crs`, `extent`, `imported_by`, `previous_active_id`, `completed_at` and `retired_at`. One version is active per source and layer; main's sources all use the empty layer. Status is derived: active flag, otherwise retired if it was ever activated, otherwise staged.
+  - Failed imports are deleted with their rows, as main's scripts do, and the reason is kept in the `dataset_syncs` job log.
+  - Rows live in `os_uprn_points`, `spatial_reference_features`, `price_paid_transactions`, `price_paid_uprn_links` and `scottish_epc_certificates`, all keyed by `dataset_version_id`.
+  - Main's import scripts and `@surveynt/property-data` importers both write here. Main's activate and rollback scripts now manage the empty layer only.
 - **Code.** Main's provider module is `@surveynt/property-data/england`, used by `lib/property-intelligence.ts` and main's worker. Its queue (`intelligence`) is separate from this branch's (`property_intelligence`).
 - **Routes and screens.** Where both defined the same route (address search and resolve, property intelligence and its planning, environment and refresh views), this branch's versions are kept, because later phases depend on their response shapes. Main's identity-confirm and map routes, worker cron and scripts remain. Main's `properties/[propertyId]` page and `property-intelligence-workspace` component were removed: they collided with this branch's `properties/[id]` workspace and expected the replaced route shapes.
 

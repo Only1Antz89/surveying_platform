@@ -13,7 +13,7 @@ import { scottishEpcProvider } from "./scottish-epc";
 import { cadwProvider, floodZonesProvider, geologyProvider, hesProvider, historicEnglandProvider, inspireProvider, naturalEnglandProvider, niHedProvider, nrwFloodZonesProvider, sepaFloodProvider, surfaceWaterProvider } from "./reference-layer";
 import type { IntelligenceProvider } from "./types";
 
-/** Providers available to enrichment runs. Each still requires operator enablement in reference.data_sources. */
+/** Providers available to enrichment runs. Each still requires operator enablement in data_sources. */
 export const intelligenceProviders: IntelligenceProvider[] = [planningDataProvider, epcProvider, historicEnglandProvider, inspireProvider, floodZonesProvider, surfaceWaterProvider, geologyProvider, naturalEnglandProvider, pricePaidProvider,
   nrwFloodZonesProvider, cadwProvider, hesProvider, sepaFloodProvider, niHedProvider, scottishEpcProvider];
 

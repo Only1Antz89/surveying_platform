@@ -438,84 +438,6 @@ export const backgroundJobs = pgTable("background_jobs", {
   ...timestamps,
 }, (table) => [index("background_jobs_org_idx").on(table.organisationId), index("background_jobs_queue_status_idx").on(table.queue, table.status)]);
 
-// Global reference data. Readable by the tenant runtime through the
-// surveynt_reference_read group role; writable only by importers
-// (surveynt_reference_write) and the owner. See docs/property-intelligence.
-export const referenceSchema = pgSchema("reference");
-
-/** Any PostGIS geometry type in WGS84 (drizzle's built-in geometry type is point-only). Values are read as GeoJSON via SQL. */
-const anyGeometry = customType<{ data: string; driverData: string }>({ dataType: () => "geometry(Geometry, 4326)" });
-
-export const referenceDataSources = referenceSchema.table("data_sources", {
-  key: text("key").primaryKey(),
-  name: text("name").notNull(),
-  organisation: text("organisation").notNull(),
-  category: text("category").notNull(),
-  documentationUrl: text("documentation_url").notNull(),
-  accessMethod: text("access_method").notNull(),
-  coverage: text("coverage").array().notNull().default(sql`'{}'::text[]`),
-  licence: jsonb("licence").$type<Record<string, unknown>>().notNull(),
-  registerStatus: text("register_status").notNull(),
-  checkedAt: date("checked_at"),
-  definition: jsonb("definition").$type<Record<string, unknown>>().notNull(),
-  // Operator-controlled. A source runs only when enabled and verified.
-  enabled: boolean("enabled").notNull().default(false),
-  verifiedAt: timestamp("verified_at", { withTimezone: true }),
-  verifiedBy: text("verified_by"),
-  verificationNotes: text("verification_notes"),
-  lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
-  lastFailureAt: timestamp("last_failure_at", { withTimezone: true }),
-  lastFailureCode: text("last_failure_code"),
-  // Operations (P5): the last health probe and the last check of the publisher's release page.
-  lastProbeAt: timestamp("last_probe_at", { withTimezone: true }),
-  lastProbeStatus: text("last_probe_status"),
-  lastProbeMessage: text("last_probe_message"),
-  lastReleaseCheckAt: timestamp("last_release_check_at", { withTimezone: true }),
-  lastReleaseCheckBy: text("last_release_check_by"),
-  lastReleaseCheckNote: text("last_release_check_note"),
-  ...timestamps,
-});
-
-/** One row per import attempt. Exactly one active version per source; earlier versions are kept for rollback. */
-export const referenceDatasetSyncs = referenceSchema.table("dataset_syncs", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  sourceKey: text("source_key").notNull().references(() => referenceDataSources.key, { onDelete: "restrict" }),
-  /** Layer within a multi-layer source (for example a heritage designation type). Empty for single-layer sources. */
-  layer: text("layer").notNull().default(""),
-  datasetVersion: text("dataset_version").notNull(),
-  sourceUrl: text("source_url"),
-  checksum: text("checksum"),
-  licence: jsonb("licence").$type<Record<string, unknown>>().notNull().default({}),
-  sourceCrs: text("source_crs"),
-  extent: text("extent"),
-  status: text("status").notNull().default("staging"),
-  recordCount: integer("record_count").notNull().default(0),
-  validation: jsonb("validation").$type<Record<string, unknown>>().notNull().default({}),
-  error: text("error"),
-  previousActiveId: uuid("previous_active_id"),
-  importedBy: text("imported_by"),
-  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
-  completedAt: timestamp("completed_at", { withTimezone: true }),
-  activatedAt: timestamp("activated_at", { withTimezone: true }),
-  retiredAt: timestamp("retired_at", { withTimezone: true }),
-}, (table) => [
-  uniqueIndex("dataset_syncs_one_active_layer_uidx").on(table.sourceKey, table.layer).where(sql`status = 'active'`),
-  index("dataset_syncs_source_idx").on(table.sourceKey, table.startedAt),
-  check("dataset_syncs_status_chk", sql`status in ('staging', 'active', 'retired', 'failed')`),
-]);
-
-export const osOpenUprn = referenceSchema.table("os_open_uprn", {
-  datasetSyncId: uuid("dataset_sync_id").notNull().references(() => referenceDatasetSyncs.id, { onDelete: "cascade" }),
-  uprn: text("uprn").notNull(),
-  geom: geometry("geom", { type: "point", mode: "xy", srid: 4326 }).notNull(),
-  sourceX: doublePrecision("source_x"),
-  sourceY: doublePrecision("source_y"),
-}, (table) => [
-  primaryKey({ name: "os_open_uprn_pk", columns: [table.datasetSyncId, table.uprn] }),
-  index("os_open_uprn_geog_gix").using("gist", sql`(${table.geom}::geography)`),
-  check("os_open_uprn_format_chk", sql`uprn ~ '^[0-9]{1,12}$'`),
-]);
-
 // Survey capture (A1). Every table is tenant-scoped with RLS and composite
 // foreign keys so a child row can never point at another firm's record.
 
@@ -718,31 +640,13 @@ export const syncOperations = pgTable("sync_operations", {
   uniqueIndex("sync_operations_operation_uidx").on(table.organisationId, table.operationId),
 ]);
 
-/**
- * Generic versioned spatial reference layer (points, lines or polygons) for
- * bulk-imported open datasets. Only rows of active syncs are ever queried.
- */
-export const spatialFeatures = referenceSchema.table("spatial_features", {
-  datasetSyncId: uuid("dataset_sync_id").notNull().references(() => referenceDatasetSyncs.id, { onDelete: "cascade" }),
-  sourceKey: text("source_key").notNull(),
-  layer: text("layer").notNull(),
-  featureId: text("feature_id").notNull(),
-  name: text("name"),
-  attributes: jsonb("attributes").$type<Record<string, unknown>>().notNull().default({}),
-  geom: anyGeometry("geom").notNull(),
-}, (table) => [
-  primaryKey({ name: "spatial_features_pk", columns: [table.datasetSyncId, table.featureId] }),
-  index("spatial_features_gix").using("gist", table.geom),
-  index("spatial_features_layer_idx").on(table.sourceKey, table.layer),
-]);
-
 // Property history (P4). HM Land Registry Price Paid Data and the published
 // transaction-to-UPRN look-up. Only the fields needed for a sales history are
 // kept: no Price Paid address field is ever stored.
 
 /** One Price Paid transaction per dataset version. Corrections (C) and deletions (D) are applied by transaction id. */
-export const pricePaidTransactions = referenceSchema.table("price_paid_transactions", {
-  datasetSyncId: uuid("dataset_sync_id").notNull().references(() => referenceDatasetSyncs.id, { onDelete: "cascade" }),
+export const pricePaidTransactions = pgTable("price_paid_transactions", {
+  datasetVersionId: uuid("dataset_version_id").notNull().references(() => datasetVersions.id, { onDelete: "cascade" }),
   transactionId: text("transaction_id").notNull(),
   price: integer("price").notNull(),
   transferDate: date("transfer_date").notNull(),
@@ -751,7 +655,7 @@ export const pricePaidTransactions = referenceSchema.table("price_paid_transacti
   tenure: text("tenure").notNull(),
   ppdCategory: text("ppd_category").notNull(),
 }, (table) => [
-  primaryKey({ name: "price_paid_transactions_pk", columns: [table.datasetSyncId, table.transactionId] }),
+  primaryKey({ name: "price_paid_transactions_pk", columns: [table.datasetVersionId, table.transactionId] }),
   check("price_paid_transactions_id_chk", sql`transaction_id ~ '^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$'`),
   check("price_paid_transactions_price_chk", sql`price > 0`),
   check("price_paid_transactions_type_chk", sql`property_type in ('D', 'S', 'T', 'F', 'O')`),
@@ -760,13 +664,13 @@ export const pricePaidTransactions = referenceSchema.table("price_paid_transacti
 ]);
 
 /** Exact transaction-to-UPRN links as published by HM Land Registry. One sale may link to several UPRNs. */
-export const pricePaidUprnLinks = referenceSchema.table("price_paid_uprn_links", {
-  datasetSyncId: uuid("dataset_sync_id").notNull().references(() => referenceDatasetSyncs.id, { onDelete: "cascade" }),
+export const pricePaidUprnLinks = pgTable("price_paid_uprn_links", {
+  datasetVersionId: uuid("dataset_version_id").notNull().references(() => datasetVersions.id, { onDelete: "cascade" }),
   transactionId: text("transaction_id").notNull(),
   uprn: text("uprn").notNull(),
 }, (table) => [
-  primaryKey({ name: "price_paid_uprn_links_pk", columns: [table.datasetSyncId, table.transactionId, table.uprn] }),
-  index("price_paid_uprn_links_uprn_idx").on(table.datasetSyncId, table.uprn),
+  primaryKey({ name: "price_paid_uprn_links_pk", columns: [table.datasetVersionId, table.transactionId, table.uprn] }),
+  index("price_paid_uprn_links_uprn_idx").on(table.datasetVersionId, table.uprn),
   check("price_paid_uprn_links_id_chk", sql`transaction_id ~ '^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$'`),
   check("price_paid_uprn_links_uprn_chk", sql`uprn ~ '^[0-9]{1,12}$'`),
 ]);
@@ -796,8 +700,28 @@ export const dataSources = pgTable("data_sources", {
   refreshPolicy: text("refresh_policy"),
   verifiedAt: timestamp("verified_at", { withTimezone: true }),
   latestSuccessfulSyncAt: timestamp("latest_successful_sync_at", { withTimezone: true }),
+  // Source register and operations (P0, P5). Filled by syncSourceRegistry and the
+  // data-source console; null for rows created only by the England import scripts.
+  accessMethod: text("access_method"),
+  registerStatus: text("register_status"),
+  checkedAt: date("checked_at"),
+  definition: jsonb("definition").$type<Record<string, unknown>>(),
+  licenceSnapshot: jsonb("licence_snapshot").$type<Record<string, unknown>>().notNull().default({}),
+  verifiedBy: text("verified_by"),
+  verificationNotes: text("verification_notes"),
+  lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
+  lastFailureAt: timestamp("last_failure_at", { withTimezone: true }),
+  lastFailureCode: text("last_failure_code"),
+  lastProbeAt: timestamp("last_probe_at", { withTimezone: true }),
+  lastProbeStatus: text("last_probe_status"),
+  lastProbeMessage: text("last_probe_message"),
+  lastReleaseCheckAt: timestamp("last_release_check_at", { withTimezone: true }),
+  lastReleaseCheckBy: text("last_release_check_by"),
+  lastReleaseCheckNote: text("last_release_check_note"),
   ...timestamps,
-});
+}, () => [
+  check("data_sources_register_status_check", sql`register_status is null or register_status in ('verified', 'pending', 'blocked')`),
+]);
 
 export const datasetVersions = pgTable("dataset_versions", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -810,9 +734,23 @@ export const datasetVersions = pgTable("dataset_versions", {
   validation: jsonb("validation").$type<Record<string, unknown>>().notNull().default({}),
   active: boolean("active").notNull().default(false),
   activatedAt: timestamp("activated_at", { withTimezone: true }),
+  /**
+   * Layer within a multi-layer source (for example one heritage designation type).
+   * Empty for single-layer sources, which is every source the England import scripts load.
+   * Exactly one version is active per source and layer.
+   */
+  layer: text("layer").notNull().default(""),
+  sourceCrs: text("source_crs"),
+  extent: text("extent"),
+  importedBy: text("imported_by"),
+  /** The version this one replaced on activation, for rollback. */
+  previousActiveId: uuid("previous_active_id"),
+  /** Set when loading and validation finished; a version is activatable only then (or when it holds rows). */
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  retiredAt: timestamp("retired_at", { withTimezone: true }),
   ...timestamps,
 }, (table) => [
-  uniqueIndex("dataset_versions_source_version_uidx").on(table.sourceKey, table.version),
+  uniqueIndex("dataset_versions_source_layer_version_uidx").on(table.sourceKey, table.layer, table.version),
   index("dataset_versions_source_active_idx").on(table.sourceKey, table.active),
 ]);
 
@@ -856,6 +794,8 @@ export const osUprnPoints = pgTable("os_uprn_points", {
 }, (table) => [
   uniqueIndex("os_uprn_points_version_uprn_uidx").on(table.datasetVersionId, table.uprn),
   index("os_uprn_points_location_gix").using("gist", table.location),
+  // Metre-distance candidate searches cast to geography.
+  index("os_uprn_points_location_geog_gix").using("gist", sql`(${table.location}::geography)`),
   check("os_uprn_points_uprn_check", sql`${table.uprn} ~ '^[0-9]{1,12}$'`),
 ]);
 
@@ -1112,8 +1052,8 @@ export const reportApprovals = pgTable("report_approvals", {
 
 // Scottish EPC Register extracts (P6). Certificate facts keyed by the
 // published UPRN reference only; no address field is stored.
-export const scottishEpcCertificates = referenceSchema.table("scottish_epc_certificates", {
-  datasetSyncId: uuid("dataset_sync_id").notNull().references(() => referenceDatasetSyncs.id, { onDelete: "cascade" }),
+export const scottishEpcCertificates = pgTable("scottish_epc_certificates", {
+  datasetVersionId: uuid("dataset_version_id").notNull().references(() => datasetVersions.id, { onDelete: "cascade" }),
   certificateKey: text("certificate_key").notNull(),
   uprn: text("uprn").notNull(),
   lodgementDate: date("lodgement_date"),
@@ -1124,8 +1064,8 @@ export const scottishEpcCertificates = referenceSchema.table("scottish_epc_certi
   constructionAgeBand: text("construction_age_band"),
   totalFloorAreaM2: doublePrecision("total_floor_area_m2"),
 }, (table) => [
-  primaryKey({ name: "scottish_epc_certificates_pk", columns: [table.datasetSyncId, table.certificateKey] }),
-  index("scottish_epc_certificates_uprn_idx").on(table.datasetSyncId, table.uprn),
+  primaryKey({ name: "scottish_epc_certificates_pk", columns: [table.datasetVersionId, table.certificateKey] }),
+  index("scottish_epc_certificates_uprn_idx").on(table.datasetVersionId, table.uprn),
   check("scottish_epc_certificates_uprn_chk", sql`uprn ~ '^[0-9]{1,12}$'`),
   check("scottish_epc_certificates_rating_chk", sql`(current_rating is null or current_rating ~ '^[A-G]$') and (potential_rating is null or potential_rating ~ '^[A-G]$')`),
 ]);

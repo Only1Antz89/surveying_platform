@@ -125,9 +125,9 @@ export async function importPricePaid(db: Database, options: PricePaidImportOpti
   return finish(db, sync, "price_paid_transactions", async () => {
     if (active) {
       await db.execute(sql`
-        insert into reference.price_paid_transactions (dataset_sync_id, transaction_id, price, transfer_date, property_type, new_build, tenure, ppd_category)
+        insert into price_paid_transactions (dataset_version_id, transaction_id, price, transfer_date, property_type, new_build, tenure, ppd_category)
         select ${sync.id}::uuid, transaction_id, price, transfer_date, property_type, new_build, tenure, ppd_category
-        from reference.price_paid_transactions where dataset_sync_id = ${active.id}`);
+        from price_paid_transactions where dataset_version_id = ${active.id}`);
     }
     const counts = { read: 0, added: 0, changed: 0, deleted: 0, outsideExtent: 0, rejected: 0 };
     const rejected: { line: number; reason: string }[] = [];
@@ -136,17 +136,17 @@ export async function importPricePaid(db: Database, options: PricePaidImportOpti
     const deletes = new Set<string>();
     const flush = async () => {
       if (deletes.size) {
-        await db.execute(sql`delete from reference.price_paid_transactions where dataset_sync_id = ${sync.id} and transaction_id = any(${sql.param([...deletes])}::text[])`);
+        await db.execute(sql`delete from price_paid_transactions where dataset_version_id = ${sync.id} and transaction_id = any(${sql.param([...deletes])}::text[])`);
         deletes.clear();
       }
       if (upserts.size) {
         const rows = [...upserts.values()];
         await db.execute(sql`
-          insert into reference.price_paid_transactions (dataset_sync_id, transaction_id, price, transfer_date, property_type, new_build, tenure, ppd_category)
+          insert into price_paid_transactions (dataset_version_id, transaction_id, price, transfer_date, property_type, new_build, tenure, ppd_category)
           select ${sync.id}::uuid, t.id, t.price, t.transfer_date, t.property_type, t.new_build, t.tenure, t.category
           from unnest(${sql.param(rows.map((row) => row.transactionId))}::text[], ${sql.param(rows.map((row) => row.price))}::int[], ${sql.param(rows.map((row) => row.transferDate))}::date[], ${sql.param(rows.map((row) => row.propertyType))}::text[], ${sql.param(rows.map((row) => row.newBuild))}::bool[], ${sql.param(rows.map((row) => row.tenure))}::text[], ${sql.param(rows.map((row) => row.ppdCategory))}::text[])
             as t(id, price, transfer_date, property_type, new_build, tenure, category)
-          on conflict (dataset_sync_id, transaction_id) do update set price = excluded.price, transfer_date = excluded.transfer_date, property_type = excluded.property_type, new_build = excluded.new_build, tenure = excluded.tenure, ppd_category = excluded.ppd_category`);
+          on conflict (dataset_version_id, transaction_id) do update set price = excluded.price, transfer_date = excluded.transfer_date, property_type = excluded.property_type, new_build = excluded.new_build, tenure = excluded.tenure, ppd_category = excluded.ppd_category`);
         upserts.clear();
       }
     };
@@ -219,7 +219,7 @@ export async function importPricePaidUprnLookup(db: Database, options: PricePaid
     const flush = async () => {
       if (!batch.length) return;
       await db.execute(sql`
-        insert into reference.price_paid_uprn_links (dataset_sync_id, transaction_id, uprn)
+        insert into price_paid_uprn_links (dataset_version_id, transaction_id, uprn)
         select ${sync.id}::uuid, t.id, t.uprn from unnest(${sql.param(batch.map((row) => row.transactionId))}::text[], ${sql.param(batch.map((row) => row.uprn))}::text[]) as t(id, uprn)
         on conflict do nothing`);
       batch = [];
@@ -245,8 +245,8 @@ export async function importPricePaidUprnLookup(db: Database, options: PricePaid
     await flush();
     const stats = await db.execute(sql`
       select count(*)::int as links, count(distinct transaction_id)::int as transactions, count(distinct uprn)::int as uprns,
-        (select count(*)::int from (select transaction_id from reference.price_paid_uprn_links where dataset_sync_id = ${sync.id} group by transaction_id having count(*) > 1) multi) as multi_uprn_transactions
-      from reference.price_paid_uprn_links where dataset_sync_id = ${sync.id}`);
+        (select count(*)::int from (select transaction_id from price_paid_uprn_links where dataset_version_id = ${sync.id} group by transaction_id having count(*) > 1) multi) as multi_uprn_transactions
+      from price_paid_uprn_links where dataset_version_id = ${sync.id}`);
     const row = (stats as unknown as { rows: { links: number; transactions: number; uprns: number; multi_uprn_transactions: number }[] }).rows[0];
     const validation = { ...counts, header: columns?.header ?? null, storedLinks: row.links, transactions: row.transactions, uprns: row.uprns, multiUprnTransactions: row.multi_uprn_transactions, firstRejections: rejected };
     if (counts.rejected > (options.maxRejected ?? 0)) throw rejectionError(rejected, counts.rejected, options.maxRejected ?? 0, validation);

@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
-import { eq, sql } from "drizzle-orm";
-import { referenceDatasetSyncs, type Database } from "@surveynt/db";
+import { sql } from "drizzle-orm";
+import type { Database } from "@surveynt/db";
 import { getSourceDefinition } from "../registry/sources";
 import { isValidUprn } from "../matching/identity";
-import { activateSync } from "../db/reference";
+import { completeVersion, createVersion, failVersion } from "./staged";
 
 // GB extent of OS Open UPRN in WGS84/ETRS89 (Northern Ireland is not covered).
 const gbBounds = { minLatitude: 49.85, maxLatitude: 60.95, minLongitude: -8.7, maxLongitude: 1.8 };
@@ -58,17 +58,14 @@ function inside(bbox: Bbox | undefined, row: { latitude: number; longitude: numb
 export async function importOsOpenUprn(db: Database, options: OsOpenUprnImportOptions): Promise<ImportOutcome> {
   const definition = getSourceDefinition("os_open_uprn");
   if (!definition) throw new Error("os_open_uprn is not registered.");
-  const checksum = await sha256File(options.filePath);
-  const [sync] = await db.insert(referenceDatasetSyncs).values({
-    sourceKey: "os_open_uprn",
+  const sync = await createVersion(db, "os_open_uprn", {
     datasetVersion: options.datasetVersion,
-    sourceUrl: options.sourceUrl ?? definition.accessUrls[0] ?? null,
-    checksum,
-    licence: definition.licence as unknown as Record<string, unknown>,
+    checksum: await sha256File(options.filePath),
+    sourceUrl: options.sourceUrl,
     sourceCrs: "EPSG:27700 (BNG) with ETRS89 latitude/longitude",
     extent: options.bbox ? `bbox ${options.bbox.minLongitude},${options.bbox.minLatitude},${options.bbox.maxLongitude},${options.bbox.maxLatitude}` : "full file",
     importedBy: options.importedBy,
-  }).returning();
+  });
   let recordCount = 0;
   let skipped = 0;
   try {
@@ -78,7 +75,7 @@ export async function importOsOpenUprn(db: Database, options: OsOpenUprnImportOp
     const flush = async () => {
       if (!batch.length) return;
       await db.execute(sql`
-        insert into reference.os_open_uprn (dataset_sync_id, uprn, geom, source_x, source_y)
+        insert into os_uprn_points (dataset_version_id, uprn, location, source_easting, source_northing)
         select ${sync.id}::uuid, t.uprn, st_setsrid(st_makepoint(t.lon, t.lat), 4326), t.x, t.y
         from unnest(${sql.param(batch.map((row) => row.uprn))}::text[], ${sql.param(batch.map((row) => row.longitude))}::float8[], ${sql.param(batch.map((row) => row.latitude))}::float8[], ${sql.param(batch.map((row) => row.x))}::float8[], ${sql.param(batch.map((row) => row.y))}::float8[]) as t(uprn, lon, lat, x, y)
         on conflict do nothing`);
@@ -101,28 +98,19 @@ export async function importOsOpenUprn(db: Database, options: OsOpenUprnImportOp
     }
     await flush();
     if (!header) throw new Error("The file is empty.");
-    const counted = await db.execute(sql`select count(*)::int as count from reference.os_open_uprn where dataset_sync_id = ${sync.id}`);
+    const counted = await db.execute(sql`select count(*)::int as count from os_uprn_points where dataset_version_id = ${sync.id}`);
     const stored = Number((counted as unknown as { rows: { count: number }[] }).rows[0]?.count ?? 0);
     if (stored === 0) throw new Error("No valid UPRN rows were found for the requested extent.");
     const tolerance = options.maxCrsDiscrepancyMetres ?? 25;
     const crsCheck = await db.execute(sql`
       select count(*)::int as sampled,
-        count(*) filter (where st_distance(st_transform(st_setsrid(st_makepoint(source_x, source_y), 27700), 4326)::geography, geom::geography) > ${tolerance})::int as discrepant
-      from (select geom, source_x, source_y from reference.os_open_uprn where dataset_sync_id = ${sync.id} limit 2000) sample`);
+        count(*) filter (where st_distance(st_transform(st_setsrid(st_makepoint(source_easting, source_northing), 27700), 4326)::geography, location::geography) > ${tolerance})::int as discrepant
+      from (select location, source_easting, source_northing from os_uprn_points where dataset_version_id = ${sync.id} limit 2000) sample`);
     const crs = (crsCheck as unknown as { rows: { sampled: number; discrepant: number }[] }).rows[0];
     const validation = { storedRows: stored, skippedRows: skipped, crsSampled: crs.sampled, crsDiscrepant: crs.discrepant, crsToleranceMetres: tolerance };
     if (crs.discrepant > 0) throw Object.assign(new Error(`${crs.discrepant} sampled rows disagree between BNG and latitude/longitude by more than ${tolerance} m.`), { validation });
-    await db.update(referenceDatasetSyncs).set({ recordCount: stored, validation, completedAt: new Date() }).where(eq(referenceDatasetSyncs.id, sync.id));
-    if (options.activate) {
-      await activateSync(db, sync.id);
-      return { syncId: sync.id, status: "active", recordCount: stored, skipped, validation };
-    }
-    return { syncId: sync.id, status: "staging", recordCount: stored, skipped, validation };
+    return await completeVersion(db, sync, { stored, skipped, validation }, options.activate);
   } catch (reason) {
-    const message = reason instanceof Error ? reason.message.slice(0, 1000) : "Import failed.";
-    const validation = (reason as { validation?: Record<string, unknown> }).validation ?? { skippedRows: skipped };
-    await db.execute(sql`delete from reference.os_open_uprn where dataset_sync_id = ${sync.id}`);
-    await db.update(referenceDatasetSyncs).set({ status: "failed", error: message, validation, completedAt: new Date() }).where(eq(referenceDatasetSyncs.id, sync.id));
-    return { syncId: sync.id, status: "failed", recordCount: 0, skipped, validation, error: message };
+    return failVersion(db, sync, reason, skipped, { skippedRows: skipped });
   }
 }
