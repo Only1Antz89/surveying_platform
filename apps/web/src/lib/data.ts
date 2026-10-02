@@ -216,6 +216,37 @@ export async function loadProperties(slug: string): Promise<Property[]> {
   return data.propertyRows.map(({ property, clientName }) => ({ id: property.id, address: property.line1, town: property.city, postcode: property.postcode, type: property.propertyType ?? "Not recorded", client: clientName, activeJobs: data.activeJobRows.find((row) => row.propertyId === property.id)?.value ?? 0, version: property.version }));
 }
 
+export async function loadPropertyWorkspace(slug: string, propertyId: string) {
+  if (!connected()) {
+    const property = demoProperties.find((item) => item.id === propertyId);
+    if (!property) return null;
+    const identityFixture = property.id === "prop_01" ? { country: "ENG" as const, latitude: 51.4589, longitude: -2.6202, locationConfidence: "approximate" as const, addressSource: "development_fixture", resolvedAt: null } : { country: null, latitude: null, longitude: null, locationConfidence: "unresolved" as const, addressSource: null, resolvedAt: null };
+    return {
+      property: { id: property.id, line1: property.address, line2: null, city: property.town, postcode: property.postcode, propertyType: property.type, version: property.version ?? 1, uprn: null, ...identityFixture },
+      clientName: property.client,
+      jobs: demoJobs.filter((job) => job.address.includes(property.address)).map((job) => ({ id: job.id, reference: job.reference, serviceName: job.service, stage: job.stage, targetDate: null })),
+      events: [],
+    };
+  }
+  const context = await requireFirmAccess(slug);
+  const db = createDatabase();
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
+    const [row] = await tx.select({ property: properties, clientName: clients.displayName }).from(properties).innerJoin(clients, eq(properties.clientId, clients.id)).where(and(eq(properties.id, propertyId), eq(properties.organisationId, context.organisationId))).limit(1);
+    if (!row) return null;
+    const [jobRows, eventRows] = await Promise.all([
+      tx.select({ id: jobs.id, reference: jobs.reference, serviceName: jobs.serviceName, stage: jobs.stage, targetDate: jobs.targetDate }).from(jobs).where(and(eq(jobs.propertyId, propertyId), eq(jobs.organisationId, context.organisationId))).orderBy(desc(jobs.updatedAt)),
+      tx.select({ id: auditEvents.id, action: auditEvents.action, occurredAt: auditEvents.occurredAt, metadata: auditEvents.metadata }).from(auditEvents).where(and(eq(auditEvents.organisationId, context.organisationId), eq(auditEvents.resourceType, "property"), eq(auditEvents.resourceId, propertyId))).orderBy(desc(auditEvents.occurredAt)).limit(100),
+    ]);
+    return {
+      property: { ...row.property, resolvedAt: row.property.resolvedAt?.toISOString() ?? null, createdAt: undefined, updatedAt: undefined, archivedAt: undefined, location: undefined, confirmedByUserId: undefined, organisationId: undefined, clientId: undefined },
+      clientName: row.clientName,
+      jobs: jobRows.map((job) => ({ ...job, targetDate: job.targetDate ? String(job.targetDate) : null })),
+      events: eventRows.map((event) => ({ ...event, occurredAt: event.occurredAt.toISOString() })),
+    };
+  });
+}
+
 export async function loadJobs(slug: string): Promise<Job[]> {
   if (!connected()) return demoJobs;
   const context = await requireFirmAccess(slug);

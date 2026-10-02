@@ -11,6 +11,20 @@ export const locationConfidenceLabels: Record<LocationConfidence, string> = {
   surveyor_confirmed: "Confirmed by a surveyor",
 };
 
+/**
+ * The England release (migration 0006) stores "approximate", "confirmed" and
+ * "exact" in the same column. Map them conservatively: anything not confirmed
+ * by its identity-confirmation step stays approximate.
+ */
+export function normaliseLocationConfidence(value: string | null | undefined): LocationConfidence {
+  switch (value) {
+    case "postcode_centroid": case "geocoded_address": case "surveyor_confirmed": case "unresolved": return value;
+    case "approximate": return "geocoded_address";
+    case "confirmed": case "exact": return "surveyor_confirmed";
+    default: return "unresolved";
+  }
+}
+
 export const locationResolutionMethods = ["postcode_lookup", "address_search", "uprn_candidate_confirmed", "uprn_entered", "map_placement"] as const;
 export type LocationResolutionMethod = (typeof locationResolutionMethods)[number];
 

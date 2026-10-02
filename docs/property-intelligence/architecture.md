@@ -127,3 +127,58 @@ The build environment's egress policy blocked every official provider host (`api
 ## Erasure order (A1–A4)
 
 Media originals, `media_analyses` and the other append-only tables can be deleted only with `app.erasure = 'on'` set in the transaction. The erasure routine is not implemented yet (it belongs with the data protection workflow). When it is built, it must delete `media_analyses` and `evidence_links` before `media_assets`, because the foreign keys use `restrict`.
+
+## Reconciliation with the England release
+
+`main` shipped an independent England property-intelligence release (migrations 0006–0008, applied to a non-production Neon database). When this branch merged, main's schema was kept as the base and this branch's work was rebuilt on top of it:
+
+- **Migrations.** Main's 0006–0008 are unchanged. This branch's schema arrives as one generated migration, `0009_surveynt_assistant_and_learning`. Its hand-written security migrations follow as 0010–0024, in their original order. Nothing in 0009–0024 drops, renames or retypes anything main created.
+- **Shared columns and tables.** `properties` identity columns, `enrichment_runs` and `property_intelligence_snapshots` are main's.
+  - This branch adds columns: `uprn_confirmed_at`, `uprn_evidence_type`, `identity_address_fingerprint`, `input_fingerprint`, `error`, `message`, `licence` and `confidence_label`.
+  - It appends enum values: `location_confidence`, `enrichment_status`, `information_class` and `coverage_status`.
+  - It writes main's required columns: `location_fingerprint`, numeric `confidence`, `attribution` and `licence_snapshot`.
+  - `properties.location` is kept up to date by main's `properties_sync_location` trigger.
+- **Database rules dropped from this branch.** The UK-bounds, confidence-versus-point and UPRN-confirmation checks are enforced by the identity service only, because main's code writes those columns under its own rules. Main's coordinate, range and UPRN-format checks remain.
+- **Confidence vocabulary.** `normaliseLocationConfidence` maps main's `approximate` to "geocoded, unconfirmed", and `confirmed`/`exact` to "surveyor confirmed".
+- **Reference data.** Two stores coexist:
+  - Main's `public` tables (`data_sources`, `dataset_versions`, `dataset_syncs`, `os_uprn_points`, `spatial_reference_features`) are fed by the import scripts in `packages/db/scripts`.
+  - This branch's `reference` schema is fed by `@surveynt/property-data` importers.
+
+  Snapshots reference main's `data_sources` by key, so `syncSourceRegistry` also inserts any missing registry key there, disabled. Unifying the two stores is follow-up work.
+- **Code.** Main's provider module is `@surveynt/property-data/england`, used by `lib/property-intelligence.ts` and main's worker. Its queue (`intelligence`) is separate from this branch's (`property_intelligence`).
+- **Routes and screens.** Where both defined the same route (address search and resolve, property intelligence and its planning, environment and refresh views), this branch's versions are kept, because later phases depend on their response shapes. Main's identity-confirm and map routes, worker cron and scripts remain. Main's `properties/[propertyId]` page and `property-intelligence-workspace` component were removed: they collided with this branch's `properties/[id]` workspace and expected the replaced route shapes.
+
+---
+
+# England first release (merged from main)
+
+The section below is the England release record from `main`, kept verbatim. Its schema (migrations 0006–0008) is the base this branch's migrations build on; see the reconciliation notes in [`architecture.md`](./architecture.md#reconciliation-with-the-england-release).
+
+## Property intelligence architecture
+
+Checked: 1 October 2026
+
+## Runtime flow
+
+Authenticated browser requests go through the existing tenant API context. Address search calls bounded server-side adapters. A confirmed property identity is stored on the tenant property with evidence in the audit log. Refresh requests create an `enrichment_runs` record and a deduplicated `background_jobs` entry. The protected worker runs providers independently and writes immutable source snapshots only if the property identity is unchanged.
+
+National reference datasets are global and read-only to the application role. Imports use `DATABASE_ADMIN_URL`, stage a new dataset version, validate record counts and checksums, and activate it transactionally. The last active version remains available when an import fails.
+
+## Trust model
+
+- Surveyor confirmation is separate from external records.
+- A postcode centroid is approximate and never establishes a building or UPRN.
+- OS Open UPRN supplies identifiers and coordinates, not a reusable postal address directory.
+- `no_match` means no record was returned from the queried dataset. It does not mean a constraint or risk is absent.
+- HMLR extents, mapped heritage and flood layers are contextual. They do not replace title, planning, heritage or environmental searches.
+
+## Database and jobs
+
+- PostgreSQL/Neon with PostGIS, Drizzle migrations and tenant RLS.
+- `geometry(Point,4326)` property and UPRN locations; reference feature geometry is constrained to SRID 4326.
+- Durable database queue with bounded retries and idempotency. The worker is called through `/api/cron/property-intelligence` using `QUEUE_CONSUMER_SECRET` or `CRON_SECRET`.
+- Provider credentials are server-only. Provider hosts come from code or deployment configuration; request input cannot supply an arbitrary fetch URL.
+
+## Deployment gates
+
+Before applying the migration or importing national data, verify `PostGIS_Full_Version()` using the admin role, confirm the application role can read but not write reference tables, and run a dry-run capacity report. Do not activate a national version until storage, index size, query latency and projected Neon cost are accepted.

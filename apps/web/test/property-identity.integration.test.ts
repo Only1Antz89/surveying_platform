@@ -2,7 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { eq, sql } from "drizzle-orm";
-import { auditEvents, clients, dataSources, organisations, properties, propertyIdentityEvents, users } from "@surveynt/db";
+import { auditEvents, clients, referenceDataSources, organisations, properties, propertyIdentityEvents, users } from "@surveynt/db";
 import { createTestDatabase, integrationEnabled, stopRelay, type TestDatabase } from "@surveynt/db/testing";
 import { importOsOpenUprn, syncSourceRegistry } from "@surveynt/property-data/importers";
 import { databaseRateGate, resolveCandidate, searchAddresses, updatePropertyIdentity } from "../src/lib/property-identity";
@@ -24,7 +24,7 @@ describe.skipIf(!integrationEnabled)("property identity service", () => {
     process.env.PROPERTY_INTELLIGENCE_ENABLED = "true";
     const admin = database.connect(database.adminUrl);
     await syncSourceRegistry(admin);
-    await admin.update(dataSources).set({ enabled: true, verifiedAt: new Date(), verifiedBy: "integration-test" }).where(sql`${dataSources.key} in ('postcodes_io', 'os_open_uprn')`);
+    await admin.update(referenceDataSources).set({ enabled: true, verifiedAt: new Date(), verifiedBy: "integration-test" }).where(sql`${referenceDataSources.key} in ('postcodes_io', 'os_open_uprn')`);
     await admin.insert(organisations).values([
       { id: firmA, clerkOrganisationId: "org_a2", name: "Firm A", slug: "firm-a2", practiceType: "residential", region: "Bristol" },
       { id: firmB, clerkOrganisationId: "org_b2", name: "Firm B", slug: "firm-b2", practiceType: "residential", region: "Leeds" },

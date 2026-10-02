@@ -1,7 +1,7 @@
 import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
 import { eq, sql } from "drizzle-orm";
-import { datasetSyncs, type Database } from "@surveynt/db";
+import { referenceDatasetSyncs, type Database } from "@surveynt/db";
 import { activateSync } from "../db/reference";
 import { getSourceDefinition } from "../registry/sources";
 import { sha256File, type ImportOutcome } from "./os-open-uprn";
@@ -11,13 +11,13 @@ import { sha256File, type ImportOutcome } from "./os-open-uprn";
 
 export type StagedTable = "price_paid_transactions" | "price_paid_uprn_links" | "scottish_epc_certificates";
 
-type StagedSync = typeof datasetSyncs.$inferSelect;
+type StagedSync = typeof referenceDatasetSyncs.$inferSelect;
 
 export async function createSync(db: Database, sourceKey: string, options: { filePath: string; datasetVersion: string; sourceUrl?: string; importedBy: string; extent: string }) {
   const definition = getSourceDefinition(sourceKey);
   if (!definition) throw new Error(`${sourceKey} is not registered.`);
   const checksum = await sha256File(options.filePath);
-  const [sync] = await db.insert(datasetSyncs).values({
+  const [sync] = await db.insert(referenceDatasetSyncs).values({
     sourceKey, datasetVersion: options.datasetVersion, sourceUrl: options.sourceUrl ?? definition.accessUrls[0] ?? null, checksum,
     licence: definition.licence as unknown as Record<string, unknown>, sourceCrs: null, extent: options.extent, importedBy: options.importedBy,
   }).returning();
@@ -29,7 +29,7 @@ export async function finish(db: Database, sync: StagedSync, table: StagedTable,
   try {
     const outcome = await run();
     skipped = outcome.skipped;
-    await db.update(datasetSyncs).set({ recordCount: outcome.stored, validation: outcome.validation, completedAt: new Date() }).where(eq(datasetSyncs.id, sync.id));
+    await db.update(referenceDatasetSyncs).set({ recordCount: outcome.stored, validation: outcome.validation, completedAt: new Date() }).where(eq(referenceDatasetSyncs.id, sync.id));
     if (activate) {
       await activateSync(db, sync.id);
       return { syncId: sync.id, status: "active", recordCount: outcome.stored, skipped, validation: outcome.validation };
@@ -39,7 +39,7 @@ export async function finish(db: Database, sync: StagedSync, table: StagedTable,
     const message = reason instanceof Error ? reason.message.slice(0, 1000) : "Import failed.";
     const validation = (reason as { validation?: Record<string, unknown> }).validation ?? {};
     await db.execute(sql`delete from ${sql.identifier("reference")}.${sql.identifier(table)} where dataset_sync_id = ${sync.id}`);
-    await db.update(datasetSyncs).set({ status: "failed", error: message, validation, completedAt: new Date() }).where(eq(datasetSyncs.id, sync.id));
+    await db.update(referenceDatasetSyncs).set({ status: "failed", error: message, validation, completedAt: new Date() }).where(eq(referenceDatasetSyncs.id, sync.id));
     return { syncId: sync.id, status: "failed", recordCount: 0, skipped, validation, error: message };
   }
 }

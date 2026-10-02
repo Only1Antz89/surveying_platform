@@ -1,5 +1,5 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { datasetSyncs, type Database, type TenantTransaction } from "@surveynt/db";
+import { referenceDatasetSyncs, type Database, type TenantTransaction } from "@surveynt/db";
 import type { SpatialQuery } from "../providers/types";
 
 type Executor = Database | TenantTransaction;
@@ -8,7 +8,7 @@ type Executor = Database | TenantTransaction;
 export function databaseSpatialQuery(db: Executor): SpatialQuery {
   return {
     async featuresAt(input) {
-      const active = await db.select().from(datasetSyncs).where(and(eq(datasetSyncs.sourceKey, input.sourceKey), inArray(datasetSyncs.layer, input.layers), eq(datasetSyncs.status, "active")));
+      const active = await db.select().from(referenceDatasetSyncs).where(and(eq(referenceDatasetSyncs.sourceKey, input.sourceKey), inArray(referenceDatasetSyncs.layer, input.layers), eq(referenceDatasetSyncs.status, "active")));
       const results = [];
       for (const layer of input.layers) {
         const sync = active.find((item) => item.layer === layer);
@@ -45,7 +45,7 @@ export function databaseSpatialQuery(db: Executor): SpatialQuery {
 
 /** Bounded, simplified GeoJSON features around a point for map display (active version only). */
 export async function featuresNear(db: Executor, input: { sourceKey: string; layer: string; latitude: number; longitude: number; radiusMetres: number; limit?: number }) {
-  const [sync] = await db.select().from(datasetSyncs).where(and(eq(datasetSyncs.sourceKey, input.sourceKey), eq(datasetSyncs.layer, input.layer), eq(datasetSyncs.status, "active"))).limit(1);
+  const [sync] = await db.select().from(referenceDatasetSyncs).where(and(eq(referenceDatasetSyncs.sourceKey, input.sourceKey), eq(referenceDatasetSyncs.layer, input.layer), eq(referenceDatasetSyncs.status, "active"))).limit(1);
   if (!sync) return null;
   const radius = Math.max(10, Math.min(input.radiusMetres, 1000));
   const latDegrees = radius / 111_000;

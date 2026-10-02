@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
-import { clients, dataSources, jobs, jobStageEvents, organisations, properties } from "@surveynt/db";
+import { clients, referenceDataSources, jobs, jobStageEvents, organisations, properties } from "@surveynt/db";
 import { createTestDatabase, integrationEnabled, stopRelay, type TestDatabase } from "@surveynt/db/testing";
 import { pricePaidProvider } from "@surveynt/property-data";
 import { importPricePaid, importPricePaidUprnLookup, syncSourceRegistry } from "@surveynt/property-data/importers";
@@ -35,7 +35,7 @@ describe.skipIf(!integrationEnabled)("property history timeline", () => {
     Object.assign(process.env, { DATABASE_APP_URL: database.appUrl, DATABASE_ADMIN_URL: database.adminUrl, PROPERTY_INTELLIGENCE_ENABLED: "true" });
     const admin = database.connect(database.adminUrl);
     await syncSourceRegistry(admin);
-    await admin.update(dataSources).set({ enabled: true, verifiedAt: new Date(), verifiedBy: "integration-test" }).where(sql`${dataSources.key} in ('hmlr_price_paid', 'hmlr_ppd_uprn_lookup')`);
+    await admin.update(referenceDataSources).set({ enabled: true, verifiedAt: new Date(), verifiedBy: "integration-test" }).where(sql`${referenceDataSources.key} in ('hmlr_price_paid', 'hmlr_ppd_uprn_lookup')`);
     await admin.insert(organisations).values([
       { id: firmA, clerkOrganisationId: "org_a6", name: "Firm A", slug: "firm-a6", practiceType: "residential", region: "Bristol" },
       { id: firmB, clerkOrganisationId: "org_b6", name: "Firm B", slug: "firm-b6", practiceType: "residential", region: "Leeds" },

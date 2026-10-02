@@ -16,6 +16,7 @@ import {
   searchAddress,
   uprnConfirmationProblem,
   uprnWarningMessages,
+  normaliseLocationConfidence,
   type LocationConfidence,
   type RateGate,
   type UprnEvidenceType,
@@ -208,7 +209,7 @@ export async function updatePropertyIdentity(context: TenantContext & { organisa
     let evidence: Record<string, unknown> = {};
     switch (input.action) {
       case "set_location": {
-        if (current.locationConfidence === "surveyor_confirmed" && !input.replaceConfirmed) return { kind: "invalid", message: "This location was confirmed by a surveyor. Choose to replace it explicitly." };
+        if (normaliseLocationConfidence(current.locationConfidence) === "surveyor_confirmed" && !input.replaceConfirmed) return { kind: "invalid", message: "This location was confirmed by a surveyor. Choose to replace it explicitly." };
         const candidate = await loadCandidate(tx, context.organisationId, input.lookupId, input.index);
         if (!candidate) return { kind: "invalid", message: "That search result has expired. Search again." };
         if (candidate.precision === "area" || !isWithinUkBounds(candidate.latitude, candidate.longitude)) return { kind: "invalid", message: "That result is too imprecise to locate the property." };
@@ -272,7 +273,7 @@ export function identityView(property: Pick<typeof properties.$inferSelect, "cou
     uprn: property.uprn,
     latitude: property.latitude,
     longitude: property.longitude,
-    locationConfidence: property.locationConfidence,
+    locationConfidence: normaliseLocationConfidence(property.locationConfidence),
     locationResolutionMethod: property.locationResolutionMethod,
     resolvedAt: property.resolvedAt?.toISOString() ?? null,
     uprnConfirmedAt: property.uprnConfirmedAt?.toISOString() ?? null,

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
-import { dataSources } from "@surveynt/db";
+import { referenceDataSources } from "@surveynt/db";
 import { createTestDatabase, integrationEnabled, stopRelay, type TestDatabase } from "@surveynt/db/testing";
 import type { PropertyLocation } from "../src/contract";
 import { databaseHistoryQuery } from "../src/db/history";
@@ -41,7 +41,7 @@ describe.skipIf(!integrationEnabled)("property history reference data", () => {
     directory = await mkdtemp(path.join(tmpdir(), "surveynt-history-"));
     const admin = database.connect(database.adminUrl);
     await syncSourceRegistry(admin);
-    await admin.update(dataSources).set({ enabled: true, verifiedAt: new Date(), verifiedBy: "test", verificationNotes: "synthetic test data" }).where(eq(dataSources.key, "hmlr_ppd_uprn_lookup"));
+    await admin.update(referenceDataSources).set({ enabled: true, verifiedAt: new Date(), verifiedBy: "test", verificationNotes: "synthetic test data" }).where(eq(referenceDataSources.key, "hmlr_ppd_uprn_lookup"));
   }, 90_000);
 
   afterAll(async () => {
@@ -123,7 +123,7 @@ describe.skipIf(!integrationEnabled)("property history reference data", () => {
 
   it("reports a disabled look-up as unavailable rather than no sales", async () => {
     const admin = database.connect(database.adminUrl);
-    await admin.update(dataSources).set({ enabled: false }).where(eq(dataSources.key, "hmlr_ppd_uprn_lookup"));
+    await admin.update(referenceDataSources).set({ enabled: false }).where(eq(referenceDataSources.key, "hmlr_ppd_uprn_lookup"));
     const app = database.connect(database.appUrl);
     expect(await databaseHistoryQuery(app).salesForUprn(UPRN)).toEqual({ available: false, reason: "lookup_not_enabled" });
   });

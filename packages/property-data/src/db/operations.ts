@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { dataSources, datasetSyncs, providerResponseCache, type Database } from "@surveynt/db";
+import { referenceDataSources, referenceDatasetSyncs, providerResponseCache, type Database } from "@surveynt/db";
 import { sourceFreshness } from "../operations/freshness";
 import type { ProbeResult } from "../operations/probes";
 import { getSourceDefinition, sourceDefinitions } from "../registry/sources";
@@ -12,8 +12,8 @@ export type SourceOperationsView = Awaited<ReturnType<typeof loadSourceOperation
 
 export async function loadSourceOperations(db: Database, now = new Date()) {
   const [rows, syncs] = await Promise.all([
-    db.select().from(dataSources),
-    db.select().from(datasetSyncs).orderBy(desc(datasetSyncs.startedAt)).limit(2000),
+    db.select().from(referenceDataSources),
+    db.select().from(referenceDatasetSyncs).orderBy(desc(referenceDatasetSyncs.startedAt)).limit(2000),
   ]);
   return sourceDefinitions.map((definition) => {
     const row = rows.find((item) => item.key === definition.key) ?? null;
@@ -45,27 +45,27 @@ export async function setSourceEnablement(db: Database, key: string, input: { en
   if (!definition) throw new OperationRefused("Unknown source.");
   if (input.enabled && definition.registerStatus === "blocked") throw new OperationRefused("This source is blocked in the source register (licence or access) and cannot be enabled.");
   if (input.enabled && (input.notes?.trim().length ?? 0) < 20) throw new OperationRefused("Record what was verified (licence, terms, endpoint, date) in at least 20 characters.");
-  const [updated] = await db.update(dataSources).set(input.enabled
+  const [updated] = await db.update(referenceDataSources).set(input.enabled
     ? { enabled: true, verifiedAt: new Date(), verifiedBy: input.actor, verificationNotes: input.notes!.trim(), updatedAt: new Date() }
-    : { enabled: false, updatedAt: new Date() }).where(eq(dataSources.key, key)).returning({ key: dataSources.key });
+    : { enabled: false, updatedAt: new Date() }).where(eq(referenceDataSources.key, key)).returning({ key: referenceDataSources.key });
   if (!updated) throw new OperationRefused("Run the registry sync before enabling this source.");
   return updated;
 }
 
 export async function recordReleaseCheck(db: Database, key: string, input: { actor: string; note: string }) {
   if (input.note.trim().length < 10) throw new OperationRefused("Say what was checked (at least 10 characters).");
-  const [updated] = await db.update(dataSources).set({ lastReleaseCheckAt: new Date(), lastReleaseCheckBy: input.actor, lastReleaseCheckNote: input.note.trim(), updatedAt: new Date() }).where(eq(dataSources.key, key)).returning({ key: dataSources.key });
+  const [updated] = await db.update(referenceDataSources).set({ lastReleaseCheckAt: new Date(), lastReleaseCheckBy: input.actor, lastReleaseCheckNote: input.note.trim(), updatedAt: new Date() }).where(eq(referenceDataSources.key, key)).returning({ key: referenceDataSources.key });
   if (!updated) throw new OperationRefused("Unknown or unregistered source.");
   return updated;
 }
 
 export async function recordProbe(db: Database, key: string, result: ProbeResult) {
   const at = new Date();
-  await db.update(dataSources).set({
+  await db.update(referenceDataSources).set({
     lastProbeAt: at, lastProbeStatus: result.status, lastProbeMessage: result.message.slice(0, 300),
     ...(result.status === "ok" ? { lastSuccessAt: at } : result.status === "failed" ? { lastFailureAt: at, lastFailureCode: result.message.slice(0, 60) } : {}),
     updatedAt: at,
-  }).where(eq(dataSources.key, key));
+  }).where(eq(referenceDataSources.key, key));
 }
 
 /** Removes cached public responses for a source so the next request uses the newly active data. */
@@ -92,6 +92,6 @@ export async function staleSources(db: Database, now = new Date()) {
 }
 
 export async function sourcesToProbe(db: Database) {
-  const rows = await db.select({ key: dataSources.key }).from(dataSources).where(and(eq(dataSources.enabled, true), inArray(dataSources.key, ["postcodes_io", "planning_data"])));
+  const rows = await db.select({ key: referenceDataSources.key }).from(referenceDataSources).where(and(eq(referenceDataSources.enabled, true), inArray(referenceDataSources.key, ["postcodes_io", "planning_data"])));
   return rows.map((row) => row.key);
 }

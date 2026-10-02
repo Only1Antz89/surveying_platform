@@ -15,7 +15,17 @@
     "test": "vitest run --passWithNoTests",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "test:integration": "vitest run --dir test"
+    "test:integration": "vitest run --dir test",
+    "check:property-data-capabilities": "tsx scripts/check-property-data-capabilities.ts",
+    "verify:property-data-security": "tsx scripts/verify-property-data-security.ts",
+    "verify:property-data-spatial": "tsx scripts/verify-property-data-spatial.ts",
+    "prepare:spatial-geojson": "tsx scripts/prepare-spatial-geojson.ts",
+    "prepare:spatial-gml": "tsx scripts/prepare-spatial-gml.ts",
+    "prepare:ogc-features": "tsx scripts/prepare-ogc-features.ts",
+    "prepare:hmlr-manifest": "tsx scripts/prepare-hmlr-manifest.ts",
+    "import:property-data": "tsx scripts/import-property-data.ts",
+    "activate:property-data": "tsx scripts/activate-property-data.ts",
+    "rollback:property-data": "tsx scripts/rollback-property-data.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",

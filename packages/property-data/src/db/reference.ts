@@ -1,22 +1,22 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
-import { dataSources, datasetSyncs, type Database, type TenantTransaction } from "@surveynt/db";
+import { dataSources, referenceDataSources, referenceDatasetSyncs, type Database, type TenantTransaction } from "@surveynt/db";
 import { sourceDefinitions } from "../registry/sources";
 
 type Executor = Database | TenantTransaction;
 
 export async function getActiveSync(db: Executor, sourceKey: string, layer = "") {
-  const [row] = await db.select().from(datasetSyncs).where(and(eq(datasetSyncs.sourceKey, sourceKey), eq(datasetSyncs.layer, layer), eq(datasetSyncs.status, "active"))).limit(1);
+  const [row] = await db.select().from(referenceDatasetSyncs).where(and(eq(referenceDatasetSyncs.sourceKey, sourceKey), eq(referenceDatasetSyncs.layer, layer), eq(referenceDatasetSyncs.status, "active"))).limit(1);
   return row ?? null;
 }
 
 /** A source may run only when an operator has enabled it after verification. Missing rows are disabled. */
 export async function getSourceState(db: Executor, sourceKey: string) {
-  const [row] = await db.select({ enabled: dataSources.enabled, verifiedAt: dataSources.verifiedAt, registerStatus: dataSources.registerStatus }).from(dataSources).where(eq(dataSources.key, sourceKey)).limit(1);
+  const [row] = await db.select({ enabled: referenceDataSources.enabled, verifiedAt: referenceDataSources.verifiedAt, registerStatus: referenceDataSources.registerStatus }).from(referenceDataSources).where(eq(referenceDataSources.key, sourceKey)).limit(1);
   return { enabled: Boolean(row?.enabled && row.verifiedAt && row.registerStatus !== "blocked"), registered: Boolean(row) };
 }
 
 export async function getSourceStates(db: Executor, keys: string[]) {
-  const rows = keys.length ? await db.select({ key: dataSources.key, enabled: dataSources.enabled, verifiedAt: dataSources.verifiedAt, registerStatus: dataSources.registerStatus }).from(dataSources).where(inArray(dataSources.key, keys)) : [];
+  const rows = keys.length ? await db.select({ key: referenceDataSources.key, enabled: referenceDataSources.enabled, verifiedAt: referenceDataSources.verifiedAt, registerStatus: referenceDataSources.registerStatus }).from(referenceDataSources).where(inArray(referenceDataSources.key, keys)) : [];
   return Object.fromEntries(keys.map((key) => {
     const row = rows.find((item) => item.key === key);
     return [key, Boolean(row?.enabled && row.verifiedAt && row.registerStatus !== "blocked")];
@@ -65,15 +65,15 @@ async function lockSource(tx: TenantTransaction, sourceKey: string, layer: strin
  */
 export async function activateSync(db: Database, syncId: string) {
   return db.transaction(async (tx) => {
-    const [target] = await tx.select().from(datasetSyncs).where(eq(datasetSyncs.id, syncId)).limit(1);
+    const [target] = await tx.select().from(referenceDatasetSyncs).where(eq(referenceDatasetSyncs.id, syncId)).limit(1);
     if (!target) throw new Error("Dataset sync not found.");
     await lockSource(tx, target.sourceKey, target.layer);
-    const [fresh] = await tx.select().from(datasetSyncs).where(eq(datasetSyncs.id, syncId)).limit(1);
+    const [fresh] = await tx.select().from(referenceDatasetSyncs).where(eq(referenceDatasetSyncs.id, syncId)).limit(1);
     if (fresh.status === "active") return fresh;
     if (fresh.status === "failed" || !fresh.completedAt) throw new Error("Only completed, validated imports can be activated.");
-    const [current] = await tx.select().from(datasetSyncs).where(and(eq(datasetSyncs.sourceKey, fresh.sourceKey), eq(datasetSyncs.layer, fresh.layer), eq(datasetSyncs.status, "active"))).limit(1);
-    if (current) await tx.update(datasetSyncs).set({ status: "retired", retiredAt: new Date() }).where(eq(datasetSyncs.id, current.id));
-    const [activated] = await tx.update(datasetSyncs).set({ status: "active", activatedAt: new Date(), retiredAt: null, previousActiveId: current?.id ?? fresh.previousActiveId }).where(eq(datasetSyncs.id, fresh.id)).returning();
+    const [current] = await tx.select().from(referenceDatasetSyncs).where(and(eq(referenceDatasetSyncs.sourceKey, fresh.sourceKey), eq(referenceDatasetSyncs.layer, fresh.layer), eq(referenceDatasetSyncs.status, "active"))).limit(1);
+    if (current) await tx.update(referenceDatasetSyncs).set({ status: "retired", retiredAt: new Date() }).where(eq(referenceDatasetSyncs.id, current.id));
+    const [activated] = await tx.update(referenceDatasetSyncs).set({ status: "active", activatedAt: new Date(), retiredAt: null, previousActiveId: current?.id ?? fresh.previousActiveId }).where(eq(referenceDatasetSyncs.id, fresh.id)).returning();
     return activated;
   });
 }
@@ -84,10 +84,10 @@ export async function rollbackSource(db: Database, sourceKey: string, layer = ""
     await lockSource(tx, sourceKey, layer);
     const current = await getActiveSync(tx, sourceKey, layer);
     if (!current?.previousActiveId) throw new Error("There is no earlier version to roll back to.");
-    const [previous] = await tx.select().from(datasetSyncs).where(eq(datasetSyncs.id, current.previousActiveId)).limit(1);
+    const [previous] = await tx.select().from(referenceDatasetSyncs).where(eq(referenceDatasetSyncs.id, current.previousActiveId)).limit(1);
     if (!previous || previous.status !== "retired") throw new Error("The earlier version is no longer available.");
-    await tx.update(datasetSyncs).set({ status: "retired", retiredAt: new Date() }).where(and(eq(datasetSyncs.id, current.id), eq(datasetSyncs.status, "active")));
-    const [restored] = await tx.update(datasetSyncs).set({ status: "active", activatedAt: new Date(), retiredAt: null }).where(and(eq(datasetSyncs.id, previous.id), eq(datasetSyncs.status, "retired"))).returning();
+    await tx.update(referenceDatasetSyncs).set({ status: "retired", retiredAt: new Date() }).where(and(eq(referenceDatasetSyncs.id, current.id), eq(referenceDatasetSyncs.status, "active")));
+    const [restored] = await tx.update(referenceDatasetSyncs).set({ status: "active", activatedAt: new Date(), retiredAt: null }).where(and(eq(referenceDatasetSyncs.id, previous.id), eq(referenceDatasetSyncs.status, "retired"))).returning();
     if (!restored) throw new Error("Rollback could not be applied.");
     return restored;
   });
@@ -95,9 +95,9 @@ export async function rollbackSource(db: Database, sourceKey: string, layer = ""
 
 /** Keeps the newest `keep` retired versions for rollback and deletes older ones (rows cascade). */
 export async function pruneRetiredSyncs(db: Database, sourceKey: string, keep = 2, layer = "") {
-  const retired = await db.select({ id: datasetSyncs.id }).from(datasetSyncs).where(and(eq(datasetSyncs.sourceKey, sourceKey), eq(datasetSyncs.layer, layer), inArray(datasetSyncs.status, ["retired", "failed"]))).orderBy(desc(datasetSyncs.startedAt));
+  const retired = await db.select({ id: referenceDatasetSyncs.id }).from(referenceDatasetSyncs).where(and(eq(referenceDatasetSyncs.sourceKey, sourceKey), eq(referenceDatasetSyncs.layer, layer), inArray(referenceDatasetSyncs.status, ["retired", "failed"]))).orderBy(desc(referenceDatasetSyncs.startedAt));
   const removable = retired.slice(keep).map((row) => row.id);
-  if (removable.length) await db.delete(datasetSyncs).where(inArray(datasetSyncs.id, removable));
+  if (removable.length) await db.delete(referenceDatasetSyncs).where(inArray(referenceDatasetSyncs.id, removable));
   return removable.length;
 }
 
@@ -121,10 +121,17 @@ export async function syncSourceRegistry(db: Database) {
       definition: source as unknown as Record<string, unknown>,
       updatedAt: new Date(),
     };
-    await db.insert(dataSources).values({ key: source.key, ...values }).onConflictDoUpdate({
-      target: dataSources.key,
+    await db.insert(referenceDataSources).values({ key: source.key, ...values }).onConflictDoUpdate({
+      target: referenceDataSources.key,
       set: { ...values, ...(source.registerStatus === "blocked" ? { enabled: false } : {}) },
     });
+    // Snapshots reference the England release's public.data_sources by key. Register any
+    // key it does not already hold, disabled; existing rows (and their enablement) are untouched.
+    await db.insert(dataSources).values({
+      key: source.key, name: source.name, organisation: source.organisation, category: source.category, documentationUrl: source.documentationUrl,
+      accessUrl: source.accessUrls[0]?.startsWith("http") ? source.accessUrls[0] : null, licence: source.licence.name, licenceUrl: source.licence.url ?? null,
+      attribution: source.licence.attribution, coverageCountries: [...source.coverage], limitations: source.guardrail, accessRequirements: source.accessRequirements, enabled: false,
+    }).onConflictDoNothing();
   }
   return sourceDefinitions.length;
 }

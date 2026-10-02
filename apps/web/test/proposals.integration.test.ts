@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
-import { assistantTasks, clients, dataSources, evidenceLinks, fieldProposals, jobs, organisations, properties, surveyFieldValues, users } from "@surveynt/db";
+import { assistantTasks, clients, referenceDataSources, evidenceLinks, fieldProposals, jobs, organisations, properties, surveyFieldValues, users } from "@surveynt/db";
 import { createTestDatabase, integrationEnabled, stopRelay, type TestDatabase } from "@surveynt/db/testing";
 import { importSpatialLayer, syncSourceRegistry } from "@surveynt/property-data/importers";
 import { processIntelligenceRun, requestIntelligenceRefresh } from "../src/lib/intelligence";
@@ -42,7 +42,7 @@ describe.skipIf(!integrationEnabled)("assistant proposals", () => {
     Object.assign(process.env, { DATABASE_APP_URL: database.appUrl, DATABASE_ADMIN_URL: database.adminUrl, PROPERTY_INTELLIGENCE_ENABLED: "true", ASSISTANT_ENABLED: "true", EPC_API_BASE_URL: "https://epc.example.test", EPC_API_TOKEN: "test-token" });
     const admin = database.connect(database.adminUrl);
     await syncSourceRegistry(admin);
-    await admin.update(dataSources).set({ enabled: true, verifiedAt: new Date(), verifiedBy: "integration-test" }).where(sql`${dataSources.key} in ('planning_data', 'epc_england_wales', 'historic_england_nhle')`);
+    await admin.update(referenceDataSources).set({ enabled: true, verifiedAt: new Date(), verifiedBy: "integration-test" }).where(sql`${referenceDataSources.key} in ('planning_data', 'epc_england_wales', 'historic_england_nhle')`);
     await admin.insert(organisations).values([
       { id: firmA, clerkOrganisationId: "org_a5", name: "Firm A", slug: "firm-a5", practiceType: "residential", region: "Bristol" },
       { id: firmB, clerkOrganisationId: "org_b5", name: "Firm B", slug: "firm-b5", practiceType: "residential", region: "Leeds" },

@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, lte, or, sql } from "drizzle-orm";
-import { auditEvents, backgroundJobs, createDatabase, datasetSyncs, enrichmentRuns, properties, propertyIntelligenceSnapshots, withTenant, type TenantTransaction } from "@surveynt/db";
+import { auditEvents, backgroundJobs, createDatabase, referenceDatasetSyncs, enrichmentRuns, properties, propertyIntelligenceSnapshots, withTenant, type TenantTransaction } from "@surveynt/db";
 import { getSourceDefinition, intelligenceProviders, runProviders, sourceCoversCountry, sourceDefinitions, type IntelligenceProvider, type ProviderResult } from "@surveynt/property-data";
 import { databaseHistoryQuery, databaseScottishEpcQuery, databaseSpatialQuery, getSourceStates } from "@surveynt/property-data/importers";
 import { intelligenceEnabled } from "./property-identity";
@@ -41,7 +41,7 @@ export async function requestIntelligenceRefresh(context: TenantContext, propert
     }
     const [recent] = await tx.select().from(enrichmentRuns).where(and(eq(enrichmentRuns.organisationId, context.organisationId), eq(enrichmentRuns.propertyId, propertyId), eq(enrichmentRuns.inputFingerprint, fingerprint))).orderBy(desc(enrichmentRuns.createdAt)).limit(1);
     if (recent && (recent.status === "queued" || recent.status === "running" || Date.now() - recent.createdAt.getTime() < REUSE_WINDOW_MS)) return { kind: "existing", run: recent };
-    const [run] = await tx.insert(enrichmentRuns).values({ organisationId: context.organisationId, propertyId, actorUserId: context.internalUserId, idempotencyKey: input.idempotencyKey ?? `refresh:${crypto.randomUUID()}`, inputFingerprint: fingerprint, propertyVersion: property.version }).returning();
+    const [run] = await tx.insert(enrichmentRuns).values({ organisationId: context.organisationId, propertyId, actorUserId: context.internalUserId, idempotencyKey: input.idempotencyKey ?? `refresh:${crypto.randomUUID()}`, inputFingerprint: fingerprint, locationFingerprint: fingerprint, propertyVersion: property.version }).returning();
     await tx.insert(backgroundJobs).values({ organisationId: context.organisationId, queue: QUEUE, type: "enrich_property", deduplicationKey: `intelligence:${run.id}`, payload: { runId: run.id } });
     await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "property.intelligence_refresh_requested", resourceType: "property", resourceId: propertyId, metadata: { runId: run.id } });
     return { kind: "queued", run };
@@ -50,17 +50,21 @@ export async function requestIntelligenceRefresh(context: TenantContext, propert
 
 type SnapshotInsert = typeof propertyIntelligenceSnapshots.$inferInsert;
 
+/** The England release stores numeric confidence (0..1); this implementation keeps its label alongside. */
+const confidenceScore = { high: 0.9, medium: 0.6, low: 0.3 } as const;
+
 function snapshotRows(organisationId: string, propertyId: string, runId: string, fingerprint: string, results: ProviderResult[]): SnapshotInsert[] {
   return results.flatMap((item): SnapshotInsert[] => {
     const base = {
       organisationId, propertyId, enrichmentRunId: runId, sourceKey: item.source, datasetVersion: item.datasetVersion, category: item.category,
       informationClass: item.informationClass, coverageStatus: item.coverage, resultStatus: item.status, message: item.message,
-      licence: item.licence as unknown as Record<string, unknown>, inputFingerprint: fingerprint, retrievedAt: new Date(item.retrievedAt),
+      licence: item.licence as unknown as Record<string, unknown>, licenceSnapshot: item.licence as unknown as Record<string, unknown>, attribution: item.licence.attribution ?? "",
+      inputFingerprint: fingerprint, retrievedAt: new Date(item.retrievedAt), confidence: 0, confidenceLabel: null as string | null,
       expiresAt: item.expiresAt ? new Date(item.expiresAt) : null,
     };
     if (!item.records.length) return [{ ...base, matchMethod: "none", data: {}, evidence: [] }];
     return item.records.map((record) => ({
-      ...base, sourceRecordId: record.sourceRecordId, data: record.data, evidence: record.evidence, matchMethod: record.matchMethod, confidence: record.confidence,
+      ...base, sourceRecordId: record.sourceRecordId, data: record.data, evidence: record.evidence, matchMethod: record.matchMethod, confidence: confidenceScore[record.confidence], confidenceLabel: record.confidence,
       sourceUpdatedAt: record.sourceUpdatedAt && !Number.isNaN(Date.parse(record.sourceUpdatedAt)) ? new Date(record.sourceUpdatedAt) : null,
     }));
   });
@@ -201,7 +205,7 @@ export async function loadPropertyIntelligence(context: TenantContext, propertyI
   }
   const now = Date.now();
   // Dataset versions now active, to flag results built from an older import (cache invalidation for stored snapshots).
-  const activeRows = await db.select({ sourceKey: datasetSyncs.sourceKey, datasetVersion: datasetSyncs.datasetVersion }).from(datasetSyncs).where(eq(datasetSyncs.status, "active"));
+  const activeRows = await db.select({ sourceKey: referenceDatasetSyncs.sourceKey, datasetVersion: referenceDatasetSyncs.datasetVersion }).from(referenceDatasetSyncs).where(eq(referenceDatasetSyncs.status, "active"));
   const activeVersions = (key: string) => new Set(activeRows.filter((row) => row.sourceKey === key).map((row) => row.datasetVersion));
   const newerDataAvailable = (sourceKey: string, version: string | null) => {
     if (!version || getSourceDefinition(sourceKey)?.accessMethod !== "bulk_import") return false;
@@ -218,7 +222,7 @@ export async function loadPropertyIntelligence(context: TenantContext, propertyI
       stale: head.inputFingerprint !== fingerprint || !usableRuns.has(head.enrichmentRunId),
       newerDataAvailable: newerDataAvailable(head.sourceKey, head.datasetVersion),
       licence: head.licence,
-      records: head.resultStatus === "matched" ? rows.map((row) => ({ snapshotId: row.id, sourceRecordId: row.sourceRecordId, data: row.data, evidence: row.evidence, matchMethod: row.matchMethod, confidence: row.confidence, sourceUpdatedAt: row.sourceUpdatedAt?.toISOString() ?? null })) : [],
+      records: head.resultStatus === "matched" ? rows.map((row) => ({ snapshotId: row.id, sourceRecordId: row.sourceRecordId, data: row.data, evidence: row.evidence, matchMethod: row.matchMethod, confidence: row.confidenceLabel, sourceUpdatedAt: row.sourceUpdatedAt?.toISOString() ?? null })) : [],
     };
   });
   const enabled = await getSourceStates(db, sourceDefinitions.map((source) => source.key));

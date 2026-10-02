@@ -1,0 +1,1 @@
+ALTER TABLE "spatial_reference_features" ALTER COLUMN "geometry" SET DATA TYPE geometry(Geometry,4326);

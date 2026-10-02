@@ -6,7 +6,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { sql } from "drizzle-orm";
-import { dataSources } from "@surveynt/db";
+import { referenceDataSources } from "@surveynt/db";
 import { createTestDatabase, stopRelay } from "@surveynt/db/testing";
 import { databaseHistoryQuery } from "../src/db/history";
 import { findUprnCandidates, syncSourceRegistry } from "../src/db/reference";
@@ -35,7 +35,7 @@ try {
   const importer = database.connect(database.importerUrl);
   const app = database.connect(database.appUrl);
   await syncSourceRegistry(admin);
-  await admin.update(dataSources).set({ enabled: true, verifiedAt: new Date(), verifiedBy: "benchmark" }).where(sql`${dataSources.key} = 'hmlr_ppd_uprn_lookup'`);
+  await admin.update(referenceDataSources).set({ enabled: true, verifiedAt: new Date(), verifiedBy: "benchmark" }).where(sql`${referenceDataSources.key} = 'hmlr_ppd_uprn_lookup'`);
   const directory = await mkdtemp(path.join(tmpdir(), "surveynt-bench-"));
   const results: string[] = [];
 

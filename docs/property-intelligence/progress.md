@@ -376,3 +376,38 @@ Acceptance:
 | 2026-10-02 | `pnpm check` (L3–L4) | ✅ lint, typecheck, 138 unit tests, build |
 | 2026-10-02 | `pnpm test:integration` (L3–L4, all suites) | ✅ 97 tests (db 3, property-data 28, web 66), including 5 new tests on a 40-case synthetic corpus: private feedback without firm identity; immediate suspension on an "identifying" report; retraction for correction or rejection; held-out evaluation with zero leakage and evaluation-scope-only test cases (repeated three times with different random contributor keys); fine-tuning gate with model-training eligibility |
 | 2026-10-02 | Playwright L3 smoke and demo API (production build) | ✅ survey panel and platform console render with no console errors and no overflow at 390 px; demo feedback API refuses "incorrect" without a note and accepts "helpful" without saving |
+
+---
+
+# England first release (merged from main)
+
+The section below is the England release record from `main`, kept verbatim. Its schema (migrations 0006–0008) is the base this branch's migrations build on; see the reconciliation notes in [`architecture.md`](./architecture.md#reconciliation-with-the-england-release).
+
+## Property intelligence progress
+
+## England first release
+
+- [x] Repository, tenancy, queue and provider-source verification
+- [x] Additive identity, provenance, reference-data and RLS schema
+- [x] Provider-neutral address search and explicit identity confirmation API
+- [x] OS Open UPRN and generic national spatial import capability with pre-activation capacity report
+- [x] Planning Data and EPC provider adapters
+- [x] Historic England, HMLR INSPIRE and separate EA Flood Zone local adapters
+- [x] Idempotent durable enrichment queue and protected worker
+- [x] Intelligence, filtered planning/environment and bounded map APIs
+- [x] Read-only target Neon audit: PostGIS 3.6.4 is available and application/admin roles are separate
+- [x] Apply PostGIS migration to the authorised non-production Neon database
+- [x] Recheck application-role spatial functions, reference-table write denial and tenant RLS after migration
+- [x] Verify metre-distance candidates, inside/outside/boundary intersections and BNG-to-WGS84 transformation in PostGIS
+- [x] Live-verify Postcodes.io and Planning Data response validation against a labelled development fixture
+- [x] Verify protected worker authentication and empty-queue processing against non-production Neon
+- [ ] Import and validate national datasets
+- [x] Full dry-run OS Open UPRN and Historic England; sample-validate HMLR GML without database writes
+- [x] Resolve the EA national source and complete separate Flood Zone 2 and Flood Zone 3 dry-runs
+- [x] Materialise and validate the 296-authority England-only HMLR download manifest
+- [ ] Complete the HMLR national dry-run using sufficient scratch storage or an authorised staged streaming workflow
+- [ ] Live-test EPC after credentials/licence acceptance
+- [ ] Configure production geocoder and basemap providers
+- [ ] Measure national storage, index size and query latency before activation
+
+Deferred: property sales history, geology, mining, national-data administration UI and non-England country adapters.

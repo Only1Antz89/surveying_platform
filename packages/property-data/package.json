@@ -7,7 +7,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./importers": "./src/importers/index.ts",
-    "./db": "./src/db/reference.ts"
+    "./db": "./src/db/reference.ts",
+    "./england": "./src/england.ts"
   },
   "scripts": {
     "build": "tsc --noEmit",
@@ -18,7 +19,8 @@
     "reference": "tsx src/importers/cli.ts",
     "test:integration": "vitest run --dir test",
     "benchmark": "tsx test/benchmark.ts",
-    "coverage": "tsx src/registry/coverage.cli.ts"
+    "coverage": "tsx src/registry/coverage.cli.ts",
+    "verify:providers": "tsx scripts/verify-live-providers.ts"
   },
   "dependencies": {
     "@surveynt/db": "workspace:*",

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { dataSources, providerResponseCache } from "@surveynt/db";
+import { referenceDataSources, providerResponseCache } from "@surveynt/db";
 import { createTestDatabase, integrationEnabled, stopRelay, type TestDatabase } from "@surveynt/db/testing";
 import { activateSyncAndInvalidate, loadSourceOperations, OperationRefused, recordProbe, recordReleaseCheck, rollbackAndInvalidate, setSourceEnablement, sourcesToProbe, staleSources } from "../src/db/operations";
 import { syncSourceRegistry } from "../src/db/reference";
@@ -69,7 +69,7 @@ describe.skipIf(!integrationEnabled)("data source operations", () => {
     // Ninety-one days later, with no new import or release check, the source is due a check; recording one resets it.
     const later = new Date(Date.now() + 91 * 86_400_000);
     expect(await staleSources(admin, later)).toEqual([{ key: "ea_flood_zones", dueAt: expect.any(String) }]);
-    await admin.update(dataSources).set({ lastReleaseCheckAt: new Date(later.getTime() - 86_400_000) }).where(eq(dataSources.key, "ea_flood_zones"));
+    await admin.update(referenceDataSources).set({ lastReleaseCheckAt: new Date(later.getTime() - 86_400_000) }).where(eq(referenceDataSources.key, "ea_flood_zones"));
     expect(await staleSources(admin, later)).toEqual([]);
     await expect(recordReleaseCheck(admin, "ea_flood_zones", { actor: "platform:test", note: "short" })).rejects.toThrow(OperationRefused);
     await recordReleaseCheck(admin, "ea_flood_zones", { actor: "platform:test", note: "No newer release on the Defra page." });
@@ -95,7 +95,7 @@ describe.skipIf(!integrationEnabled)("data source operations", () => {
   });
 
   it("keeps operator metadata out of reach of the app and importer roles", async () => {
-    await expectDenied(database.connect(database.appUrl).update(dataSources).set({ lastReleaseCheckAt: new Date() }).where(eq(dataSources.key, "ea_flood_zones")));
-    await expectDenied(database.connect(database.importerUrl).update(dataSources).set({ lastProbeStatus: "ok" }).where(eq(dataSources.key, "postcodes_io")));
+    await expectDenied(database.connect(database.appUrl).update(referenceDataSources).set({ lastReleaseCheckAt: new Date() }).where(eq(referenceDataSources.key, "ea_flood_zones")));
+    await expectDenied(database.connect(database.importerUrl).update(referenceDataSources).set({ lastProbeStatus: "ok" }).where(eq(referenceDataSources.key, "postcodes_io")));
   });
 });

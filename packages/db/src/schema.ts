@@ -35,9 +35,15 @@ export const jobStage = pgEnum("job_stage", ["enquiry", "quoted", "instructed", 
 export const supportPermission = pgEnum("support_permission", ["read", "write"]);
 export const incidentSeverity = pgEnum("incident_severity", ["low", "medium", "high", "critical"]);
 export const incidentStatus = pgEnum("incident_status", ["investigating", "monitoring", "resolved"]);
-export const ukCountry = pgEnum("uk_country", ["ENG", "WLS", "SCT", "NIR"]);
-export const locationConfidence = pgEnum("location_confidence", ["unresolved", "postcode_centroid", "geocoded_address", "surveyor_confirmed"]);
-export const addressSource = pgEnum("address_source", ["manual", "postcodes_io", "nominatim"]);
+// Shared with the England property-intelligence release (migration 0006). Values
+// used by both implementations; additions are appended so existing rows stay valid.
+export const propertyCountry = pgEnum("property_country", ["ENG", "WLS", "SCT", "NIR"]);
+export const locationConfidence = pgEnum("location_confidence", ["unresolved", "approximate", "confirmed", "exact", "postcode_centroid", "geocoded_address", "surveyor_confirmed"]);
+export const enrichmentStatus = pgEnum("enrichment_status", ["queued", "running", "completed", "partial", "failed", "superseded"]);
+export const providerResultStatus = pgEnum("provider_result_status", ["matched", "no_match", "unsupported", "not_configured", "unavailable", "error"]);
+export const informationClass = pgEnum("information_class", ["surveyor_verified", "authoritative_external", "indicative_external_context", "indicative_external"]);
+export const coverageStatus = pgEnum("coverage_status", ["covered", "partial", "outside_coverage", "unknown", "not_covered"]);
+export const datasetSyncStatus = pgEnum("dataset_sync_status", ["queued", "downloading", "validating", "staged", "active", "failed", "rolled_back"]);
 export const inspectionStatus = pgEnum("inspection_status", ["inspected", "partially_inspected", "not_inspected", "inaccessible", "not_applicable"]);
 export const surveyStatus = pgEnum("survey_status", ["in_progress", "in_review", "approved", "issued", "withdrawn"]);
 export const observationKind = pgEnum("observation_kind", ["current_observation", "measurement", "client_claim", "historical_reference", "external_record"]);
@@ -189,12 +195,13 @@ export const properties = pgTable("properties", {
   // Identity (P1). Nullable so existing and manually entered records stay valid.
   // UPRN is an external identifier, never a uniqueness key: firms may hold the
   // same physical property independently.
-  country: ukCountry("country"),
+  country: propertyCountry("country"),
   uprn: text("uprn"),
   latitude: doublePrecision("latitude"),
   longitude: doublePrecision("longitude"),
-  location: geometry("location", { type: "point", mode: "xy", srid: 4326 }).generatedAlwaysAs(sql`case when latitude is not null and longitude is not null then st_setsrid(st_makepoint(longitude, latitude), 4326) end`),
-  addressSource: addressSource("address_source").notNull().default("manual"),
+  // Kept in step with latitude/longitude by the properties_sync_location trigger (migration 0006).
+  location: geometry("location", { type: "point", mode: "xy", srid: 4326 }),
+  addressSource: text("address_source"),
   locationConfidence: locationConfidence("location_confidence").notNull().default("unresolved"),
   locationResolutionMethod: text("location_resolution_method"),
   resolvedAt: timestamp("resolved_at", { withTimezone: true }),
@@ -209,11 +216,10 @@ export const properties = pgTable("properties", {
   unique("properties_org_id_uidx").on(table.organisationId, table.id),
   index("properties_org_uprn_idx").on(table.organisationId, table.uprn),
   index("properties_location_gix").using("gist", table.location),
-  check("properties_coordinates_pair_chk", sql`(latitude is null) = (longitude is null)`),
-  check("properties_coordinates_uk_chk", sql`latitude is null or (latitude between 49.85 and 60.95 and longitude between -8.75 and 1.8)`),
-  check("properties_uprn_format_chk", sql`uprn is null or uprn ~ '^[0-9]{1,12}$'`),
-  check("properties_location_confidence_chk", sql`(latitude is null) = (location_confidence = 'unresolved')`),
-  check("properties_uprn_confirmation_chk", sql`uprn is null or (uprn_confirmed_at is not null and uprn_evidence_type is not null)`),
+  check("properties_coordinates_pair_check", sql`(${table.latitude} is null and ${table.longitude} is null) or (${table.latitude} is not null and ${table.longitude} is not null)`),
+  check("properties_latitude_check", sql`${table.latitude} is null or ${table.latitude} between -90 and 90`),
+  check("properties_longitude_check", sql`${table.longitude} is null or ${table.longitude} between -180 and 180`),
+  check("properties_uprn_check", sql`${table.uprn} is null or ${table.uprn} ~ '^[0-9]{1,12}$'`),
 ]);
 
 /** Append-only history of identity resolutions and confirmations, with the evidence shown at the time. */
@@ -440,7 +446,7 @@ export const referenceSchema = pgSchema("reference");
 /** Any PostGIS geometry type in WGS84 (drizzle's built-in geometry type is point-only). Values are read as GeoJSON via SQL. */
 const anyGeometry = customType<{ data: string; driverData: string }>({ dataType: () => "geometry(Geometry, 4326)" });
 
-export const dataSources = referenceSchema.table("data_sources", {
+export const referenceDataSources = referenceSchema.table("data_sources", {
   key: text("key").primaryKey(),
   name: text("name").notNull(),
   organisation: text("organisation").notNull(),
@@ -471,9 +477,9 @@ export const dataSources = referenceSchema.table("data_sources", {
 });
 
 /** One row per import attempt. Exactly one active version per source; earlier versions are kept for rollback. */
-export const datasetSyncs = referenceSchema.table("dataset_syncs", {
+export const referenceDatasetSyncs = referenceSchema.table("dataset_syncs", {
   id: uuid("id").primaryKey().defaultRandom(),
-  sourceKey: text("source_key").notNull().references(() => dataSources.key, { onDelete: "restrict" }),
+  sourceKey: text("source_key").notNull().references(() => referenceDataSources.key, { onDelete: "restrict" }),
   /** Layer within a multi-layer source (for example a heritage designation type). Empty for single-layer sources. */
   layer: text("layer").notNull().default(""),
   datasetVersion: text("dataset_version").notNull(),
@@ -499,7 +505,7 @@ export const datasetSyncs = referenceSchema.table("dataset_syncs", {
 ]);
 
 export const osOpenUprn = referenceSchema.table("os_open_uprn", {
-  datasetSyncId: uuid("dataset_sync_id").notNull().references(() => datasetSyncs.id, { onDelete: "cascade" }),
+  datasetSyncId: uuid("dataset_sync_id").notNull().references(() => referenceDatasetSyncs.id, { onDelete: "cascade" }),
   uprn: text("uprn").notNull(),
   geom: geometry("geom", { type: "point", mode: "xy", srid: 4326 }).notNull(),
   sourceX: doublePrecision("source_x"),
@@ -523,7 +529,7 @@ export const surveys = pgTable("surveys", {
   templateVersion: text("template_version").notNull(),
   templateFingerprint: text("template_fingerprint").notNull(),
   serviceLevel: text("service_level").notNull(),
-  jurisdiction: ukCountry("jurisdiction").notNull(),
+  jurisdiction: propertyCountry("jurisdiction").notNull(),
   status: surveyStatus("status").notNull().default("in_progress"),
   clientGeneratedId: text("client_generated_id"),
   createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
@@ -717,7 +723,7 @@ export const syncOperations = pgTable("sync_operations", {
  * bulk-imported open datasets. Only rows of active syncs are ever queried.
  */
 export const spatialFeatures = referenceSchema.table("spatial_features", {
-  datasetSyncId: uuid("dataset_sync_id").notNull().references(() => datasetSyncs.id, { onDelete: "cascade" }),
+  datasetSyncId: uuid("dataset_sync_id").notNull().references(() => referenceDatasetSyncs.id, { onDelete: "cascade" }),
   sourceKey: text("source_key").notNull(),
   layer: text("layer").notNull(),
   featureId: text("feature_id").notNull(),
@@ -736,7 +742,7 @@ export const spatialFeatures = referenceSchema.table("spatial_features", {
 
 /** One Price Paid transaction per dataset version. Corrections (C) and deletions (D) are applied by transaction id. */
 export const pricePaidTransactions = referenceSchema.table("price_paid_transactions", {
-  datasetSyncId: uuid("dataset_sync_id").notNull().references(() => datasetSyncs.id, { onDelete: "cascade" }),
+  datasetSyncId: uuid("dataset_sync_id").notNull().references(() => referenceDatasetSyncs.id, { onDelete: "cascade" }),
   transactionId: text("transaction_id").notNull(),
   price: integer("price").notNull(),
   transferDate: date("transfer_date").notNull(),
@@ -755,7 +761,7 @@ export const pricePaidTransactions = referenceSchema.table("price_paid_transacti
 
 /** Exact transaction-to-UPRN links as published by HM Land Registry. One sale may link to several UPRNs. */
 export const pricePaidUprnLinks = referenceSchema.table("price_paid_uprn_links", {
-  datasetSyncId: uuid("dataset_sync_id").notNull().references(() => datasetSyncs.id, { onDelete: "cascade" }),
+  datasetSyncId: uuid("dataset_sync_id").notNull().references(() => referenceDatasetSyncs.id, { onDelete: "cascade" }),
   transactionId: text("transaction_id").notNull(),
   uprn: text("uprn").notNull(),
 }, (table) => [
@@ -765,16 +771,105 @@ export const pricePaidUprnLinks = referenceSchema.table("price_paid_uprn_links",
   check("price_paid_uprn_links_uprn_chk", sql`uprn ~ '^[0-9]{1,12}$'`),
 ]);
 
+// England property-intelligence reference tables (migration 0006), used by the
+// national import scripts in packages/db/scripts and lib/property-intelligence.
+const geometryFeature4326 = customType<{ data: string; driverData: string }>({
+  dataType() {
+    return "geometry(Geometry,4326)";
+  },
+});
+
+export const dataSources = pgTable("data_sources", {
+  key: text("key").primaryKey(),
+  name: text("name").notNull(),
+  organisation: text("organisation").notNull(),
+  category: text("category").notNull(),
+  documentationUrl: text("documentation_url").notNull(),
+  accessUrl: text("access_url"),
+  licence: text("licence").notNull(),
+  licenceUrl: text("licence_url"),
+  attribution: text("attribution").notNull(),
+  coverageCountries: text("coverage_countries").array().notNull().default(sql`'{}'::text[]`),
+  limitations: text("limitations"),
+  accessRequirements: text("access_requirements"),
+  enabled: boolean("enabled").notNull().default(false),
+  refreshPolicy: text("refresh_policy"),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  latestSuccessfulSyncAt: timestamp("latest_successful_sync_at", { withTimezone: true }),
+  ...timestamps,
+});
+
+export const datasetVersions = pgTable("dataset_versions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sourceKey: text("source_key").notNull().references(() => dataSources.key, { onDelete: "restrict" }),
+  version: text("version").notNull(),
+  checksum: text("checksum").notNull(),
+  sourceUrl: text("source_url").notNull(),
+  licenceSnapshot: jsonb("licence_snapshot").$type<Record<string, unknown>>().notNull().default({}),
+  recordCount: integer("record_count").notNull().default(0),
+  validation: jsonb("validation").$type<Record<string, unknown>>().notNull().default({}),
+  active: boolean("active").notNull().default(false),
+  activatedAt: timestamp("activated_at", { withTimezone: true }),
+  ...timestamps,
+}, (table) => [
+  uniqueIndex("dataset_versions_source_version_uidx").on(table.sourceKey, table.version),
+  index("dataset_versions_source_active_idx").on(table.sourceKey, table.active),
+]);
+
+export const datasetSyncs = pgTable("dataset_syncs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sourceKey: text("source_key").notNull().references(() => dataSources.key, { onDelete: "restrict" }),
+  datasetVersionId: uuid("dataset_version_id").references(() => datasetVersions.id, { onDelete: "set null" }),
+  status: datasetSyncStatus("status").notNull().default("queued"),
+  sourceUrl: text("source_url").notNull(),
+  checksum: text("checksum"),
+  recordCount: integer("record_count"),
+  validation: jsonb("validation").$type<Record<string, unknown>>().notNull().default({}),
+  safeError: text("safe_error"),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [index("dataset_syncs_source_time_idx").on(table.sourceKey, table.createdAt)]);
+
+export const osUprnPoints = pgTable("os_uprn_points", {
+  datasetVersionId: uuid("dataset_version_id").notNull().references(() => datasetVersions.id, { onDelete: "cascade" }),
+  uprn: text("uprn").notNull(),
+  location: geometry("location", { type: "point", mode: "xy", srid: 4326 }).notNull(),
+  sourceEasting: doublePrecision("source_easting"),
+  sourceNorthing: doublePrecision("source_northing"),
+}, (table) => [
+  uniqueIndex("os_uprn_points_version_uprn_uidx").on(table.datasetVersionId, table.uprn),
+  index("os_uprn_points_location_gix").using("gist", table.location),
+  check("os_uprn_points_uprn_check", sql`${table.uprn} ~ '^[0-9]{1,12}$'`),
+]);
+
+export const spatialReferenceFeatures = pgTable("spatial_reference_features", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  datasetVersionId: uuid("dataset_version_id").notNull().references(() => datasetVersions.id, { onDelete: "cascade" }),
+  sourceKey: text("source_key").notNull().references(() => dataSources.key, { onDelete: "restrict" }),
+  sourceRecordId: text("source_record_id").notNull(),
+  name: text("name"),
+  geometry: geometryFeature4326("geometry").notNull(),
+  properties: jsonb("properties").$type<Record<string, unknown>>().notNull().default({}),
+}, (table) => [
+  uniqueIndex("spatial_reference_version_record_uidx").on(table.datasetVersionId, table.sourceRecordId),
+  index("spatial_reference_source_idx").on(table.sourceKey),
+  index("spatial_reference_geometry_gix").using("gist", table.geometry),
+]);
+
 export const enrichmentRuns = pgTable("enrichment_runs", {
   id: uuid("id").primaryKey().defaultRandom(),
   organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
-  propertyId: uuid("property_id").notNull(),
+  propertyId: uuid("property_id").notNull().references(() => properties.id, { onDelete: "restrict" }),
   actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
   idempotencyKey: text("idempotency_key").notNull(),
-  status: text("status").notNull().default("queued"),
-  inputFingerprint: text("input_fingerprint").notNull(),
-  propertyVersion: integer("property_version").notNull(),
+  status: enrichmentStatus("status").notNull().default("queued"),
   providerStatuses: jsonb("provider_statuses").$type<Record<string, unknown>>().notNull().default({}),
+  safeErrors: jsonb("safe_errors").$type<Record<string, string>>().notNull().default({}),
+  propertyVersion: integer("property_version").notNull(),
+  /** England release: identity fingerprint. This implementation stores its input fingerprint here as well. */
+  locationFingerprint: text("location_fingerprint").notNull(),
+  inputFingerprint: text("input_fingerprint").notNull().default(""),
   error: text("error"),
   startedAt: timestamp("started_at", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),
@@ -782,18 +877,18 @@ export const enrichmentRuns = pgTable("enrichment_runs", {
 }, (table) => [
   unique("enrichment_runs_org_id_uidx").on(table.organisationId, table.id),
   foreignKey({ name: "enrichment_runs_property_fk", columns: [table.organisationId, table.propertyId], foreignColumns: [properties.organisationId, properties.id] }).onDelete("restrict"),
-  uniqueIndex("enrichment_runs_idempotency_uidx").on(table.organisationId, table.idempotencyKey),
-  index("enrichment_runs_property_idx").on(table.propertyId, table.createdAt),
-  check("enrichment_runs_status_chk", sql`status in ('queued', 'running', 'completed', 'partial', 'failed', 'superseded')`),
+  uniqueIndex("enrichment_runs_org_idempotency_uidx").on(table.organisationId, table.idempotencyKey),
+  index("enrichment_runs_property_time_idx").on(table.propertyId, table.createdAt),
+  index("enrichment_runs_org_status_idx").on(table.organisationId, table.status),
 ]);
 
 /** Immutable record of what a source said about a property at retrieval time. Never overwrites surveyor observations. */
 export const propertyIntelligenceSnapshots = pgTable("property_intelligence_snapshots", {
   id: uuid("id").primaryKey().defaultRandom(),
   organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
-  propertyId: uuid("property_id").notNull(),
-  enrichmentRunId: uuid("enrichment_run_id").notNull(),
-  sourceKey: text("source_key").notNull(),
+  propertyId: uuid("property_id").notNull().references(() => properties.id, { onDelete: "restrict" }),
+  enrichmentRunId: uuid("enrichment_run_id").notNull().references(() => enrichmentRuns.id, { onDelete: "restrict" }),
+  sourceKey: text("source_key").notNull().references(() => dataSources.key, { onDelete: "restrict" }),
   datasetVersion: text("dataset_version"),
   sourceRecordId: text("source_record_id"),
   category: text("category").notNull(),
@@ -801,13 +896,18 @@ export const propertyIntelligenceSnapshots = pgTable("property_intelligence_snap
   data: jsonb("data").$type<Record<string, unknown>>().notNull().default({}),
   evidence: jsonb("evidence").$type<{ label: string; url: string }[]>().notNull().default([]),
   matchMethod: text("match_method").notNull(),
-  confidence: text("confidence"),
-  informationClass: text("information_class").notNull(),
-  coverageStatus: text("coverage_status").notNull(),
-  resultStatus: text("result_status").notNull(),
+  /** England release: numeric confidence 0..1. */
+  confidence: doublePrecision("confidence").notNull(),
+  /** This implementation's confidence label (exact, high, …); numeric confidence is derived from it. */
+  confidenceLabel: text("confidence_label"),
+  informationClass: informationClass("information_class").notNull(),
+  coverageStatus: coverageStatus("coverage_status").notNull(),
+  resultStatus: providerResultStatus("result_status").notNull(),
   message: text("message"),
+  licenceSnapshot: jsonb("licence_snapshot").$type<Record<string, unknown>>().notNull().default({}),
   licence: jsonb("licence").$type<Record<string, unknown>>().notNull().default({}),
-  inputFingerprint: text("input_fingerprint").notNull(),
+  attribution: text("attribution").notNull(),
+  inputFingerprint: text("input_fingerprint").notNull().default(""),
   retrievedAt: timestamp("retrieved_at", { withTimezone: true }).notNull(),
   sourceUpdatedAt: timestamp("source_updated_at", { withTimezone: true }),
   expiresAt: timestamp("expires_at", { withTimezone: true }),
@@ -818,9 +918,9 @@ export const propertyIntelligenceSnapshots = pgTable("property_intelligence_snap
   foreignKey({ name: "property_intelligence_snapshots_run_fk", columns: [table.organisationId, table.enrichmentRunId], foreignColumns: [enrichmentRuns.organisationId, enrichmentRuns.id] }).onDelete("restrict"),
   index("property_intelligence_snapshots_property_idx").on(table.propertyId, table.sourceKey, table.category, table.retrievedAt),
   index("property_intelligence_snapshots_run_idx").on(table.enrichmentRunId),
-  check("property_intelligence_snapshots_status_chk", sql`result_status in ('matched', 'no_match', 'unsupported', 'not_configured', 'unavailable', 'error')`),
-  check("property_intelligence_snapshots_class_chk", sql`information_class in ('surveyor_verified', 'authoritative_external', 'indicative_external')`),
-  check("property_intelligence_snapshots_coverage_chk", sql`coverage_status in ('covered', 'partial', 'not_covered', 'unknown')`),
+  index("property_intelligence_property_source_time_idx").on(table.propertyId, table.sourceKey, table.createdAt),
+  index("property_intelligence_org_idx").on(table.organisationId),
+  check("property_intelligence_confidence_check", sql`${table.confidence} between 0 and 1`),
 ]);
 
 /**
@@ -997,7 +1097,7 @@ export const reportApprovals = pgTable("report_approvals", {
 // Scottish EPC Register extracts (P6). Certificate facts keyed by the
 // published UPRN reference only; no address field is stored.
 export const scottishEpcCertificates = referenceSchema.table("scottish_epc_certificates", {
-  datasetSyncId: uuid("dataset_sync_id").notNull().references(() => datasetSyncs.id, { onDelete: "cascade" }),
+  datasetSyncId: uuid("dataset_sync_id").notNull().references(() => referenceDatasetSyncs.id, { onDelete: "cascade" }),
   certificateKey: text("certificate_key").notNull(),
   uprn: text("uprn").notNull(),
   lodgementDate: date("lodgement_date"),

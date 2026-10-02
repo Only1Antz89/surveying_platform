@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
 import { eq, sql } from "drizzle-orm";
-import { datasetSyncs, type Database } from "@surveynt/db";
+import { referenceDatasetSyncs, type Database } from "@surveynt/db";
 import { getSourceDefinition } from "../registry/sources";
 import { isValidUprn } from "../matching/identity";
 import { activateSync } from "../db/reference";
@@ -59,7 +59,7 @@ export async function importOsOpenUprn(db: Database, options: OsOpenUprnImportOp
   const definition = getSourceDefinition("os_open_uprn");
   if (!definition) throw new Error("os_open_uprn is not registered.");
   const checksum = await sha256File(options.filePath);
-  const [sync] = await db.insert(datasetSyncs).values({
+  const [sync] = await db.insert(referenceDatasetSyncs).values({
     sourceKey: "os_open_uprn",
     datasetVersion: options.datasetVersion,
     sourceUrl: options.sourceUrl ?? definition.accessUrls[0] ?? null,
@@ -112,7 +112,7 @@ export async function importOsOpenUprn(db: Database, options: OsOpenUprnImportOp
     const crs = (crsCheck as unknown as { rows: { sampled: number; discrepant: number }[] }).rows[0];
     const validation = { storedRows: stored, skippedRows: skipped, crsSampled: crs.sampled, crsDiscrepant: crs.discrepant, crsToleranceMetres: tolerance };
     if (crs.discrepant > 0) throw Object.assign(new Error(`${crs.discrepant} sampled rows disagree between BNG and latitude/longitude by more than ${tolerance} m.`), { validation });
-    await db.update(datasetSyncs).set({ recordCount: stored, validation, completedAt: new Date() }).where(eq(datasetSyncs.id, sync.id));
+    await db.update(referenceDatasetSyncs).set({ recordCount: stored, validation, completedAt: new Date() }).where(eq(referenceDatasetSyncs.id, sync.id));
     if (options.activate) {
       await activateSync(db, sync.id);
       return { syncId: sync.id, status: "active", recordCount: stored, skipped, validation };
@@ -122,7 +122,7 @@ export async function importOsOpenUprn(db: Database, options: OsOpenUprnImportOp
     const message = reason instanceof Error ? reason.message.slice(0, 1000) : "Import failed.";
     const validation = (reason as { validation?: Record<string, unknown> }).validation ?? { skippedRows: skipped };
     await db.execute(sql`delete from reference.os_open_uprn where dataset_sync_id = ${sync.id}`);
-    await db.update(datasetSyncs).set({ status: "failed", error: message, validation, completedAt: new Date() }).where(eq(datasetSyncs.id, sync.id));
+    await db.update(referenceDatasetSyncs).set({ status: "failed", error: message, validation, completedAt: new Date() }).where(eq(referenceDatasetSyncs.id, sync.id));
     return { syncId: sync.id, status: "failed", recordCount: 0, skipped, validation, error: message };
   }
 }

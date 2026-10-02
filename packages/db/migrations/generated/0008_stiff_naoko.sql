@@ -1,0 +1,1 @@
+ALTER TABLE "property_intelligence_snapshots" ADD CONSTRAINT "property_intelligence_snapshots_source_key_data_sources_key_fk" FOREIGN KEY ("source_key") REFERENCES "public"."data_sources"("key") ON DELETE restrict ON UPDATE no action;
