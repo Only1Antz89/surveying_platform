@@ -1,8 +1,21 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  transpilePackages: ["@surveynt/domain", "@surveynt/ui", "@surveynt/db"],
-  serverExternalPackages: ["@neondatabase/serverless"],
+  transpilePackages: ["@surveynt/domain", "@surveynt/ui", "@surveynt/db", "@surveynt/property-data", "@surveynt/assistant", "@surveynt/evidence", "@surveynt/learning"],
+  // Native image processing and pdf.js stay as Node packages rather than being bundled.
+  serverExternalPackages: ["@neondatabase/serverless", "sharp", "unpdf"],
+  async headers() {
+    return [
+      {
+        source: "/sw.js",
+        headers: [
+          { key: "Content-Type", value: "application/javascript; charset=utf-8" },
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+          { key: "Content-Security-Policy", value: "default-src 'self'; script-src 'self'" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

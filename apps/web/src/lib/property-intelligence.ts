@@ -24,7 +24,7 @@ import {
   type AddressCandidate,
   type PropertyLocation,
   type ProviderResult,
-} from "@surveynt/property-data";
+} from "@surveynt/property-data/england";
 
 const intelligenceJobType = "property_intelligence_refresh";
 const maximumAttempts = 5;

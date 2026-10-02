@@ -1,28 +1,22 @@
 import { z } from "zod";
-import { apiContext } from "@/lib/access";
+import { canMutateOperations } from "@surveynt/domain";
+import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
-import { findNearbyUprns, resolveAddressCandidate } from "@/lib/property-intelligence";
+import { resolveCandidate } from "@/lib/property-identity";
 
-const candidateSchema = z.object({
-  providerKey: z.enum(["postcodes_io", "nominatim"]),
-  sourceRecordId: z.string().min(1).max(100),
-  displayLabel: z.string().min(1).max(500),
-  line1: z.string().max(180),
-  line2: z.string().max(180).nullable(),
-  city: z.string().max(100),
-  postcode: z.string().max(10),
-  country: z.literal("ENG"),
-  latitude: z.number().min(-90).max(90),
-  longitude: z.number().min(-180).max(180),
-  precision: z.enum(["address", "street", "postcode", "place"]),
-  attribution: z.string().min(1).max(300),
-});
+export const runtime = "nodejs";
 
+const resolveBody = z.object({ lookupId: z.union([z.uuid(), z.literal("demo")]), index: z.number().int().min(0).max(9) });
+
+/** Returns the selected location (with its confidence) and UPRN candidates. Never selects a UPRN automatically. */
 export async function POST(request: Request) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
-  const parsed = await parseBody(request, candidateSchema);
-  if (!parsed.success) return problem(400, "invalid_candidate", "The selected address candidate is invalid.", parsed.error.flatten());
-  const uprns = context.demo ? [] : await findNearbyUprns(parsed.data.latitude, parsed.data.longitude);
-  return ok(resolveAddressCandidate(parsed.data, uprns), { demo: context.demo });
+  if (!canWriteWorkspace(context)) return problem(402, "workspace_read_only", "Restore billing before changing workspace records.");
+  if (!canMutateOperations(context.role)) return problem(403, "forbidden", "Your role cannot create or edit property records.");
+  const parsed = await parseBody(request, resolveBody);
+  if (!parsed.success) return problem(400, "invalid_request", "Choose one of the search results.", parsed.error.flatten());
+  const result = await resolveCandidate({ organisationId: context.organisationId, internalUserId: context.internalUserId, demo: context.demo }, parsed.data.lookupId, parsed.data.index);
+  if ("problem" in result) return problem(result.problem === "not_found" ? 404 : 422, result.problem, result.message);
+  return ok(result, { demo: result.demo });
 }

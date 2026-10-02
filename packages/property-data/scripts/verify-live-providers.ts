@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { planningDataProvider, searchPostcode, validateProviderResult } from "../src/index";
+import { planningDataProvider, searchPostcode, validateProviderResult } from "../src/england";
 
 async function main() {
   const postcodeCandidates = await searchPostcode("BS8 4JX");

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { epcProvider, locationFingerprint, providerCacheKey, ProviderHttpError, propertyLocationSchema, retryClassification, searchNominatim, searchPostcode, sourceRegistry, validateProviderResult } from "./index";
+import { epcProvider, locationFingerprint, providerCacheKey, ProviderHttpError, propertyLocationSchema, retryClassification, searchNominatim, searchPostcode, sourceRegistry, validateProviderResult } from "./england";
 
 afterEach(() => vi.unstubAllGlobals());
 

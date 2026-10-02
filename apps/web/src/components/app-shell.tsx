@@ -6,8 +6,8 @@ import { usePathname } from "next/navigation";
 import { BrandMark } from "@surveynt/ui";
 import {
   Activity, Bell, BookOpenCheck, BriefcaseBusiness, Building2, ChevronDown,
-  CircleDollarSign, ClipboardCheck, FileClock, Headphones, House, Menu, Settings,
-  ShieldCheck, SlidersHorizontal, Users, X, type LucideIcon,
+  CircleDollarSign, ClipboardCheck, Database, FileClock, Headphones, House, Menu, Network, Settings,
+  ShieldCheck, SlidersHorizontal, Sparkles, Users, X, type LucideIcon,
 } from "lucide-react";
 import { platformRoleLabels, roleLabels, type OrganisationRole, type PlatformRole } from "@surveynt/domain";
 
@@ -18,6 +18,7 @@ const firmItems = (slug: string): Item[] => [
   { label: "Clients", href: `/app/${slug}/clients`, icon: Users },
   { label: "Properties", href: `/app/${slug}/properties`, icon: Building2 },
   { label: "Jobs", href: `/app/${slug}/jobs`, icon: BriefcaseBusiness },
+  { label: "Wording", href: `/app/${slug}/wording`, icon: BookOpenCheck },
   { label: "Team", href: `/app/${slug}/team`, icon: ShieldCheck },
   { label: "Settings", href: `/app/${slug}/settings`, icon: Settings },
 ];
@@ -30,6 +31,9 @@ const platformItems: Item[] = [
   { label: "Support", href: "/platform/support", icon: Headphones },
   { label: "Incidents", href: "/platform/incidents", icon: ShieldCheck },
   { label: "Practice packs", href: "/platform/practice-packs", icon: BookOpenCheck },
+  { label: "Data sources", href: "/platform/data-sources", icon: Database },
+  { label: "Assistant", href: "/platform/assistant", icon: Sparkles },
+  { label: "Shared learning", href: "/platform/learning", icon: Network },
   { label: "Audit", href: "/platform/audit", icon: FileClock },
   { label: "Settings", href: "/platform/settings", icon: SlidersHorizontal },
 ];

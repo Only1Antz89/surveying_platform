@@ -4,6 +4,10 @@ import { canMutateOperations, canTransitionJob, jobStages } from "@surveynt/doma
 import { auditEvents, createDatabase, jobAssignments, jobs, jobStageEvents, organisationMemberships, users } from "@surveynt/db";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
+import { checkOverrides } from "@surveynt/assistant";
+import { enforceStageGate, gatedStages, stageGateProblem, type StageGateOutcome } from "@/lib/completion";
+import { completionReportFromPack } from "@/lib/completion-input";
+import { demoSurveyPack } from "@/lib/demo-survey";
 import { jobs as demoJobs, members as demoMembers } from "@/lib/demo-data";
 
 const patchJob = z.object({
@@ -15,8 +19,15 @@ const patchJob = z.object({
   priority: z.enum(["normal", "high"]).optional(),
   fee: z.string().regex(/^\d+(\.\d{1,2})?$/).nullable().optional(),
   notes: z.string().max(5000).nullable().optional(),
+  /** Reasons for proceeding past failing completion checks (internal review and issue only). */
+  completionOverrides: z.array(z.object({ itemId: z.string().min(1).max(300), reason: z.string().min(1).max(200), note: z.string().trim().max(1000).nullable().optional() })).max(100).optional(),
   version: z.number().int().positive(),
-}).refine((value) => Object.keys(value).some((key) => key !== "version"), "At least one change is required.");
+}).refine((value) => Object.keys(value).some((key) => key !== "version" && key !== "completionOverrides"), "At least one change is required.");
+
+/** Thrown inside the transaction so nothing (including override records) is kept when the gate refuses the change. */
+class StageGateBlocked extends Error {
+  constructor(readonly outcome: Extract<StageGateOutcome, { kind: "blocked" }>) { super("Completion checks failed"); }
+}
 
 export async function GET(request: Request, context: RouteContext<"/api/v1/jobs/[id]">) {
   const session = await apiContext(request);
@@ -54,6 +65,13 @@ export async function PATCH(request: Request, context: RouteContext<"/api/v1/job
   if (session.demo) {
     const job = demoJobs.find((item) => item.id === id);
     if (!job) return problem(404, "job_not_found", "The job could not be found.");
+    // The demo applies the same completion checks to its representative survey.
+    const demoPack = parsed.data.stage && gatedStages.includes(parsed.data.stage) ? demoSurveyPack(id) : null;
+    const demoReport = demoPack ? completionReportFromPack(demoPack) : null;
+    if (demoPack && demoReport && !demoReport.ready) {
+      const check = checkOverrides(demoReport, parsed.data.completionOverrides ?? []);
+      if (!check.ok) return problem(422, "completion_checks_failed", "The survey has failing completion checks. Resolve them, or record a permitted reason for each one.", stageGateProblem({ kind: "blocked", surveyId: demoPack.survey.id, report: demoReport, check, mayOverride: true }));
+    }
     const currentAssignee = demoMembers.find((member) => member.name === job.assignee)?.id ?? null;
     return ok({ id, clientId: "demo-client", propertyId: "demo-property", reference: job.reference, serviceName: parsed.data.serviceName ?? job.service, stage: parsed.data.stage ?? job.stage, assignedSurveyorId: parsed.data.assigneeId === undefined ? currentAssignee : parsed.data.assigneeId, coordinatorId: parsed.data.coordinatorId ?? null, targetDate: parsed.data.targetDate ?? null, fee: parsed.data.fee ?? String(job.fee), notes: parsed.data.notes ?? null, priority: parsed.data.priority ?? job.priority.toLowerCase(), version: parsed.data.version + 1 }, { demo: true, persisted: false });
   }
@@ -72,6 +90,10 @@ export async function PATCH(request: Request, context: RouteContext<"/api/v1/job
     const changes = { stage: parsed.data.stage, serviceName: parsed.data.serviceName, targetDate: parsed.data.targetDate, priority: parsed.data.priority, fee: parsed.data.fee, notes: parsed.data.notes };
     const [updated] = await tx.update(jobs).set({ ...changes, ...(parsed.data.assigneeId !== undefined ? { assignedSurveyorId: parsed.data.assigneeId } : {}), version: current.version + 1, updatedAt: new Date() }).where(and(eq(jobs.id, id), eq(jobs.organisationId, session.organisationId), eq(jobs.version, current.version))).returning();
     if (!updated) return { kind: "conflict" as const };
+    if (parsed.data.stage && parsed.data.stage !== current.stage) {
+      const gate = await enforceStageGate(tx, { organisationId: session.organisationId, internalUserId: session.internalUserId, role: session.role }, { jobId: id, targetStage: parsed.data.stage, overrides: parsed.data.completionOverrides ?? [] });
+      if (gate.kind === "blocked") throw new StageGateBlocked(gate);
+    }
     if (parsed.data.coordinatorId !== undefined) {
       await tx.delete(jobAssignments).where(and(eq(jobAssignments.jobId, id), eq(jobAssignments.organisationId, session.organisationId), eq(jobAssignments.responsibility, "coordinator")));
       if (parsed.data.coordinatorId) await tx.insert(jobAssignments).values({ organisationId: session.organisationId, jobId: id, userId: parsed.data.coordinatorId, responsibility: "coordinator" });
@@ -79,7 +101,11 @@ export async function PATCH(request: Request, context: RouteContext<"/api/v1/job
     if (parsed.data.stage) await tx.insert(jobStageEvents).values({ organisationId: session.organisationId, jobId: id, fromStage: current.stage, toStage: parsed.data.stage, changedByUserId: session.internalUserId, reason: "API stage update" });
     await tx.insert(auditEvents).values({ organisationId: session.organisationId, actorUserId: session.internalUserId, action: "job.updated", resourceType: "job", resourceId: id, metadata: { fromVersion: current.version, toVersion: current.version + 1, fields: Object.keys(parsed.data).filter((key) => key !== "version") } });
     return { kind: "updated" as const, job: updated };
+  }).catch((reason: unknown) => {
+    if (reason instanceof StageGateBlocked) return { kind: "blocked" as const, outcome: reason.outcome };
+    throw reason;
   });
+  if (result.kind === "blocked") return problem(422, "completion_checks_failed", result.outcome.mayOverride ? "The survey has failing completion checks. Resolve them, or record a permitted reason for each one." : "The survey has failing completion checks. Resolve them, or ask a surveyor to record the reasons.", stageGateProblem(result.outcome));
   if (result.kind === "missing") return problem(404, "job_not_found", "The job could not be found.");
   if (result.kind === "conflict") return problem(409, "version_conflict", "The job was changed by another user. Reload it before trying again.");
   if (result.kind === "transition") return problem(422, "invalid_stage_transition", `A job cannot move directly from ${result.from} to ${result.to}.`);

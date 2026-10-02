@@ -21,7 +21,7 @@ export const organisationRoles = [
 ] as const;
 export type OrganisationRole = (typeof organisationRoles)[number];
 
-export const platformRoles = ["super_admin", "support", "billing", "compliance"] as const;
+export const platformRoles = ["super_admin", "support", "billing", "compliance", "privacy_reviewer", "technical_reviewer", "release_manager"] as const;
 export type PlatformRole = (typeof platformRoles)[number];
 
 export const platformRoleLabels: Record<PlatformRole, string> = {
@@ -29,6 +29,9 @@ export const platformRoleLabels: Record<PlatformRole, string> = {
   support: "Support",
   billing: "Billing",
   compliance: "Compliance",
+  privacy_reviewer: "Privacy reviewer",
+  technical_reviewer: "Technical reviewer",
+  release_manager: "Release manager",
 };
 
 export const jobStages = [
@@ -72,6 +75,11 @@ export function canMutateOperations(role: OrganisationRole) {
 }
 
 export function canManageTeam(role: OrganisationRole) {
+  return role === "owner" || role === "administrator";
+}
+
+/** Approving firm wording makes it available to every report, so it is limited to owners and administrators. */
+export function canApproveWording(role: OrganisationRole) {
   return role === "owner" || role === "administrator";
 }
 
@@ -131,4 +139,19 @@ export function resolveAccess(
     return graceEndsAt && graceEndsAt > now ? "full" : "read_only";
   }
   return "billing_only";
+}
+
+export const ukCountries = ["ENG", "WLS", "SCT", "NIR"] as const;
+export type UkCountry = (typeof ukCountries)[number];
+
+export const ukCountryLabels: Record<UkCountry, string> = {
+  ENG: "England",
+  WLS: "Wales",
+  SCT: "Scotland",
+  NIR: "Northern Ireland",
+};
+
+/** Confirming which property a UPRN identifies is a professional identity decision. */
+export function canConfirmPropertyIdentity(role: OrganisationRole) {
+  return role === "owner" || role === "administrator" || role === "surveyor";
 }

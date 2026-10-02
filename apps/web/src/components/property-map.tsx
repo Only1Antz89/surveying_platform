@@ -1,49 +1,96 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import maplibregl, { type ExpressionSpecification, type Map as MapLibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { Layers } from "lucide-react";
+import type { PropertyMapView } from "@/lib/property-map";
 
-type FeatureCollection = { type: "FeatureCollection"; features: Array<{ type: "Feature"; geometry: { type: string; coordinates: unknown }; properties: Record<string, unknown> }> };
+const palette = ["#2563eb", "#b45309", "#7c3aed", "#0f766e", "#be123c", "#4d7c0f", "#0369a1", "#a16207"];
+const styleUrl = process.env.NEXT_PUBLIC_MAP_STYLE_URL;
+const basemapAttribution = process.env.NEXT_PUBLIC_MAP_ATTRIBUTION;
 
-const colourExpression: ExpressionSpecification = ["match", ["get", "sourceKey"], "hmlr_inspire", "#dc2626", "historic_england", "#7c3aed", "planning_data", "#2563eb", "ea_flood_zone_2", "#60a5fa", "ea_flood_zone_3", "#1d4ed8", "#3b82f6"];
-
-export function PropertyMap({ propertyId, latitude, longitude }: { propertyId: string; latitude: number; longitude: number }) {
+/**
+ * MapLibre view of imported reference layers. The basemap is configurable; without one, data layers are drawn on
+ * a plain background (public OSM tile servers are not used for production traffic). Every visible layer is attributed.
+ */
+export function PropertyMap({ propertyId }: { propertyId: string }) {
   const container = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<MapLibreMap | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const styleUrl = process.env.NEXT_PUBLIC_MAP_STYLE_URL;
-  const attribution = process.env.NEXT_PUBLIC_MAP_ATTRIBUTION ?? "© OpenStreetMap contributors";
-  const configurationError = !styleUrl && process.env.NODE_ENV === "production" ? "A production map provider has not been configured." : null;
+  const [view, setView] = useState<PropertyMapView | null>(null);
+  const [demo, setDemo] = useState(false);
+  const [hidden, setHidden] = useState<Record<string, boolean>>({});
+  const [mapError, setMapError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const mapRef = useRef<import("maplibre-gl").Map | null>(null);
 
   useEffect(() => {
-    if (!container.current || mapRef.current || configurationError) return;
-    const style = styleUrl || {
-      version: 8 as const,
-      sources: { osm: { type: "raster" as const, tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], tileSize: 256, attribution } },
-      layers: [{ id: "osm", type: "raster" as const, source: "osm" }],
-    };
-    const map = new maplibregl.Map({ container: container.current, style, center: [longitude, latitude], zoom: 17, attributionControl: false });
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
-    map.addControl(new maplibregl.AttributionControl({ customAttribution: attribution, compact: true }));
-    mapRef.current = map;
-    map.on("load", async () => {
-      try {
-        const response = await fetch(`/api/v1/properties/${propertyId}/intelligence/map`);
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload?.error?.message ?? "Map context could not be loaded.");
-        const collection = payload.data as FeatureCollection;
-        map.addSource("property-intelligence", { type: "geojson", data: collection as never });
-        map.addLayer({ id: "intelligence-fills", type: "fill", source: "property-intelligence", filter: ["!=", ["geometry-type"], "Point"], paint: { "fill-color": colourExpression, "fill-opacity": 0.25 } });
-        map.addLayer({ id: "intelligence-lines", type: "line", source: "property-intelligence", filter: ["!=", ["geometry-type"], "Point"], paint: { "line-color": colourExpression, "line-width": 2 } });
-        map.addLayer({ id: "property-point", type: "circle", source: "property-intelligence", filter: ["==", ["get", "sourceKey"], "property"], paint: { "circle-radius": 7, "circle-color": "#0f1b2d", "circle-stroke-color": "#ffffff", "circle-stroke-width": 3 } });
-      } catch (reason) {
-        setError(reason instanceof Error ? reason.message : "Map context could not be loaded.");
-      }
-    });
-    return () => { map.remove(); mapRef.current = null; };
-  }, [attribution, configurationError, latitude, longitude, propertyId, styleUrl]);
+    let cancelled = false;
+    fetch(`/api/v1/properties/${propertyId}/map`, { cache: "no-store" })
+      .then(async (response) => ({ response, payload: await response.json().catch(() => null) }))
+      .then(({ response, payload }) => {
+        if (cancelled) return;
+        if (!response.ok) return setLoadError(payload?.error?.message ?? "Map data is unavailable.");
+        setView(payload.data); setDemo(Boolean(payload.meta?.demo));
+      })
+      .catch(() => { if (!cancelled) setLoadError("Map data is unavailable while offline."); });
+    return () => { cancelled = true; };
+  }, [propertyId]);
 
-  const visibleError = error ?? configurationError;
-  return <div className="property-map-shell">{visibleError ? <div className="map-empty"><strong>Map unavailable</strong><span>{visibleError}</span></div> : <div ref={container} className="property-map" aria-label="Property and contextual data map" />}</div>;
+  useEffect(() => {
+    if (!view?.point || !container.current) return;
+    let disposed = false;
+    const point = view.point;
+    (async () => {
+      try {
+        const { Map, Marker, getVersion, setWorkerUrl } = await import("maplibre-gl");
+        // Served from public/ by scripts/copy-maplibre-worker.mjs; the bundle cannot locate the worker itself.
+        setWorkerUrl(`/vendor/maplibre-gl/${getVersion()}/maplibre-gl-worker.mjs`);
+        if (disposed || !container.current) return;
+        const attributions = [...new Set([basemapAttribution, ...view.layers.map((layer) => layer.attribution)].filter((item): item is string => Boolean(item)))];
+        const map = new Map({
+          container: container.current,
+          style: styleUrl ?? { version: 8, sources: {}, layers: [{ id: "background", type: "background", paint: { "background-color": "#eef2f7" } }] },
+          center: [point.longitude, point.latitude],
+          zoom: 17,
+          attributionControl: { compact: false, customAttribution: attributions },
+        });
+        mapRef.current = map;
+        map.on("error", () => setMapError("Part of the map could not be loaded. Findings are still listed below."));
+        map.on("load", () => {
+          view.layers.forEach((layer, index) => {
+            const colour = palette[index % palette.length];
+            map.addSource(layer.id, { type: "geojson", data: layer.featureCollection as never });
+            map.addLayer({ id: `${layer.id}:fill`, type: "fill", source: layer.id, filter: ["==", ["geometry-type"], "Polygon"], paint: { "fill-color": colour, "fill-opacity": 0.18 } });
+            map.addLayer({ id: `${layer.id}:line`, type: "line", source: layer.id, paint: { "line-color": colour, "line-width": 2 } });
+            map.addLayer({ id: `${layer.id}:point`, type: "circle", source: layer.id, filter: ["==", ["geometry-type"], "Point"], paint: { "circle-color": colour, "circle-radius": 5 } });
+          });
+        });
+        new Marker({ color: point.confidence === "surveyor_confirmed" ? "#15825e" : "#a76209" }).setLngLat([point.longitude, point.latitude]).addTo(map);
+      } catch {
+        setMapError("The interactive map is not supported on this device. Findings are listed below.");
+      }
+    })();
+    return () => { disposed = true; mapRef.current?.remove(); mapRef.current = null; };
+  }, [view]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !view) return;
+    for (const layer of view.layers) for (const suffix of ["fill", "line", "point"]) if (map.getLayer(`${layer.id}:${suffix}`)) map.setLayoutProperty(`${layer.id}:${suffix}`, "visibility", hidden[layer.id] ? "none" : "visible");
+  }, [hidden, view]);
+
+  if (loadError) return <section className="panel"><div className="empty-state"><strong>{loadError}</strong></div></section>;
+  if (!view) return <section className="panel"><div className="empty-state"><strong>Loading map…</strong></div></section>;
+  if (!view.point) return <section className="panel"><div className="empty-state"><strong>No location yet</strong><span>Resolve the property location on the Overview tab to show the map.</span></div></section>;
+
+  return <section className="panel map-panel" aria-labelledby="map-heading">
+    <div className="panel-header"><div><h2 id="map-heading">Land and map</h2><p>{view.point.confidence === "surveyor_confirmed" ? "Surveyor-confirmed location." : "Approximate location: confirm it before relying on spatial results."}</p></div><Layers size={17} color="#3b82f6" aria-hidden="true" /></div>
+    {demo ? <p className="address-demo-label intel-inline">Demo workspace: one invented shape for illustration. No real reference layers are loaded.</p> : null}
+    {!styleUrl ? <p className="identity-warning">Basemap not configured. Data layers are drawn on a plain background until a licensed tile provider is set.</p> : null}
+    {mapError ? <p className="identity-warning">{mapError}</p> : null}
+    <div ref={container} className="property-map" role="img" aria-label="Map of the property location and imported reference layers. The same findings are listed in the panels below." />
+    <div className="map-legend">
+      {view.layers.length ? view.layers.map((layer, index) => <label key={layer.id} className="map-legend-item"><input type="checkbox" checked={!hidden[layer.id]} onChange={(event) => setHidden({ ...hidden, [layer.id]: !event.target.checked })} /><i style={{ background: palette[index % palette.length] }} aria-hidden="true" /><span><strong>{layer.label}</strong><span className="cell-sub">{layer.featureCollection.features.length} feature{layer.featureCollection.features.length === 1 ? "" : "s"} within 300 m · dataset {layer.datasetVersion}</span><span className="cell-sub">{layer.caveat}</span></span></label>) : <p className="form-help">No reference layers are available to draw here.</p>}
+      {view.notChecked.length ? <p className="form-help">Not checked: {view.notChecked.map((item) => `${item.label} (${item.reason})`).join("; ")}.</p> : null}
+    </div>
+  </section>;
 }

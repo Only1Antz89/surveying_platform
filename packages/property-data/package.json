@@ -3,22 +3,35 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./importers": "./src/importers/index.ts",
+    "./db": "./src/db/reference.ts",
+    "./england": "./src/england.ts"
   },
   "scripts": {
     "build": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "import:os-open-uprn": "tsx src/importers/cli.ts os-open-uprn",
+    "reference": "tsx src/importers/cli.ts",
+    "test:integration": "vitest run --dir test",
+    "benchmark": "tsx test/benchmark.ts",
+    "coverage": "tsx src/registry/coverage.cli.ts",
     "verify:providers": "tsx scripts/verify-live-providers.ts"
   },
   "dependencies": {
+    "@surveynt/db": "workspace:*",
+    "@surveynt/domain": "workspace:*",
+    "drizzle-orm": "^0.44.5",
     "zod": "^4.1.8"
   },
   "devDependencies": {
-    "typescript": "^5.9.3",
+    "@types/node": "^20.19.43",
     "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
     "vitest": "^3.2.4"
   }
 }

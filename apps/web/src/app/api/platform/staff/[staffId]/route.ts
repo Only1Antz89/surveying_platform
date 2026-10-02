@@ -1,11 +1,12 @@
 import { z } from "zod";
 import { and, count, eq, ne } from "drizzle-orm";
 import { auditEvents, createDatabase, platformStaff, users } from "@surveynt/db";
+import { platformRoles } from "@surveynt/domain";
 import { platformApiContext } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
 
 const updateStaff = z.object({
-  role: z.enum(["super_admin", "support", "billing", "compliance"]).optional(),
+  role: z.enum(platformRoles).optional(),
   active: z.boolean().optional(),
 }).refine((value) => Object.keys(value).length > 0, "At least one change is required.");
 

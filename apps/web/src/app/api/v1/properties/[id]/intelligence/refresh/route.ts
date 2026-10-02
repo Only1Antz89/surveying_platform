@@ -1,23 +1,32 @@
+import { after } from "next/server";
 import { z } from "zod";
 import { canMutateOperations } from "@surveynt/domain";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
-import { problem } from "@/lib/api";
-import { enqueuePropertyIntelligence } from "@/lib/property-intelligence";
+import { ok, problem } from "@/lib/api";
+import { processIntelligenceRun, requestIntelligenceRefresh } from "@/lib/intelligence";
+import { databaseRateGate } from "@/lib/property-identity";
+import { createDatabase } from "@surveynt/db";
 
-const idempotencySchema = z.string().trim().min(8).max(200);
+export const runtime = "nodejs";
+export const maxDuration = 60;
 
+const body = z.object({ idempotencyKey: z.string().min(8).max(80).regex(/^[A-Za-z0-9_-]+$/).optional() });
+
+/** Queues an idempotent background refresh. The durable job survives if the post-response work is cut short. */
 export async function POST(request: Request, route: RouteContext<"/api/v1/properties/[id]/intelligence/refresh">) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
   if (!canWriteWorkspace(context)) return problem(402, "workspace_read_only", "Restore billing before refreshing property intelligence.");
   if (!canMutateOperations(context.role)) return problem(403, "forbidden", "Your role cannot refresh property intelligence.");
-  const parsedKey = idempotencySchema.safeParse(request.headers.get("idempotency-key") ?? "");
-  if (!parsedKey.success) return problem(400, "idempotency_key_required", "Provide an Idempotency-Key header between 8 and 200 characters.");
+  const parsed = body.safeParse(await request.json().catch(() => ({})));
+  if (!parsed.success) return problem(400, "invalid_request", "The refresh request is invalid.");
   const { id } = await route.params;
-  if (context.demo) return Response.json({ data: { run: { id: crypto.randomUUID(), status: "queued" }, duplicate: false }, meta: { demo: true, persisted: false } }, { status: 202 });
-  const result = await enqueuePropertyIntelligence({ organisationId: context.organisationId, propertyId: id, actorUserId: context.internalUserId, idempotencyKey: parsedKey.data });
+  if (context.demo) return ok({ runId: "demo-run", status: "completed" }, { demo: true, persisted: false });
+  if (!z.uuid().safeParse(id).success) return problem(404, "property_not_found", "The property could not be found.");
+  if (!(await databaseRateGate(createDatabase()).acquire(`intelligence_refresh:${context.organisationId}`, 2000, 0))) return problem(429, "rate_limited", "Refreshes are being requested too quickly. Wait a moment and try again.");
+  const result = await requestIntelligenceRefresh(context, id, parsed.data);
+  if (result.kind === "disabled") return problem(503, "intelligence_disabled", "Property intelligence is not enabled for this deployment.");
   if (result.kind === "missing") return problem(404, "property_not_found", "The property could not be found.");
-  if (result.kind === "identity_required") return problem(409, "property_identity_required", "Confirm the property location before refreshing intelligence.");
-  if (result.kind === "rate_limited") return Response.json({ error: { code: "refresh_rate_limited", message: "Wait before requesting another property intelligence refresh." } }, { status: 429, headers: { "Retry-After": String(result.retryAfterSeconds) } });
-  return Response.json({ data: { run: result.run, duplicate: result.duplicate } }, { status: 202 });
+  if (result.kind === "queued") after(() => processIntelligenceRun(context.organisationId, result.run.id).then(() => undefined, () => undefined));
+  return ok({ runId: result.run.id, status: result.run.status, reused: result.kind === "existing" });
 }
