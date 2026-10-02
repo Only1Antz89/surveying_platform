@@ -1013,3 +1013,109 @@ export const scottishEpcCertificates = referenceSchema.table("scottish_epc_certi
   check("scottish_epc_certificates_uprn_chk", sql`uprn ~ '^[0-9]{1,12}$'`),
   check("scottish_epc_certificates_rating_chk", sql`(current_rating is null or current_rating ~ '^[A-G]$') and (potential_rating is null or potential_rating ~ '^[A-G]$')`),
 ]);
+
+// AI governance (A6). Model use is blocked unless the platform register has an
+// approved model for the use, the firm has turned the use on and approved a
+// risk assessment, and the job has current consent. Nothing here is enabled
+// by default; the register starts empty.
+
+const aiUseCheck = (column: string) => sql.raw(`${column} <@ array['field_proposals', 'photo_observation', 'document_extraction', 'report_prose']::text[]`);
+
+export const aiModelRegister = pgTable("ai_model_register", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  providerKey: text("provider_key").notNull(),
+  modelId: text("model_id").notNull(),
+  modelVersion: text("model_version").notNull(),
+  uses: text("uses").array().notNull().default(sql`'{}'::text[]`),
+  status: text("status").notNull().default("proposed"),
+  processingLocation: text("processing_location"),
+  retentionTerms: text("retention_terms"),
+  evaluationSummary: jsonb("evaluation_summary").$type<Record<string, unknown>>().notNull().default({}),
+  evaluatedAt: timestamp("evaluated_at", { withTimezone: true }),
+  approvedByStaffId: uuid("approved_by_staff_id").references(() => platformStaff.id, { onDelete: "set null" }),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  notes: text("notes"),
+  ...timestamps,
+}, (table) => [
+  uniqueIndex("ai_model_register_model_uidx").on(table.providerKey, table.modelId, table.modelVersion),
+  check("ai_model_register_status_chk", sql`status in ('proposed', 'approved', 'suspended', 'retired')`),
+  check("ai_model_register_uses_chk", aiUseCheck("uses")),
+  check("ai_model_register_approval_chk", sql`status <> 'approved' or (approved_at is not null and evaluated_at is not null)`),
+]);
+
+export const organisationAiSettings = pgTable("organisation_ai_settings", {
+  organisationId: uuid("organisation_id").primaryKey().references(() => organisations.id, { onDelete: "restrict" }),
+  aiFeaturesEnabled: boolean("ai_features_enabled").notNull().default(false),
+  permittedUses: text("permitted_uses").array().notNull().default(sql`'{}'::text[]`),
+  disclosureText: text("disclosure_text"),
+  disclosureVersion: integer("disclosure_version").notNull().default(0),
+  updatedByUserId: uuid("updated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  version: integer("version").notNull().default(1),
+  ...timestamps,
+}, () => [
+  check("organisation_ai_settings_uses_chk", aiUseCheck("permitted_uses")),
+  check("organisation_ai_settings_disclosure_chk", sql`not ai_features_enabled or (disclosure_text is not null and disclosure_version > 0)`),
+]);
+
+export const aiConsentRecords = pgTable("ai_consent_records", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  jobId: uuid("job_id").notNull(),
+  status: text("status").notNull(),
+  uses: text("uses").array().notNull().default(sql`'{}'::text[]`),
+  disclosureVersion: integer("disclosure_version").notNull(),
+  method: text("method").notNull(),
+  note: text("note"),
+  recordedByUserId: uuid("recorded_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  foreignKey({ name: "ai_consent_records_job_fk", columns: [table.organisationId, table.jobId], foreignColumns: [jobs.organisationId, jobs.id] }).onDelete("restrict"),
+  index("ai_consent_records_job_idx").on(table.organisationId, table.jobId, table.createdAt),
+  check("ai_consent_records_status_chk", sql`status in ('granted', 'withdrawn')`),
+  check("ai_consent_records_method_chk", sql`method in ('written', 'electronic', 'verbal_recorded', 'terms_of_engagement')`),
+  check("ai_consent_records_uses_chk", aiUseCheck("uses")),
+]);
+
+export const aiRiskAssessments = pgTable("ai_risk_assessments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  use: text("use").notNull(),
+  title: text("title").notNull(),
+  summary: text("summary").notNull(),
+  risks: jsonb("risks").$type<{ risk: string; likelihood: string; impact: string; mitigation: string }[]>().notNull().default([]),
+  status: text("status").notNull().default("draft"),
+  reviewDue: date("review_due"),
+  createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  approvedByUserId: uuid("approved_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  ...timestamps,
+}, (table) => [
+  index("ai_risk_assessments_org_use_idx").on(table.organisationId, table.use, table.status),
+  check("ai_risk_assessments_status_chk", sql`status in ('draft', 'approved', 'superseded')`),
+  check("ai_risk_assessments_use_chk", sql`use in ('field_proposals', 'photo_observation', 'document_extraction', 'report_prose')`),
+  check("ai_risk_assessments_approval_chk", sql`status = 'draft' or (approved_by_user_id is not null and approved_at is not null)`),
+]);
+
+export const aiIncidents = pgTable("ai_incidents", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  jobId: uuid("job_id"),
+  surveyId: uuid("survey_id"),
+  relatedRecord: text("related_record"),
+  category: text("category").notNull(),
+  severity: text("severity").notNull(),
+  description: text("description").notNull(),
+  status: text("status").notNull().default("open"),
+  correctionNote: text("correction_note"),
+  reportedByUserId: uuid("reported_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  closedByUserId: uuid("closed_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  closedAt: timestamp("closed_at", { withTimezone: true }),
+  ...timestamps,
+}, (table) => [
+  foreignKey({ name: "ai_incidents_job_fk", columns: [table.organisationId, table.jobId], foreignColumns: [jobs.organisationId, jobs.id] }).onDelete("restrict"),
+  index("ai_incidents_org_status_idx").on(table.organisationId, table.status),
+  check("ai_incidents_category_chk", sql`category in ('incorrect_output', 'unsupported_claim', 'privacy', 'bias', 'security', 'availability', 'other')`),
+  check("ai_incidents_severity_chk", sql`severity in ('low', 'medium', 'high', 'critical')`),
+  check("ai_incidents_status_chk", sql`status in ('open', 'investigating', 'corrected', 'closed')`),
+  check("ai_incidents_closure_chk", sql`status not in ('corrected', 'closed') or (correction_note is not null and length(btrim(correction_note)) > 0)`),
+]);

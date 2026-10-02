@@ -6,6 +6,13 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   // Override default ignores of eslint-config-next.
+  // AI use must pass the governance gate (A6): obtain models only through governedModelFor().
+  {
+    rules: {
+      "no-restricted-imports": ["error", { paths: [{ name: "@surveynt/assistant", importNames: ["getAssistantModel", "noProviderModel", "getGovernedModel"], message: "Use governedModelFor() from @/lib/ai-governance so AI use passes the governance gate." }] }],
+    },
+  },
+  { files: ["src/lib/ai-governance.ts"], rules: { "no-restricted-imports": "off" } },
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",

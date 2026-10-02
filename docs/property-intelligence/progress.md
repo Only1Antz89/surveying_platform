@@ -245,6 +245,25 @@ Acceptance:
 
 Blockers: every devolved source is pending verification, and the official hosts are blocked from this environment. Column names for the Scottish EPC extract and the layer presets are provisional; the importer accepts overrides.
 ## A6 — Pilot readiness and AI governance
+
+| Item | Code | Configured | Imported | Live |
+|---|---|---|---|---|
+| Migrations 0027–0028: `ai_model_register` (platform; app role read-only), `organisation_ai_settings`, `ai_consent_records` (append-only), `ai_risk_assessments` (approved ones immutable, superseded on re-approval), `ai_incidents` (closing needs a correction note); FORCE RLS on tenant tables | ✅ | ❌ not applied to any Neon branch | — | — |
+| Governance gate: provider, register approval for the use, firm switch and permitted use, in-date approved risk assessment, current client consent against the latest disclosure, no open critical incident; every failing reason listed | ✅ (unit- and integration-tested) | ❌ no provider (`AI_PROVIDER=none`) | — | — |
+| `governedModelFor()` as the only route to a model; ESLint forbids the model factories elsewhere | ✅ | — | — | — |
+| Firm page Settings → AI and assistant; job record consent panel with per-use status and history | ✅ (demo smoke-tested) | ❌ AI off for every firm | — | — |
+| Platform page Assistant: model register (propose, approve with evaluation summary, suspend, retire) and aggregate metrics (no firm named) | ✅ (demo smoke-tested) | ❌ register empty | — | — |
+| [`docs/assistant/pilot.md`](../assistant/pilot.md): gate, records, metrics, pilot stages with thresholds "to be set by qualified surveyors", incident handling, fine-tuning feasibility "not started" | ✅ | — | — | — |
+
+Acceptance:
+
+- Every use is blocked by default and reports why (integration-tested).
+- Enabling needs a disclosure. Consent can only cover permitted uses. A disclosure change makes earlier consent out of date. Withdrawal stops use at once (integration-tested).
+- A use is allowed only when every condition holds. Suspending the register entry or opening a critical incident blocks it again (integration-tested).
+- Consent and approved assessments cannot be edited. The app role cannot change the model register. Firms cannot read or write each other's records (integration-tested).
+- No AI adapter exists. Even an allowed gate yields a model that answers "unavailable" until an adapter is written and evaluated.
+
+Blockers: choosing an AI provider; reviewing its data-processing terms; legal review of the client disclosure; pilot thresholds from qualified surveyors.
 ## L0–L4 — Shared learning (disabled by default)
 
 ## Validation log
@@ -286,3 +305,6 @@ Blockers: every devolved source is pending verification, and the official hosts 
 | 2026-10-02 | `pnpm check` (P6) | ✅ lint, typecheck, 119 unit tests (4 new country-routing and coverage-document tests), build |
 | 2026-10-02 | `pnpm test:integration` (P6, all suites) | ✅ 73 tests, including 3 new devolved-source tests (NRW-only flood answers for Wales, Scottish EPC import and exact-UPRN provider, header overrides) |
 | 2026-10-02 | Playwright P6 smoke (demo mode, production build) | ✅ coverage line "15 of 23 registered sources cover England", Sources tab lists 23 sources, no console errors |
+| 2026-10-02 | `pnpm check` (A6) | ✅ lint, typecheck, 123 unit tests (4 new gate tests), build |
+| 2026-10-02 | `pnpm test:integration` (A6, all suites) | ✅ 81 tests (db 3, property-data 28, web 50), including 8 new governance tests: blocked by default with every reason; disclosure required and permitted uses only; full allow path with a test provider key, register approval and suspension; outdated disclosure and withdrawal; critical incident suspension and correction note; immutability, supersession and tenant isolation; app role cannot change the register; metrics name no firm |
+| 2026-10-02 | Playwright A6 smoke (demo mode, production build) | ✅ Settings → AI and assistant (off, provider warning, demo label), job record consent panel (four blocked uses with reasons; recording disabled in demo), platform Assistant page and nav entry, no console errors, no overflow at 390 px. Found and fixed: stage-history timeline styles leaked into the consent list |

@@ -11,3 +11,4 @@ export * from "./rules/engine";
 export { residentialRulesV1 } from "./rules/residential-rules-v1";
 export * from "./documents/certificates";
 export * from "./report/composer";
+export * from "./governance/gate";
