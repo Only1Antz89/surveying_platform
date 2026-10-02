@@ -20,6 +20,18 @@ Run `pnpm --filter @surveynt/db verify:property-data-spatial` after PostGIS or s
 1. Obtain the official release and record its licence, publication date and source URL.
 2. Convert source data to UTF-8 CSV. OS Open UPRN headers must include `uprn,latitude,longitude`; other layers require `source_record_id,wkt` with optional `name,properties_json`. Declare either `--source-crs EPSG:4326` or `--source-crs EPSG:27700`; unsupported or omitted CRS values are rejected and BNG geometries are transformed to WGS84 during staging.
 3. Run `pnpm --filter @surveynt/db import:property-data -- --source ... --version ... --file ... --source-url ... --source-crs ... --neon-storage-usd-per-gb-month ... --dry-run true`.
+
+For an official GeoJSON release, first create the canonical spatial CSV without changing the database:
+
+`pnpm --filter @surveynt/db prepare:spatial-geojson -- --output /private/tmp/source.csv --source-crs EPSG:4326 --input listed_building=/path/listed.geojson --input scheduled_monument=/path/scheduled.geojson`
+
+Each repeated input must have a stable, unique label. The preparer prefixes source identifiers with that label, converts supported GeoJSON geometry to WKT, preserves source properties, and records the designation type. It refuses non-WGS84 declarations, missing geometry, missing identifiers, duplicate labels, and existing output files.
+
+For HMLR INSPIRE GML, extract each downloaded authority archive and prepare the national file with:
+
+`pnpm --filter @surveynt/db prepare:spatial-gml -- --output /private/tmp/hmlr.csv --source-crs EPSG:27700 --input adur=/path/Land_Registry_Cadastral_Parcels.gml --input amber_valley=/path/Land_Registry_Cadastral_Parcels.gml`
+
+The GML preparer streams each authority file, requires British National Grid polygons, retains INSPIRE provenance, marks boundaries as indicative and non-definitive, and deduplicates INSPIRE identifiers repeated across local-authority boundaries.
 4. Review record count, bounded row diagnostics, duplicate or missing headers, invalid UPRNs/coordinates/geometries, file bytes, estimated table bytes and projected storage cost. Empty or semantically invalid files do not reach staging.
 5. Import without `--activate` using `--expected-checksum ... --licence-confirmed true --neon-storage-usd-per-gb-month ...`. All three gates are mandatory for a staged import. Review the measured table/index size and sample spatial-query latency printed and stored with the version.
 6. Activate the staged version with `pnpm --filter @surveynt/db activate:property-data -- --source ... --version ... --capacity-approved true`. The command rejects versions without a verified checksum, recorded licence confirmation and measured capacity report, then switches the active version atomically. An existing version is never overwritten.
