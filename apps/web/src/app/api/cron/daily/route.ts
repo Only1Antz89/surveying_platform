@@ -3,6 +3,7 @@ import { enqueueDailyNotifications, processEmailQueue } from "@/lib/email-queue"
 import { processIntelligenceQueue } from "@/lib/intelligence";
 import { processMediaAnalysisBacklog } from "@/lib/media-analysis";
 import { runDataSourceSweep } from "@/lib/data-source-admin";
+import { enqueueCalendarReconciliation, processCalendarQueue } from "@/lib/calendar-sync";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -18,5 +19,7 @@ export async function GET(request: Request) {
   const intelligence = await processIntelligenceQueue(10).catch(() => ({ claimed: 0, results: [], error: "Intelligence sweep failed." }));
   const media = await processMediaAnalysisBacklog(20).catch(() => ({ analysed: 0 }));
   const sources = await runDataSourceSweep().catch(() => ({ probed: 0, stale: [] }));
-  return Response.json({ ok: true, scheduled, delivery, intelligence: { claimed: intelligence.claimed }, media: { analysed: media.analysed }, sources: { probed: sources.probed, releaseChecksDue: sources.stale.length } });
+  const calendarScheduled = await enqueueCalendarReconciliation().catch(() => ({ eligible: 0, queued: 0 }));
+  const calendars = await processCalendarQueue(10).catch(() => ({ claimed: 0, results: [] }));
+  return Response.json({ ok: true, scheduled, delivery, intelligence: { claimed: intelligence.claimed }, media: { analysed: media.analysed }, sources: { probed: sources.probed, releaseChecksDue: sources.stale.length }, calendars: { ...calendarScheduled, claimed: calendars.claimed } });
 }

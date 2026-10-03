@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import Stripe from "stripe";
-import { createDatabase, onboardingSteps, organisations, subscriptionEvents, subscriptions, webhookEvents } from "@surveynt/db";
+import { auditEvents, clientPayments, createDatabase, onboardingSteps, organisations, settlementLedger, subscriptionEvents, subscriptions, webhookEvents } from "@surveynt/db";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { queueSubscriptionEmail } from "@/lib/email-queue";
+import { convertPaidQuote, settleBalancePayment } from "@/lib/firm-operations";
 
 export const runtime = "nodejs";
 
@@ -95,12 +96,37 @@ export async function POST(request: Request) {
   try {
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
-      const organisationId = session.client_reference_id ?? session.metadata?.surveyntOrganisationId ?? session.metadata?.fieldnoteOrganisationId;
-      const customerId = typeof session.customer === "string" ? session.customer : session.customer?.id;
-      const subscriptionId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
-      if (organisationId && customerId) {
-        await db.update(subscriptions).set({ stripeSubscriptionId: subscriptionId, status: "trialing", seats: Number(session.metadata?.seats ?? 1), updatedAt: new Date() }).where(eq(subscriptions.organisationId, organisationId));
-        if (subscriptionId) await synchroniseSubscription(db, stripe, subscriptionId, event);
+      if (session.metadata?.surveyntPaymentKind === "client_deposit" && session.metadata.surveyntPaymentId && session.payment_status === "paid") {
+        const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id ?? null;
+        await convertPaidQuote({ paymentId: session.metadata.surveyntPaymentId, checkoutSessionId: session.id, paymentIntentId });
+      } else if (session.metadata?.surveyntPaymentKind === "client_balance" && session.metadata.surveyntPaymentId && session.payment_status === "paid") {
+        const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id ?? null;
+        await settleBalancePayment({ paymentId: session.metadata.surveyntPaymentId, checkoutSessionId: session.id, paymentIntentId });
+      } else if (session.mode === "subscription" && session.subscription) {
+        const organisationId = session.client_reference_id ?? session.metadata?.surveyntOrganisationId ?? session.metadata?.fieldnoteOrganisationId;
+        const customerId = typeof session.customer === "string" ? session.customer : session.customer?.id;
+        const subscriptionId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
+        if (organisationId && customerId) {
+          await db.update(subscriptions).set({ stripeSubscriptionId: subscriptionId, status: "trialing", seats: Number(session.metadata?.seats ?? 1), updatedAt: new Date() }).where(eq(subscriptions.organisationId, organisationId));
+          if (subscriptionId) await synchroniseSubscription(db, stripe, subscriptionId, event);
+        }
+      }
+    }
+    if (event.type === "charge.refunded") {
+      const charge = event.data.object;
+      const paymentIntentId = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id;
+      if (paymentIntentId) {
+        const [payment] = await db.select().from(clientPayments).where(eq(clientPayments.stripePaymentIntentId, paymentIntentId)).limit(1);
+        if (payment) {
+          const refundedMinor = charge.amount_refunded;
+          const status = refundedMinor >= payment.amountMinor ? "refunded" as const : "partially_refunded" as const;
+          await db.transaction(async (tx) => {
+            const delta = refundedMinor - payment.refundedMinor;
+            await tx.update(clientPayments).set({ refundedMinor, status, updatedAt: new Date() }).where(eq(clientPayments.id, payment.id));
+            if (delta > 0) await tx.insert(settlementLedger).values({ organisationId: payment.organisationId, paymentId: payment.id, entryType: "refund_liability_adjustment", currency: payment.currency, amountMinor: -delta, metadata: { stripeChargeId: charge.id, stripeEventId: event.id } });
+            await tx.insert(auditEvents).values({ organisationId: payment.organisationId, action: "client_payment.refunded", resourceType: "client_payment", resourceId: payment.id, metadata: { refundedMinor, status, stripeEventId: event.id } });
+          });
+        }
       }
     }
     if (event.type === "customer.subscription.created" || event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted") {

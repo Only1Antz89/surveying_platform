@@ -183,6 +183,48 @@
       "when": 1790953163189,
       "tag": "0025_learning_feedback_evaluation_security",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1790974324798,
+      "tag": "0026_silent_whizzer",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1790974773307,
+      "tag": "0027_unique_daredevil",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1790975497903,
+      "tag": "0028_freezing_ultimatum",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1790975525820,
+      "tag": "0029_hard_sue_storm",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1790975655214,
+      "tag": "0030_empty_nitro",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1790976087304,
+      "tag": "0031_complex_lady_deathstrike",
+      "breakpoints": true
     }
   ]
 }

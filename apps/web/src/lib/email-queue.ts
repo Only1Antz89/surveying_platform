@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, lt, lte } from "drizzle-orm";
-import { auditEvents, backgroundJobs, createDatabase, organisationMemberships, organisations, subscriptions, users } from "@surveynt/db";
+import { auditEvents, backgroundJobs, communicationDeliveries, createDatabase, organisationMemberships, organisations, subscriptions, users } from "@surveynt/db";
 import { applicationUrl, emailDeliveryConfigured, type EmailJobType, emailJobTypes, renderEmail, sendEmail } from "./email";
 
 const maximumAttempts = 5;
@@ -79,6 +79,7 @@ export async function processEmailQueue(limit = 20) {
       const message = renderEmail(job.type as EmailJobType, job.payload);
       const delivery = await sendEmail(message);
       await db.update(backgroundJobs).set({ status: "completed", completedAt: new Date(), failedAt: null, error: null, providerMessageId: delivery.providerMessageId, updatedAt: new Date() }).where(eq(backgroundJobs.id, job.id));
+      if (typeof job.payload.deliveryId === "string") await db.update(communicationDeliveries).set({ status: "sent", attempts: job.attempts, providerMessageId: delivery.providerMessageId, sentAt: new Date(), lastError: null, updatedAt: new Date() }).where(and(eq(communicationDeliveries.id, job.payload.deliveryId), eq(communicationDeliveries.organisationId, job.organisationId!)));
       await db.insert(auditEvents).values({ organisationId: job.organisationId, action: "notification.email_accepted", resourceType: "background_job", resourceId: job.id, metadata: { type: job.type, providerMessageId: delivery.providerMessageId } });
       completed += 1;
     } catch (reason) {
@@ -89,6 +90,7 @@ export async function processEmailQueue(limit = 20) {
         ? { status: "failed", failedAt: new Date(), error: message, updatedAt: new Date() }
         : { status: "queued", availableAt: new Date(Date.now() + retryDelayMinutes * 60 * 1000), error: message, updatedAt: new Date() }
       ).where(eq(backgroundJobs.id, job.id));
+      if (typeof job.payload.deliveryId === "string") await db.update(communicationDeliveries).set({ status: exhausted ? "failed" : "retrying", attempts: job.attempts, lastError: message, updatedAt: new Date() }).where(and(eq(communicationDeliveries.id, job.payload.deliveryId), eq(communicationDeliveries.organisationId, job.organisationId!)));
       if (exhausted) {
         failed += 1;
         await db.insert(auditEvents).values({ organisationId: job.organisationId, action: "notification.email_failed", resourceType: "background_job", resourceId: job.id, metadata: { type: job.type, attempts: job.attempts, error: message } });

@@ -218,6 +218,23 @@ a { color: inherit; text-decoration: none; }
 .support-banner { display: flex; gap: 12px; align-items: flex-start; padding: 13px 16px; background: #edf5ff; border: 1px solid #bad3fa; border-radius: 8px; color: #244e88; font-size: 11px; line-height: 1.5; }
 .support-banner svg { width: 17px; height: 17px; flex: 0 0 auto; }
 
+.public-quote { min-height: 100vh; display: grid; place-items: center; padding: 28px; background: #f1f5f9; color: var(--ink); }
+.quote-card { width: min(680px, 100%); padding: clamp(24px, 5vw, 48px); border: 1px solid var(--border); border-radius: 12px; background: white; box-shadow: 0 24px 70px rgba(15, 23, 42, .12); }
+.quote-card h1 { margin: 12px 0; font-size: clamp(26px, 5vw, 42px); }
+.quote-kicker, .quote-form h2 { display: flex; align-items: center; gap: 9px; color: var(--blue); font-weight: 700; }
+.quote-total { margin: 22px 0 8px; color: var(--blue); font-size: clamp(34px, 7vw, 56px); font-weight: 750; }
+.quote-form { display: grid; gap: 15px; margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--border); }
+.quote-form label { display: grid; gap: 7px; color: var(--muted); font-size: 12px; font-weight: 650; }
+.quote-form input { min-height: 44px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 7px; font: inherit; }
+.quote-form select,.quote-form textarea { min-height: 44px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 7px; background: white; font: inherit; }
+.quote-form p { display: flex; align-items: flex-start; gap: 8px; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.quote-action { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 16px; margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--border); }
+.quote-action svg { color: var(--blue); }.quote-action h2,.quote-action p { margin: 0; }.quote-action p { margin-top: 5px; color: var(--muted); font-size: 12px; }
+.form-error { padding: 11px 13px; border: 1px solid #fecaca; border-radius: 7px; background: #fef2f2; color: #991b1b; }
+.checkbox-grid { display: flex; flex-wrap: wrap; gap: 10px 18px; margin: 14px 0 20px; color: var(--ink); font-size: 12px; text-transform: capitalize; }
+.checkbox-grid label { display: flex; align-items: center; gap: 7px; }
+@media (max-width: 620px) { .quote-action { grid-template-columns: auto 1fr; }.quote-action .button { grid-column: 1 / -1; } }
+
 .property-workspace { max-width: 1500px; margin: 0 auto; padding: 22px 28px 36px; }
 .property-back { margin-bottom: 16px; }
 .property-back a { display: inline-flex; align-items: center; gap: 7px; color: var(--blue); font-size: 11px; font-weight: 650; }
@@ -661,6 +678,15 @@ fieldset.field legend { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
 .history-dates div { display: flex; gap: 4px; }
 .history-dates dt { color: var(--muted); }
 .history-dates dd { margin: 0; }
+.calendar-actions, .calendar-toolbar, .calendar-toolbar [role="group"] { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.calendar-toolbar { justify-content: space-between; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); }
+.calendar-toolbar button { border: 1px solid var(--border); background: white; color: var(--ink-soft); border-radius: .5rem; padding: .45rem .8rem; text-transform: capitalize; }
+.calendar-toolbar button[aria-pressed="true"] { background: #0f172a; color: white; border-color: #0f172a; }
+.calendar-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1px; background: var(--border); }
+.calendar-day { background: white; min-height: 180px; padding: 1rem; }
+.calendar-day h3 { margin: 0 0 .75rem; font-size: .9rem; color: var(--ink-soft); }
+.calendar-day article { display: grid; gap: .2rem; padding: .65rem; margin-bottom: .5rem; border-left: 3px solid #2563eb; background: #f8fafc; border-radius: 0 .5rem .5rem 0; }
+.calendar-day time, .calendar-day a { font-size: .78rem; }
 
 @media (max-width: 1050px) {
   .metric-grid { grid-template-columns: repeat(2, 1fr); }

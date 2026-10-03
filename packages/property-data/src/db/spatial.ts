@@ -19,7 +19,22 @@ export function databaseSpatialQuery(db: Executor): SpatialQuery {
         const radius = Math.max(0, Math.min(input.nearbyMetres, 500));
         // Bounding-box prefilter in degrees (uses the GiST index), then exact metre distance on geography.
         const degrees = radius / 50_000 + 0.0001;
-        const rows = await db.execute(sql`
+        const legacyDatasetVersionId = sync.validation.legacyBacked === true && typeof sync.validation.legacyDatasetVersionId === "string" ? sync.validation.legacyDatasetVersionId : null;
+        const legacyLayer = typeof sync.validation.legacyLayer === "string" ? sync.validation.legacyLayer : layer;
+        const rows = legacyDatasetVersionId ? await db.execute(sql`
+          with origin as (select st_setsrid(st_makepoint(${input.longitude}, ${input.latitude}), 4326) as g), features as (
+            select source_record_id as feature_id, name,
+              properties || jsonb_build_object('legacySourceKey','historic_england','legacyDatasetVersionId',${legacyDatasetVersionId}::text,'legacyGeometryRepaired',not st_isvalid(geometry)) as attributes,
+              case when st_isvalid(geometry) then geometry else st_makevalid(geometry) end as geom
+            from public.spatial_reference_features
+            where dataset_version_id = ${legacyDatasetVersionId}::uuid and source_key = 'historic_england'
+              and coalesce(nullif(properties->>'layer',''), split_part(source_record_id, ':', 1), 'listed_building') = ${legacyLayer})
+          select f.feature_id, f.name, f.attributes, st_intersects(f.geom, origin.g) as intersects,
+            st_distance(f.geom::geography, origin.g::geography) as distance
+          from features f, origin
+          where f.geom && st_expand(origin.g, ${degrees})
+            and (st_intersects(f.geom, origin.g) or st_dwithin(f.geom::geography, origin.g::geography, ${radius}))
+          order by intersects desc, distance asc limit 50`) : await db.execute(sql`
           with origin as (select st_setsrid(st_makepoint(${input.longitude}, ${input.latitude}), 4326) as g)
           select f.feature_id, f.name, f.attributes, st_intersects(f.geom, origin.g) as intersects,
             st_distance(f.geom::geography, origin.g::geography) as distance
@@ -50,7 +65,17 @@ export async function featuresNear(db: Executor, input: { sourceKey: string; lay
   const radius = Math.max(10, Math.min(input.radiusMetres, 1000));
   const latDegrees = radius / 111_000;
   const lonDegrees = radius / (111_000 * Math.cos((input.latitude * Math.PI) / 180));
-  const rows = await db.execute(sql`
+  const legacyDatasetVersionId = sync.validation.legacyBacked === true && typeof sync.validation.legacyDatasetVersionId === "string" ? sync.validation.legacyDatasetVersionId : null;
+  const legacyLayer = typeof sync.validation.legacyLayer === "string" ? sync.validation.legacyLayer : input.layer;
+  const rows = legacyDatasetVersionId ? await db.execute(sql`
+    select source_record_id as feature_id, name,
+      properties || jsonb_build_object('legacySourceKey','historic_england','legacyDatasetVersionId',${legacyDatasetVersionId}::text,'legacyGeometryRepaired',not st_isvalid(geometry)) as attributes,
+      st_asgeojson(st_simplifypreservetopology(case when st_isvalid(geometry) then geometry else st_makevalid(geometry) end, 0.000005), 6) as geometry
+    from public.spatial_reference_features
+    where dataset_version_id = ${legacyDatasetVersionId}::uuid and source_key = 'historic_england'
+      and coalesce(nullif(properties->>'layer',''), split_part(source_record_id, ':', 1), 'listed_building') = ${legacyLayer}
+      and geometry && st_makeenvelope(${input.longitude - lonDegrees}, ${input.latitude - latDegrees}, ${input.longitude + lonDegrees}, ${input.latitude + latDegrees}, 4326)
+    limit ${Math.max(1, Math.min(input.limit ?? 200, 500))}`) : await db.execute(sql`
     select f.feature_id, f.name, f.attributes, st_asgeojson(st_simplifypreservetopology(f.geom, 0.000005), 6) as geometry
     from reference.spatial_features f
     where f.dataset_sync_id = ${sync.id}

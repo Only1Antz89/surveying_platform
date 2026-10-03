@@ -7,16 +7,20 @@ async function main() {
   const application = createDatabase(process.env.DATABASE_APP_URL);
   const administrator = createDatabase(process.env.DATABASE_ADMIN_URL);
 
-  const [referenceRead, propertyRows, policies, triggerRows, rlsRows] = await Promise.all([
+  const [referenceRead, canonicalReferenceRead, propertyRows, policies, triggerRows, rlsRows, operationsPolicies] = await Promise.all([
     application.execute(sql`select count(*)::int as count from data_sources`),
+    application.execute(sql`select count(*)::int as count from reference.data_sources`),
     administrator.execute(sql`select id, organisation_id from properties order by created_at asc limit 1`),
     administrator.execute(sql`select tablename, policyname, cmd from pg_policies where schemaname = 'public' and tablename in ('address_search_cache', 'enrichment_runs', 'property_intelligence_snapshots', 'data_sources', 'dataset_versions', 'dataset_syncs', 'os_uprn_points', 'spatial_reference_features') order by tablename, policyname`),
     administrator.execute(sql`select tgname from pg_trigger where tgrelid = 'property_intelligence_snapshots'::regclass and not tgisinternal`),
     administrator.execute(sql`select relname from pg_class where relname in ('address_search_cache', 'address_provider_rate_limits') and relrowsecurity = true`),
+    administrator.execute(sql`select tablename, policyname from pg_policies where schemaname = 'public' and tablename in ('organisation_operational_settings','service_pricing_versions','customer_quotes','quote_snapshots','availability_blocks','appointments','calendar_connections','calendar_event_links','calendar_conflicts','invoices','invoice_line_items','client_payments','settlement_ledger','settlement_batches','settlement_batch_items','organisation_documents','communication_templates','communication_deliveries','report_deliveries')`),
   ]);
 
   const sourceCount = Number((referenceRead.rows[0] as { count?: number } | undefined)?.count ?? 0);
   if (sourceCount < 7) throw new Error("The application role could not read the seeded source register.");
+  const canonicalSourceCount = Number((canonicalReferenceRead.rows[0] as { count?: number } | undefined)?.count ?? 0);
+  if (canonicalSourceCount < 20) throw new Error("The application role could not read the canonical source register.");
 
   await application.execute(sql.raw(`DO $property_data_security$
   BEGIN
@@ -29,6 +33,15 @@ async function main() {
     END;
   END
   $property_data_security$;`));
+  await application.execute(sql.raw(`DO $canonical_reference_security$
+  BEGIN
+    BEGIN
+      UPDATE reference.data_sources SET enabled = false WHERE key = 'historic_england_nhle';
+      RAISE EXCEPTION 'canonical_reference_write_was_allowed';
+    EXCEPTION WHEN insufficient_privilege THEN NULL;
+    END;
+  END
+  $canonical_reference_security$;`));
 
   let property = propertyRows.rows[0] as { id?: string; organisation_id?: string } | undefined;
   let fixture: { organisationId: string; clientId: string; propertyId: string; runId: string } | null = null;
@@ -99,9 +112,12 @@ async function main() {
   const missingPolicies = requiredPolicies.filter((policy) => !policyNames.includes(policy));
   const immutableTriggerPresent = triggerRows.rows.some((row) => (row as { tgname?: string }).tgname === "property_intelligence_snapshots_immutable");
   const geocoderTablesRlsProtected = rlsRows.rows.length === 2;
+  const expectedOperationsPolicies = 19;
+  const operationsRlsProtected = new Set(operationsPolicies.rows.map((row) => String((row as { tablename?: string }).tablename))).size === expectedOperationsPolicies;
   if (missingPolicies.length) throw new Error(`Missing RLS policies: ${missingPolicies.join(", ")}`);
   if (!immutableTriggerPresent) throw new Error("The immutable snapshot trigger is missing.");
   if (!geocoderTablesRlsProtected) throw new Error("The geocoder cache or global rate gate is missing RLS protection.");
+  if (!operationsRlsProtected) throw new Error("One or more firm-operations tables is missing its tenant policy.");
   if (ownTenantPropertyVisible !== true || guessedTenantPropertyHidden !== true) throw new Error("Tenant property isolation verification failed.");
   if (ownTenantRunVisible !== null && (ownTenantRunVisible !== true || guessedTenantRunHidden !== true)) throw new Error("Tenant enrichment-run isolation verification failed.");
   if (fixtureCleanupVerified === false) throw new Error("Temporary security fixtures were not fully removed.");
@@ -109,7 +125,9 @@ async function main() {
   console.log(JSON.stringify({
     sourceRegisterReadable: true,
     sourceCount,
+    canonicalSourceCount,
     referenceWritesDenied: true,
+    canonicalReferenceWritesDenied: true,
     ownTenantPropertyVisible,
     guessedTenantPropertyHidden,
     ownTenantRunVisible,
@@ -117,11 +135,14 @@ async function main() {
     fixtureCleanupVerified,
     requiredPoliciesPresent: true,
     geocoderTablesRlsProtected,
+    operationsRlsProtected,
     immutableSnapshotTriggerPresent: true,
   }, null, 2));
 }
 
 main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
+  const messages: string[] = []; let current: unknown = error;
+  while (current instanceof Error && messages.length < 4) { messages.push(current.message); current = current.cause; }
+  console.error(messages.join("\nCaused by: ") || String(error));
   process.exitCode = 1;
 });

@@ -6,6 +6,7 @@ export const emailJobTypes = [
   "payment_issue_notice",
   "support_approval_requested",
   "support_break_glass_notification",
+  "customer_quote_issued",
 ] as const;
 
 export type EmailJobType = (typeof emailJobTypes)[number];
@@ -20,6 +21,7 @@ const payloadSchemas = {
   payment_issue_notice: basePayload.extend({ status: z.enum(["past_due", "unpaid"]), graceEndsAt: z.iso.datetime().nullable(), billingUrl: z.url() }),
   support_approval_requested: basePayload.extend({ ticketReference: z.string().min(3).max(80), reason: z.string().min(10).max(500), approvalUrl: z.url(), expiresAt: z.iso.datetime() }),
   support_break_glass_notification: basePayload.extend({ ticketReference: z.string().min(3).max(80), reason: z.string().min(10).max(500), expiresAt: z.iso.datetime() }),
+  customer_quote_issued: basePayload.extend({ customerName: z.string().min(1).max(160), quoteReference: z.string().min(3).max(80), total: z.string().min(1).max(40), expiresAt: z.iso.datetime(), quoteUrl: z.url() }),
 } satisfies Record<EmailJobType, z.ZodType>;
 
 const escapeHtml = (value: string) => value.replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character] ?? character);
@@ -62,6 +64,13 @@ export function renderEmail(type: EmailJobType, rawPayload: unknown): EmailMessa
     const intro = `Surveynt support has requested time-limited write access to ${value.organisationName}.`;
     const details = [`Ticket: ${value.ticketReference}`, `Reason: ${value.reason}`, `Request expires: ${formatDate(value.expiresAt)}`, "No write access is granted unless a practice owner approves this request."];
     return { to: value.recipients, subject: `${title} · ${value.ticketReference}`, text: `${title}\n\n${intro}\n\n${details.join("\n")}\n\nReview request: ${value.approvalUrl}`, html: frame(title, intro, details, { label: "Review request", url: value.approvalUrl }) };
+  }
+  if (type === "customer_quote_issued") {
+    const value = payloadSchemas.customer_quote_issued.parse(payload);
+    const title = `Your survey quote · ${value.quoteReference}`;
+    const intro = `Hello ${value.customerName}, ${value.organisationName} has prepared your survey quote.`;
+    const details = [`Total including VAT: ${value.total}`, `Quote valid until: ${formatDate(value.expiresAt)}`, "Use the secure link to review the quote, provide the property address and pay the deposit."];
+    return { to: value.recipients, subject: title, text: `${title}\n\n${intro}\n\n${details.join("\n")}\n\nReview quote: ${value.quoteUrl}`, html: frame(title, intro, details, { label: "Review quote", url: value.quoteUrl }) };
   }
   const value = payloadSchemas.support_break_glass_notification.parse(payload);
   const title = `Emergency support access started`;

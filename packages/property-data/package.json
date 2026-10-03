@@ -17,10 +17,15 @@
     "test": "vitest run",
     "import:os-open-uprn": "tsx src/importers/cli.ts os-open-uprn",
     "reference": "tsx src/importers/cli.ts",
+    "reference:registry-sync": "tsx src/importers/cli.ts registry-sync",
+    "reference:source-enable": "tsx src/importers/cli.ts source-enable",
+    "reference:source-disable": "tsx src/importers/cli.ts source-disable",
+    "reference:bridge-legacy-historic-england": "tsx src/importers/cli.ts bridge-legacy-historic-england",
     "test:integration": "vitest run --dir test",
     "benchmark": "tsx test/benchmark.ts",
     "coverage": "tsx src/registry/coverage.cli.ts",
-    "verify:providers": "tsx scripts/verify-live-providers.ts"
+    "verify:providers": "tsx scripts/verify-live-providers.ts",
+    "verify:legacy-bridge": "tsx scripts/verify-legacy-bridge.ts"
   },
   "dependencies": {
     "@surveynt/db": "workspace:*",

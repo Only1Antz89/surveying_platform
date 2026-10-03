@@ -7,7 +7,7 @@ import { BrandMark } from "@surveynt/ui";
 import {
   Activity, Bell, BookOpenCheck, BriefcaseBusiness, Building2, ChevronDown,
   CircleDollarSign, ClipboardCheck, Database, FileClock, Headphones, House, Menu, Network, Settings,
-  ShieldCheck, SlidersHorizontal, Sparkles, Users, X, type LucideIcon,
+  ShieldCheck, SlidersHorizontal, Bot, Users, X, CalendarDays, Compass, FileSpreadsheet, BarChart3, FileCheck2, FolderLock, type LucideIcon,
 } from "lucide-react";
 import { platformRoleLabels, roleLabels, type OrganisationRole, type PlatformRole } from "@surveynt/domain";
 
@@ -18,6 +18,13 @@ const firmItems = (slug: string): Item[] => [
   { label: "Clients", href: `/app/${slug}/clients`, icon: Users },
   { label: "Properties", href: `/app/${slug}/properties`, icon: Building2 },
   { label: "Jobs", href: `/app/${slug}/jobs`, icon: BriefcaseBusiness },
+  { label: "Calendar", href: `/app/${slug}/calendar`, icon: CalendarDays },
+  { label: "Customers", href: `/app/${slug}/customers`, icon: Users },
+  { label: "Routes", href: `/app/${slug}/routes`, icon: Compass },
+  { label: "Finance", href: `/app/${slug}/finance`, icon: FileSpreadsheet },
+  { label: "Performance", href: `/app/${slug}/performance`, icon: BarChart3 },
+  { label: "Report templates", href: `/app/${slug}/report-templates`, icon: FileCheck2 },
+  { label: "Documents", href: `/app/${slug}/documents`, icon: FolderLock },
   { label: "Wording", href: `/app/${slug}/wording`, icon: BookOpenCheck },
   { label: "Team", href: `/app/${slug}/team`, icon: ShieldCheck },
   { label: "Settings", href: `/app/${slug}/settings`, icon: Settings },
@@ -32,7 +39,7 @@ const platformItems: Item[] = [
   { label: "Incidents", href: "/platform/incidents", icon: ShieldCheck },
   { label: "Practice packs", href: "/platform/practice-packs", icon: BookOpenCheck },
   { label: "Data sources", href: "/platform/data-sources", icon: Database },
-  { label: "Assistant", href: "/platform/assistant", icon: Sparkles },
+  { label: "Assistant", href: "/platform/assistant", icon: Bot },
   { label: "Shared learning", href: "/platform/learning", icon: Network },
   { label: "Audit", href: "/platform/audit", icon: FileClock },
   { label: "Settings", href: "/platform/settings", icon: SlidersHorizontal },

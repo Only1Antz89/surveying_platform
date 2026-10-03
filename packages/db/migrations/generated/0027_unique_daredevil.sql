@@ -1,0 +1,1 @@
+ALTER TABLE "invoices" ALTER COLUMN "job_id" DROP NOT NULL;

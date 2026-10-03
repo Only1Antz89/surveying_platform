@@ -8,3 +8,4 @@ export * from "../db/operations";
 export * from "../operations/probes";
 export * from "./scottish-epc";
 export * from "../db/scottish-epc";
+export * from "./legacy-historic-england";

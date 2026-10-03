@@ -1,5 +1,26 @@
 # Property intelligence operations
 
+## Canonical schema reconciliation
+
+After applying migrations, initialise the canonical source register with `pnpm --filter @surveynt/property-data reference:registry-sync`. Enabling and verifying sources remains an explicit platform-operator action.
+
+Before a production migration or bridge, capture the rollback metadata with `pnpm --filter @surveynt/db backup:reference-metadata -- --output /private/tmp/surveynt-reference-metadata-YYYY-MM-DD.json`. The command refuses to overwrite an existing backup and records active legacy/canonical versions, registry decisions and the migration journal.
+
+After creating or rotating the application login, run `pnpm --filter @surveynt/db grant:reference-read`. It resolves the login from `DATABASE_APP_URL`, grants only the `surveynt_reference_read` group role through the administrator connection, and audits the grant. Never grant `surveynt_reference_write` to the web runtime.
+
+After source-specific checks pass, explicitly enable one source with `pnpm --filter @surveynt/property-data reference:source-enable -- --source historic_england_nhle --notes "OGL terms, layer counts and sample queries verified 2026-10-02"`. Disable it immediately with the matching `reference:source-disable` command if a licence, coverage or health check fails. Both actions are audited; registry reconciliation never changes an operator's existing enablement decision.
+
+For installations containing the first England release in `public.dataset_versions` and `public.spatial_reference_features`, run `pnpm --filter @surveynt/property-data reference:bridge-legacy-historic-england`. The command is idempotent: it validates every layer, preserves provenance, and activates all bridged Historic England layers in one transaction. A failed validation leaves the currently active reference versions untouched.
+
+The current 1 GB production project cannot hold a second 434 MB physical copy. Production therefore uses the explicit `--legacy-reference` bridge mode: canonical source/version metadata and provider orchestration live in `reference.*`, while the already validated immutable Historic England geometry is read in place from the legacy table through a bounded compatibility adapter. All eight layers, 401,771 records, application-role queries and write denial were verified after activation. This is a storage compatibility mode, not a second canonical implementation; remove it by running the normal copying bridge after increasing capacity, then retire the adapter.
+
+Set `PROPERTY_INTELLIGENCE_ENABLED=true` only after the registry, reference-role grants, Nominatim identification, map attribution and worker secrets have been verified.
+
+Remaining external work:
+
+- Full HMLR national conversion needs approximately 50 GB of scratch storage.
+- EPC remains disabled until credentials, licence acceptance and data-protection handling are complete.
+
 ## Required configuration
 
 - `DATABASE_APP_URL` and `DATABASE_ADMIN_URL`
