@@ -1,3 +1,4 @@
+import { assignedJobScope, assignedPropertyScope } from "@/lib/workspace-scope";
 import { and, desc, eq } from "drizzle-orm";
 import { clients, createDatabase, jobs, properties, propertyIdentityEvents, users, withTenant } from "@surveynt/db";
 import type { JobStage } from "@surveynt/domain";
@@ -37,9 +38,9 @@ export async function loadPropertyWorkspace(slug: string, id: string): Promise<P
   const context = await requireFirmAccess(slug);
   const db = createDatabase();
   const detail = await withTenant(db, context.organisationId, async (tx) => {
-    const [row] = await tx.select({ property: properties, clientName: clients.displayName }).from(properties).innerJoin(clients, eq(properties.clientId, clients.id)).where(and(eq(properties.id, id), eq(properties.organisationId, context.organisationId))).limit(1);
+    const [row] = await tx.select({ property: properties, clientName: clients.displayName }).from(properties).innerJoin(clients, eq(properties.clientId, clients.id)).where(and(assignedPropertyScope(context), eq(properties.id, id), eq(properties.organisationId, context.organisationId))).limit(1);
     if (!row) return null;
-    const linkedJobs = await tx.select({ id: jobs.id, reference: jobs.reference, serviceName: jobs.serviceName, stage: jobs.stage, targetDate: jobs.targetDate }).from(jobs).where(and(eq(jobs.propertyId, id), eq(jobs.organisationId, context.organisationId))).orderBy(desc(jobs.updatedAt));
+    const linkedJobs = await tx.select({ id: jobs.id, reference: jobs.reference, serviceName: jobs.serviceName, stage: jobs.stage, targetDate: jobs.targetDate }).from(jobs).where(and(assignedJobScope(context), eq(jobs.propertyId, id), eq(jobs.organisationId, context.organisationId))).orderBy(desc(jobs.updatedAt));
     const events = await tx.select({ event: propertyIdentityEvents, firstName: users.firstName, lastName: users.lastName, email: users.email }).from(propertyIdentityEvents).leftJoin(users, eq(propertyIdentityEvents.actorUserId, users.id)).where(and(eq(propertyIdentityEvents.propertyId, id), eq(propertyIdentityEvents.organisationId, context.organisationId))).orderBy(desc(propertyIdentityEvents.createdAt)).limit(25);
     return { ...row, linkedJobs, events };
   });

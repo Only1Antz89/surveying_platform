@@ -1,3 +1,5 @@
+import { workspaceApiGuard } from "@/lib/workspace-api-guard";
+import { professionalApiGuard } from "@/lib/professional-access";
 import { after } from "next/server";
 import { z } from "zod";
 import { canMutateOperations } from "@surveynt/domain";
@@ -19,6 +21,10 @@ const metadata = z.object({
 export async function POST(request: Request, route: RouteContext<"/api/v1/surveys/[id]/media">) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  const accessDenial = await workspaceApiGuard(request, context);
+  if (accessDenial) return accessDenial;
+  const professionalDenial = professionalApiGuard(request, context);
+  if (professionalDenial) return professionalDenial;
   if (!canWriteWorkspace(context)) return problem(402, "workspace_read_only", "Restore billing before changing workspace records.");
   if (!canMutateOperations(context.role)) return problem(403, "forbidden", "Your role cannot upload survey evidence.");
   const { id } = await route.params;
@@ -28,7 +34,7 @@ export async function POST(request: Request, route: RouteContext<"/api/v1/survey
   const file = form?.get("file");
   const meta = metadata.safeParse(JSON.parse(String(form?.get("metadata") ?? "{}")));
   if (!(file instanceof File) || !meta.success) return problem(400, "invalid_request", "Send one file with its metadata.");
-  const result = await storeSurveyMedia({ organisationId: context.organisationId, internalUserId: context.internalUserId, role: context.role }, id, { file, clientGeneratedId: meta.data.clientGeneratedId, capturedAt: meta.data.capturedAt, captureContext: meta.data.captureContext });
+  const result = await storeSurveyMedia({ organisationId: context.organisationId, internalUserId: context.internalUserId, role: context.role, canRecordSurvey: context.canRecordSurvey, canApproveReports: context.canApproveReports }, id, { file, clientGeneratedId: meta.data.clientGeneratedId, capturedAt: meta.data.capturedAt, captureContext: meta.data.captureContext });
   if (result.kind === "missing") return problem(404, "survey_not_found", "The survey could not be found.");
   if (result.kind === "not_configured") return problem(503, "storage_not_configured", result.message);
   if (result.kind === "invalid") return problem(422, "media_rejected", result.message);

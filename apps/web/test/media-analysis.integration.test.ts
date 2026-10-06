@@ -1,3 +1,4 @@
+import { organisationMemberships } from "@surveynt/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { assistantTasks, clients, createDatabase, jobs, mediaAnalyses, organisations, properties, users, withTenant } from "@surveynt/db";
@@ -37,12 +38,13 @@ describe.skipIf(!integrationEnabled)("photo and document analysis", () => {
       { id: firmB, clerkOrganisationId: "org_b8", name: "Firm B", slug: "firm-b8", practiceType: "residential", region: "Leeds" },
     ]);
     const [user] = await admin.insert(users).values({ clerkUserId: "user_a8", email: "surveyor@a8.test" }).returning();
+    await admin.insert(organisationMemberships).values({ organisationId: firmA, userId: user.id, role: "surveyor" });
     surveyor = { organisationId: firmA, internalUserId: user.id, role: "surveyor" };
     const [client] = await admin.insert(clients).values({ organisationId: firmA, kind: "individual", displayName: "Client A" }).returning();
     const [property] = await admin.insert(properties).values({ organisationId: firmA, clientId: client.id, line1: "3 Evidence Lane", city: "Bristol", postcode: "BS2 2BB", country: "ENG" }).returning();
     const [first, second] = await admin.insert(jobs).values([
-      { organisationId: firmA, clientId: client.id, propertyId: property.id, reference: "E-2019", serviceName: "Survey" },
-      { organisationId: firmA, clientId: client.id, propertyId: property.id, reference: "E-2026", serviceName: "Survey" },
+      { organisationId: firmA, clientId: client.id, propertyId: property.id, reference: "E-2019", assignedSurveyorId: surveyor.internalUserId, serviceName: "Survey" },
+      { organisationId: firmA, clientId: client.id, propertyId: property.id, reference: "E-2026", assignedSurveyorId: surveyor.internalUserId, serviceName: "Survey" },
     ]).returning();
     const earlier = await createSurvey(surveyor, first.id, { serviceLevel: "level_2" });
     if (earlier.kind !== "created") throw new Error(earlier.kind);
@@ -77,7 +79,7 @@ describe.skipIf(!integrationEnabled)("photo and document analysis", () => {
     expect(await analyseStoredMedia(surveyor, injected)).toBe("analysed");
     const pack = await loadSurveyPack(surveyor, surveyId);
     if (!pack) throw new Error("missing pack");
-    expect(pack.media.find((item) => item.id === expired)?.analysis).toMatchObject({ analyser: "certificate-facts-v1", status: "completed", result: { asOf: "2026-09-28", facts: { documentType: { value: "eicr" }, dueDate: { value: "2024-02-14", span: { page: 2 } } }, checks: [{ code: "expired" }] } });
+    expect(pack.media.find((item) => item.id === expired)?.analysis).toMatchObject({ analyser: "certificate-facts-v2", status: "completed", result: { asOf: "2026-09-28", facts: { documentType: { value: "eicr" }, dueDate: { value: "2024-02-14", span: { page: 2 } } }, checks: [{ code: "expired" }] } });
     expect(pack.media.find((item) => item.id === injected)?.analysis).toMatchObject({ result: { facts: { instructionLikeText: { page: 1 } }, checks: [] } });
     const discrepancies = pack.tasks.filter((task) => task.kind === "discrepancy");
     expect(discrepancies).toMatchObject([{ title: "Electrical installation condition report appears to have expired", evidence: { type: "document_span", mediaId: expired, span: { page: 2 } } }]);

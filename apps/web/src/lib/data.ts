@@ -1,9 +1,11 @@
-import { and, asc, count, desc, eq, gt, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
-import { auditEvents, backgroundJobs, createDatabase, clients, invitations, jobs, onboardingSteps, organisationBranding, organisationMemberships, organisations, platformIncidentOrganisations, platformIncidents, platformStaff, practicePacks, practicePackVersions, properties, serviceDefinitions, subscriptions, supportSessions, users, webhookEvents } from "@surveynt/db";
+import { assignedJobScope, assignedClientScope, assignedPropertyScope } from "@/lib/workspace-scope";
+import { and, asc, count, desc, eq, gt, gte, lt, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
+import { appointments, auditEvents, backgroundJobs, createDatabase, clients, invitations, jobs, onboardingSteps, organisationBranding, organisationMemberships, organisations, platformIncidentOrganisations, platformIncidents, platformStaff, practicePacks, practicePackVersions, properties, serviceDefinitions, subscriptions, supportSessions, users, webhookEvents } from "@surveynt/db";
 import type { PlatformRole } from "@surveynt/domain";
 import type { Client, Job, Member, Property, Tenant } from "./demo-data";
 import { activities as demoActivities, clients as demoClients, jobs as demoJobs, members as demoMembers, properties as demoProperties, tenants as demoTenants } from "./demo-data";
 import { isClerkConfigured, requireFirmAccess, requirePlatformAccess } from "./access";
+import { localDayRange } from "./scheduling";
 
 const connected = () => Boolean(isClerkConfigured() && (process.env.DATABASE_APP_URL ?? process.env.DATABASE_URL));
 
@@ -100,10 +102,10 @@ const formatTarget = (value: string | null) => value
 export async function loadOverviewForOrganisation(organisationId: string): Promise<OverviewData> {
   const db = createDatabase();
   const now = new Date();
-  const today = now.toISOString().slice(0, 10);
-  const day = now.getUTCDay() || 7;
-  const weekStartDate = new Date(now);
-  weekStartDate.setUTCDate(now.getUTCDate() - day + 1);
+  const today = new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/London"}).format(now);
+  const weekStartDate = new Date(`${today}T12:00:00Z`);
+  const day = weekStartDate.getUTCDay() || 7;
+  weekStartDate.setUTCDate(weekStartDate.getUTCDate() - day + 1);
   const weekEndDate = new Date(weekStartDate);
   weekEndDate.setUTCDate(weekStartDate.getUTCDate() + 6);
   const weekStart = weekStartDate.toISOString().slice(0, 10);
@@ -113,9 +115,11 @@ export async function loadOverviewForOrganisation(organisationId: string): Promi
     await tx.execute(sql`select set_config('app.current_organisation_id', ${organisationId}, true)`);
     const [jobSummary] = await tx.select({
       activeJobs: count(jobs.id),
-      inspectionsThisWeek: sql<number>`count(*) filter (where ${jobs.stage} = 'scheduled' and ${jobs.targetDate} between ${weekStart} and ${weekEnd})`.mapWith(Number),
       feesInProgress: sql<number>`coalesce(sum(${jobs.fee}::numeric), 0)`.mapWith(Number),
     }).from(jobs).where(and(eq(jobs.organisationId, organisationId), notInArray(jobs.stage, ["paid", "archived"])));
+    const [visitSummary]=await tx.select({total:count()}).from(appointments).where(and(eq(appointments.organisationId,organisationId),eq(appointments.status,"confirmed"),gte(appointments.startsAt,localDayRange(weekStart).start),lt(appointments.startsAt,localDayRange(weekEnd).end)));
+    const todayBounds=localDayRange(today);
+    const todaysVisits=await tx.select({appointment:appointments,job:jobs,clientName:clients.displayName,address:properties.line1,city:properties.city,firstName:users.firstName,lastName:users.lastName}).from(appointments).innerJoin(jobs,and(eq(jobs.id,appointments.jobId),eq(jobs.organisationId,organisationId))).innerJoin(clients,eq(clients.id,jobs.clientId)).innerJoin(properties,eq(properties.id,jobs.propertyId)).leftJoin(users,eq(users.id,appointments.surveyorId)).where(and(eq(appointments.organisationId,organisationId),eq(appointments.status,"confirmed"),gte(appointments.startsAt,todayBounds.start),lt(appointments.startsAt,todayBounds.end))).orderBy(asc(appointments.startsAt));
     const [clientSummary] = await tx.select({ openClients: count(clients.id) })
       .from(clients)
       .where(and(eq(clients.organisationId, organisationId), isNull(clients.archivedAt)));
@@ -160,12 +164,12 @@ export async function loadOverviewForOrganisation(organisationId: string): Promi
     }));
     return {
       activeJobs: jobSummary?.activeJobs ?? 0,
-      inspectionsThisWeek: jobSummary?.inspectionsThisWeek ?? 0,
+      inspectionsThisWeek: visitSummary?.total ?? 0,
       openClients: clientSummary?.openClients ?? 0,
       feesInProgress: jobSummary?.feesInProgress ?? 0,
       onboardingProgress: Math.min(100, Math.round(((onboardingSummary?.completed ?? 0) / 4) * 100)),
       workQueue: mappedJobs.slice(0, 4),
-      inspectionsToday: mappedJobs.filter((job) => recentRows.find((row) => row.job.id === job.id)?.job.targetDate === today && job.stage === "scheduled"),
+      inspectionsToday: todaysVisits.map(row=>({id:row.job.id,reference:row.job.reference,client:row.clientName,address:`${row.address}, ${row.city}`,service:row.job.serviceName,stage:row.job.stage,assignee:[row.firstName,row.lastName].filter(Boolean).join(" ")||"Unassigned",target:row.appointment.startsAt.toLocaleTimeString("en-GB",{timeZone:"Europe/London",hour:"2-digit",minute:"2-digit"}),fee:Number(row.job.fee??0),priority:row.job.priority==="high"?"High":"Normal"})),
       recentActivity: activityRows.map((activity) => ({
         id: activity.id,
         text: `${activity.action.replaceAll("_", " ")} · ${activity.resourceType.replaceAll("_", " ")}`,
@@ -177,11 +181,11 @@ export async function loadOverviewForOrganisation(organisationId: string): Promi
 
 export async function loadOverview(slug: string): Promise<OverviewData> {
   if (!connected()) return {
-    activeJobs: 18,
-    inspectionsThisWeek: 7,
-    openClients: 42,
-    feesInProgress: 21400,
-    onboardingProgress: 86,
+    activeJobs: demoJobs.filter(job => !["paid", "archived"].includes(job.stage)).length,
+    inspectionsThisWeek: demoJobs.filter(job => job.stage === "scheduled").length,
+    openClients: demoClients.length,
+    feesInProgress: demoJobs.filter(job => !["paid", "archived"].includes(job.stage)).reduce((total, job) => total + (job.fee ?? 0), 0),
+    onboardingProgress: 0,
     workQueue: demoJobs.slice(0, 4),
     inspectionsToday: demoJobs.filter((job) => job.stage === "scheduled").slice(0, 2),
     recentActivity: demoActivities.map((activity, index) => ({ id: String(index), ...activity })),
@@ -196,8 +200,8 @@ export async function loadClients(slug: string): Promise<Client[]> {
   const db = createDatabase();
   const data = await db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
-    const clientRows = await tx.select().from(clients).where(and(eq(clients.organisationId, context.organisationId), isNull(clients.archivedAt))).orderBy(asc(clients.displayName));
-    const propertyRows = await tx.select({ clientId: properties.clientId, value: count(properties.id) }).from(properties).where(and(eq(properties.organisationId, context.organisationId), isNull(properties.archivedAt))).groupBy(properties.clientId);
+    const clientRows = await tx.select().from(clients).where(and(assignedClientScope(context), eq(clients.organisationId, context.organisationId), isNull(clients.archivedAt))).orderBy(asc(clients.displayName));
+    const propertyRows = await tx.select({ clientId: properties.clientId, value: count(properties.id) }).from(properties).where(and(assignedPropertyScope(context), eq(properties.organisationId, context.organisationId), isNull(properties.archivedAt))).groupBy(properties.clientId);
     return { clientRows, propertyRows };
   });
   return data.clientRows.map((client) => ({ id: client.id, name: client.displayName, kind: client.kind === "company" ? "Company" : "Individual", email: client.email ?? "—", phone: client.phone ?? "—", properties: data.propertyRows.find((row) => row.clientId === client.id)?.value ?? 0, lastActivity: client.updatedAt.toLocaleDateString("en-GB"), version: client.version }));
@@ -209,8 +213,8 @@ export async function loadProperties(slug: string): Promise<Property[]> {
   const db = createDatabase();
   const data = await db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
-    const propertyRows = await tx.select({ property: properties, clientName: clients.displayName }).from(properties).innerJoin(clients, eq(properties.clientId, clients.id)).where(and(eq(properties.organisationId, context.organisationId), isNull(properties.archivedAt))).orderBy(asc(properties.line1));
-    const activeJobRows = await tx.select({ propertyId: jobs.propertyId, value: count(jobs.id) }).from(jobs).where(and(eq(jobs.organisationId, context.organisationId), notInArray(jobs.stage, ["paid", "archived"]))).groupBy(jobs.propertyId);
+    const propertyRows = await tx.select({ property: properties, clientName: clients.displayName }).from(properties).innerJoin(clients, eq(properties.clientId, clients.id)).where(and(assignedPropertyScope(context), eq(properties.organisationId, context.organisationId), isNull(properties.archivedAt))).orderBy(asc(properties.line1));
+    const activeJobRows = await tx.select({ propertyId: jobs.propertyId, value: count(jobs.id) }).from(jobs).where(and(assignedJobScope(context), eq(jobs.organisationId, context.organisationId), notInArray(jobs.stage, ["paid", "archived"]))).groupBy(jobs.propertyId);
     return { propertyRows, activeJobRows };
   });
   return data.propertyRows.map(({ property, clientName }) => ({ id: property.id, address: property.line1, town: property.city, postcode: property.postcode, type: property.propertyType ?? "Not recorded", client: clientName, activeJobs: data.activeJobRows.find((row) => row.propertyId === property.id)?.value ?? 0, version: property.version }));
@@ -232,10 +236,10 @@ export async function loadPropertyWorkspace(slug: string, propertyId: string) {
   const db = createDatabase();
   return db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
-    const [row] = await tx.select({ property: properties, clientName: clients.displayName }).from(properties).innerJoin(clients, eq(properties.clientId, clients.id)).where(and(eq(properties.id, propertyId), eq(properties.organisationId, context.organisationId))).limit(1);
+    const [row] = await tx.select({ property: properties, clientName: clients.displayName }).from(properties).innerJoin(clients, eq(properties.clientId, clients.id)).where(and(eq(properties.id, propertyId), eq(properties.organisationId, context.organisationId), assignedPropertyScope(context))).limit(1);
     if (!row) return null;
     const [jobRows, eventRows] = await Promise.all([
-      tx.select({ id: jobs.id, reference: jobs.reference, serviceName: jobs.serviceName, stage: jobs.stage, targetDate: jobs.targetDate }).from(jobs).where(and(eq(jobs.propertyId, propertyId), eq(jobs.organisationId, context.organisationId))).orderBy(desc(jobs.updatedAt)),
+      tx.select({ id: jobs.id, reference: jobs.reference, serviceName: jobs.serviceName, stage: jobs.stage, targetDate: jobs.targetDate }).from(jobs).where(and(eq(jobs.propertyId, propertyId), eq(jobs.organisationId, context.organisationId), assignedJobScope(context))).orderBy(desc(jobs.updatedAt)),
       tx.select({ id: auditEvents.id, action: auditEvents.action, occurredAt: auditEvents.occurredAt, metadata: auditEvents.metadata }).from(auditEvents).where(and(eq(auditEvents.organisationId, context.organisationId), eq(auditEvents.resourceType, "property"), eq(auditEvents.resourceId, propertyId))).orderBy(desc(auditEvents.occurredAt)).limit(100),
     ]);
     return {
@@ -253,9 +257,9 @@ export async function loadJobs(slug: string): Promise<Job[]> {
   const db = createDatabase();
   const rows = await db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
-    return tx.select({ job: jobs, clientName: clients.displayName, address: properties.line1, city: properties.city, assigneeFirstName: users.firstName, assigneeLastName: users.lastName, assigneeEmail: users.email }).from(jobs).innerJoin(clients, eq(jobs.clientId, clients.id)).innerJoin(properties, eq(jobs.propertyId, properties.id)).leftJoin(users, eq(jobs.assignedSurveyorId, users.id)).where(eq(jobs.organisationId, context.organisationId)).orderBy(desc(jobs.updatedAt));
+    return tx.select({ job: jobs, clientName: clients.displayName, address: properties.line1, city: properties.city, assigneeFirstName: users.firstName, assigneeLastName: users.lastName, assigneeEmail: users.email }).from(jobs).innerJoin(clients, eq(jobs.clientId, clients.id)).innerJoin(properties, eq(jobs.propertyId, properties.id)).leftJoin(users, eq(jobs.assignedSurveyorId, users.id)).where(and(assignedJobScope(context), eq(jobs.organisationId, context.organisationId), assignedJobScope(context))).orderBy(desc(jobs.updatedAt));
   });
-  return rows.map(({ job, clientName, address, city, assigneeFirstName, assigneeLastName, assigneeEmail }) => ({ id: job.id, reference: job.reference, client: clientName, address: `${address}, ${city}`, service: job.serviceName, stage: job.stage, assignee: [assigneeFirstName, assigneeLastName].filter(Boolean).join(" ") || assigneeEmail || "Unassigned", target: formatTarget(job.targetDate), fee: Number(job.fee ?? 0), priority: job.priority === "high" ? "High" : "Normal", version: job.version }));
+  return rows.map(({ job, clientName, address, city, assigneeFirstName, assigneeLastName, assigneeEmail }) => ({ id: job.id, reference: job.reference, client: clientName, address: `${address}, ${city}`, service: job.serviceName, stage: job.stage, assignee: [assigneeFirstName, assigneeLastName].filter(Boolean).join(" ") || assigneeEmail || "Unassigned", target: formatTarget(job.targetDate), fee: context.userRole === "surveyor" ? undefined : Number(job.fee ?? 0), priority: job.priority === "high" ? "High" : "Normal", version: job.version }));
 }
 
 export async function loadMembers(slug: string): Promise<Member[]> {
@@ -272,7 +276,7 @@ export async function loadMembers(slug: string): Promise<Member[]> {
   const activeMembers: Member[] = data.memberRows.map(({ membership, user }) => {
     const name = [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email;
     const jobCount = data.assignedJobs.filter((job) => job.assignedSurveyorId === user.id).length;
-    return { id: membership.id, name, email: user.email, initials: name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(), role: membership.role, status: "Active", workload: `${jobCount} active ${jobCount === 1 ? "job" : "jobs"}` };
+    return { id: membership.id, name, email: user.email, initials: name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(), role: membership.role, canRecordSurvey: membership.canRecordSurvey, canApproveReports: membership.canApproveReports, status: "Active", workload: `${jobCount} active ${jobCount === 1 ? "job" : "jobs"}` };
   });
   const invitedMembers: Member[] = data.pendingInvitations.map((invitation) => ({
     id: invitation.id,
@@ -322,8 +326,8 @@ export async function loadJobFormOptions(slug: string): Promise<JobFormOptions> 
   const db = createDatabase();
   return db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
-    const clientRows = await tx.select({ id: clients.id, name: clients.displayName }).from(clients).where(and(eq(clients.organisationId, context.organisationId), isNull(clients.archivedAt))).orderBy(asc(clients.displayName));
-    const propertyRows = await tx.select({ id: properties.id, clientId: properties.clientId, line1: properties.line1, city: properties.city, postcode: properties.postcode }).from(properties).where(and(eq(properties.organisationId, context.organisationId), isNull(properties.archivedAt))).orderBy(asc(properties.line1));
+    const clientRows = await tx.select({ id: clients.id, name: clients.displayName }).from(clients).where(and(assignedClientScope(context), eq(clients.organisationId, context.organisationId), isNull(clients.archivedAt))).orderBy(asc(clients.displayName));
+    const propertyRows = await tx.select({ id: properties.id, clientId: properties.clientId, line1: properties.line1, city: properties.city, postcode: properties.postcode }).from(properties).where(and(assignedPropertyScope(context), eq(properties.organisationId, context.organisationId), isNull(properties.archivedAt))).orderBy(asc(properties.line1));
     const surveyorRows = await tx.select({ id: users.id, firstName: users.firstName, lastName: users.lastName, email: users.email, role: organisationMemberships.role }).from(organisationMemberships).innerJoin(users, eq(organisationMemberships.userId, users.id)).where(and(eq(organisationMemberships.organisationId, context.organisationId), eq(organisationMemberships.active, true))).orderBy(asc(users.firstName));
     return {
       clients: clientRows,

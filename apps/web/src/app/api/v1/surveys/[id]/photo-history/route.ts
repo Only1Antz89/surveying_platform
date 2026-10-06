@@ -1,3 +1,5 @@
+import { workspaceApiGuard } from "@/lib/workspace-api-guard";
+import { professionalApiGuard } from "@/lib/professional-access";
 import { z } from "zod";
 import { apiContext } from "@/lib/access";
 import { ok, problem } from "@/lib/api";
@@ -11,6 +13,10 @@ const key = z.string().regex(/^[a-z][a-z0-9_]*$/).max(60);
 export async function GET(request: Request, route: RouteContext<"/api/v1/surveys/[id]/photo-history">) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  const accessDenial = await workspaceApiGuard(request, context);
+  if (accessDenial) return accessDenial;
+  const professionalDenial = professionalApiGuard(request, context);
+  if (professionalDenial) return professionalDenial;
   const { id } = await route.params;
   const url = new URL(request.url);
   const query = z.object({ section: key, element: key }).safeParse({ section: url.searchParams.get("section"), element: url.searchParams.get("element") });

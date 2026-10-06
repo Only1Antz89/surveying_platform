@@ -97,6 +97,9 @@ export const offlineStore = {
   async surveyForJob(jobId: string) {
     return (await getValue<{ surveyId: string }>("pointers", `job:${jobId}`))?.surveyId ?? null;
   },
+  async forgetSurveyForJob(jobId: string) {
+    await remove("pointers", `job:${jobId}`);
+  },
   async enqueue(entry: OutboxEntry) {
     await put("outbox", entry as unknown as Record<string, unknown>, entry.operationId);
   },

@@ -1,3 +1,4 @@
+import { organisationMemberships } from "@surveynt/db";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -6,6 +7,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { assistantTasks, clients, referenceDataSources, evidenceLinks, fieldProposals, jobs, organisations, properties, surveyFieldValues, users } from "@surveynt/db";
 import { createTestDatabase, integrationEnabled, stopRelay, type TestDatabase } from "@surveynt/db/testing";
 import { importSpatialLayer, syncSourceRegistry } from "@surveynt/property-data/importers";
+import { intelligenceProviders, legacyEpcProvider } from "@surveynt/property-data";
 import { processIntelligenceRun, requestIntelligenceRefresh } from "../src/lib/intelligence";
 import { listSurveyProposals, refreshSurveyProposals, reviewProposal } from "../src/lib/proposals";
 import { applySyncOperations, createSurvey, type SurveyContext } from "../src/lib/surveys";
@@ -39,7 +41,7 @@ describe.skipIf(!integrationEnabled)("assistant proposals", () => {
 
   beforeAll(async () => {
     database = await createTestDatabase();
-    Object.assign(process.env, { DATABASE_APP_URL: database.appUrl, DATABASE_ADMIN_URL: database.adminUrl, PROPERTY_INTELLIGENCE_ENABLED: "true", ASSISTANT_ENABLED: "true", EPC_API_BASE_URL: "https://epc.example.test", EPC_API_TOKEN: "test-token" });
+    Object.assign(process.env, { DATABASE_APP_URL: database.appUrl, DATABASE_ADMIN_URL: database.adminUrl, PROPERTY_INTELLIGENCE_ENABLED: "true", ASSISTANT_ENABLED: "true", EPC_API_BASE_URL: "https://epc.example.test", EPC_API_TOKEN: "test-token", EPC_LICENCE_ACCEPTED: "true", EPC_DATA_PROTECTION_APPROVED: "true" });
     const admin = database.connect(database.adminUrl);
     await syncSourceRegistry(admin);
     await admin.update(referenceDataSources).set({ enabled: true, verifiedAt: new Date(), verifiedBy: "integration-test" }).where(sql`${referenceDataSources.key} in ('planning_data', 'epc_england_wales', 'historic_england_nhle')`);
@@ -48,19 +50,21 @@ describe.skipIf(!integrationEnabled)("assistant proposals", () => {
       { id: firmB, clerkOrganisationId: "org_b5", name: "Firm B", slug: "firm-b5", practiceType: "residential", region: "Leeds" },
     ]);
     const [user] = await admin.insert(users).values({ clerkUserId: "user_a5", email: "surveyor@a5.test" }).returning();
+    await admin.insert(organisationMemberships).values({ organisationId: firmA, userId: user.id, role: "surveyor" });
     surveyor = { organisationId: firmA, internalUserId: user.id, role: "surveyor" };
     coordinator = { organisationId: firmA, internalUserId: user.id, role: "coordinator" };
     const [client] = await admin.insert(clients).values({ organisationId: firmA, kind: "individual", displayName: "Client A" }).returning();
     const [property] = await admin.insert(properties).values({ organisationId: firmA, clientId: client.id, line1: "Flat 4, 1 Test Crescent", city: "Bristol", postcode: "BS8 4JX", country: "ENG", ...point, locationConfidence: "surveyor_confirmed", uprn: "990000000004", uprnConfirmedAt: new Date(), uprnEvidenceType: "site_inspection" }).returning();
     propertyId = property.id;
-    const [job] = await admin.insert(jobs).values({ organisationId: firmA, clientId: client.id, propertyId, reference: "P-1", serviceName: "Survey", targetDate: "2026-10-05" }).returning();
+    const [job] = await admin.insert(jobs).values({ organisationId: firmA, clientId: client.id, propertyId, reference: "P-1", assignedSurveyorId: surveyor.internalUserId, serviceName: "Survey", targetDate: "2026-10-05" }).returning();
     const directory = await mkdtemp(path.join(tmpdir(), "surveynt-layer-"));
     const file = path.join(directory, "listed.geojson");
     await writeFile(file, JSON.stringify({ type: "FeatureCollection", features: [{ type: "Feature", properties: { ListEntry: 9000101, Name: "TEST ONLY crescent", Grade: "II*" }, geometry: { type: "Polygon", coordinates: square(0.0003) } }] }));
     await importSpatialLayer(database.connect(database.importerUrl), { sourceKey: "historic_england_nhle", layer: "listed_building", filePath: file, datasetVersion: "synthetic-1", activate: true, importedBy: "test" });
     const run = await requestIntelligenceRefresh(surveyor, propertyId);
     if (run.kind !== "queued") throw new Error("expected a queued run");
-    await processIntelligenceRun(firmA, run.run.id, { fetchImpl });
+    // Regression fixture for legacy stored snapshot shape; production uses the modern bearer adapter.
+    await processIntelligenceRun(firmA, run.run.id, { fetchImpl, providers: intelligenceProviders.map(provider => provider.key === "epc_england_wales" ? legacyEpcProvider : provider) });
     const survey = await createSurvey(surveyor, job.id, { serviceLevel: "level_2" });
     if (survey.kind !== "created") throw new Error("expected a survey");
     surveyId = survey.survey.id;
@@ -133,11 +137,51 @@ describe.skipIf(!integrationEnabled)("assistant proposals", () => {
     await expect(admin.update(fieldProposals).set({ reviewStatus: "rejected" }).where(eq(fieldProposals.id, draft.id))).rejects.toThrow();
   });
 
+  it("preloads the versioned Home Survey fields, checks weather date changes and blocks demo network calls", async () => {
+    const admin = database.connect(database.adminUrl);
+    const [property] = await admin.select().from(properties).where(eq(properties.id, propertyId));
+    const [job] = await admin.insert(jobs).values({ organisationId: firmA, clientId: property.clientId, propertyId, reference: "P-HOME", serviceName: "Level 2", assignedSurveyorId: surveyor.internalUserId }).returning();
+    await admin.update(properties).set({ confirmedByUserId: surveyor.internalUserId }).where(eq(properties.id, propertyId));
+    const outcome = await createSurvey(surveyor, job.id, { serviceLevel: "level_2", templateKey: "surveynt-home-survey-level-2", templateVersion: "1.1.0" });
+    if (outcome.kind !== "created") throw new Error("Home Survey not created");
+    const id = outcome.survey.id;
+    const [saved] = await applySyncOperations(surveyor, id, [{ type: "set_field", operationId: op(), fieldPath: "a.details.inspection_date", value: { state: "provided", value: "2026-09-28" }, baseValueId: null }]);
+    expect(saved.status).toBe("applied");
+    const weatherFetch = vi.fn<typeof fetch>().mockImplementation(async () => new Response(JSON.stringify({ ...point, timezone: "Europe/London", daily_units: { temperature_2m_min: "°C", temperature_2m_max: "°C", precipitation_sum: "mm", wind_speed_10m_max: "km/h" }, daily: { time: ["2026-09-28"], temperature_2m_min: [9], temperature_2m_max: [17], precipitation_sum: [2], wind_speed_10m_max: [20] } })));
+    vi.stubGlobal("fetch", weatherFetch);
+    vi.stubEnv("INSPECTION_WEATHER_API_URL", "https://weather.example.com/v1/archive");
+    vi.stubEnv("INSPECTION_WEATHER_TERMS_APPROVED", "true");
+    try {
+      expect((await refreshSurveyProposals(surveyor, id, true)).weather?.status).toBe("available");
+      const proposals = await listSurveyProposals(surveyor, id);
+      expect(proposals.map(p => p.fieldPath)).toEqual(expect.arrayContaining(["a.details.weather", "c.details.property_type", "c.details.built_year", "c.details.local_environment"]));
+      const built = proposals.find(p => p.fieldPath === "c.details.built_year")!;
+      expect(await reviewProposal(surveyor, id, built.id, { decision: "accept" })).toMatchObject({ kind: "invalid" });
+      expect(await reviewProposal(surveyor, id, built.id, { decision: "accept", confirmProfessional: true })).toMatchObject({ status: "accepted" });
+      const weather = proposals.find(p => p.fieldPath === "a.details.weather")!;
+      // A property-worker refresh must preserve independently loaded weather.
+      await refreshSurveyProposals(surveyor, id);
+      expect((await listSurveyProposals(surveyor, id)).find(p => p.id === weather.id)?.reviewStatus).toBe("pending");
+      const [date] = await admin.select().from(surveyFieldValues).where(and(eq(surveyFieldValues.surveyId, id), eq(surveyFieldValues.fieldPath, "a.details.inspection_date"), sql`${surveyFieldValues.supersededAt} is null`));
+      await applySyncOperations(surveyor, id, [{ type: "set_field", operationId: op(), fieldPath: "a.details.inspection_date", value: { state: "provided", value: "2026-09-29" }, baseValueId: date.id }]);
+      expect(await reviewProposal(surveyor, id, weather.id, { decision: "accept", confirmProfessional: true })).toMatchObject({ kind: "conflict" });
+      const calls = weatherFetch.mock.calls.length;
+      await admin.update(organisations).set({ isDemo: true }).where(eq(organisations.id, firmA));
+      expect((await refreshSurveyProposals(surveyor, id, true)).weather?.status).toBe("not_checked");
+      expect(weatherFetch.mock.calls).toHaveLength(calls);
+    } finally {
+      await admin.update(organisations).set({ isDemo: false }).where(eq(organisations.id, firmA));
+      vi.unstubAllGlobals(); vi.unstubAllEnvs();
+    }
+  });
+
   it("supersedes pending suggestions when the property identity changes", async () => {
     const before = (await pending()).length;
     expect(before).toBeGreaterThan(0);
+    const stale = (await pending()).find(p => p.fieldPath !== "inspection.visit.inspection_date")!;
     const admin = database.connect(database.adminUrl);
     await admin.update(properties).set({ latitude: 51.455, version: sql`${properties.version} + 1` }).where(eq(properties.id, propertyId));
+    expect(await reviewProposal(surveyor, surveyId, stale.id, { decision: "accept", confirmProfessional: true })).toMatchObject({ kind: "conflict" });
     const refreshed = await refreshSurveyProposals(surveyor, surveyId);
     expect(refreshed.superseded).toBeGreaterThan(0);
     expect((await pending()).map((item) => item.fieldPath)).toEqual(["inspection.visit.inspection_date"]);
@@ -145,7 +189,7 @@ describe.skipIf(!integrationEnabled)("assistant proposals", () => {
 
   it("denies another firm's reviews", async () => {
     const remaining = await pending();
-    expect(await reviewProposal({ organisationId: firmB, internalUserId: null, role: "owner" }, surveyId, remaining[0].id, { decision: "accept" })).toEqual({ kind: "missing" });
+    expect(await reviewProposal({ organisationId: firmB, internalUserId: null, role: "owner" }, surveyId, remaining[0].id, { decision: "accept" })).toMatchObject({ kind: "invalid" });
     expect(await listSurveyProposals({ organisationId: firmB }, surveyId)).toHaveLength(0);
   });
 

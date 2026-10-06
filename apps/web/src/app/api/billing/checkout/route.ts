@@ -12,6 +12,7 @@ export async function POST(request: Request) {
   if (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_BASE_PRICE_ID) return problem(503, "billing_not_configured", "Stripe billing has not been connected yet.");
   const context = await apiContext(request);
   if (!context || context.demo) return problem(401, "unauthorised", "A verified account and organisation are required before checkout.");
+  if (context.role !== "owner") return problem(403, "owner_required", "Only owners can change the Surveynt subscription.");
   const parsed = await parseBody(request, requestSchema);
   if (!parsed.success) return problem(400, "invalid_request", "The requested seat quantity is invalid.");
 

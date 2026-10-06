@@ -38,7 +38,7 @@ describe.skipIf(!integrationEnabled)("property intelligence", () => {
 
   beforeAll(async () => {
     database = await createTestDatabase();
-    Object.assign(process.env, { DATABASE_APP_URL: database.appUrl, DATABASE_ADMIN_URL: database.adminUrl, PROPERTY_INTELLIGENCE_ENABLED: "true", EPC_API_BASE_URL: "https://epc.example.test", EPC_API_TOKEN: "test-token" });
+    Object.assign(process.env, { DATABASE_APP_URL: database.appUrl, DATABASE_ADMIN_URL: database.adminUrl, PROPERTY_INTELLIGENCE_ENABLED: "true", EPC_API_BASE_URL: "https://epc.example.test", EPC_API_TOKEN: "test-token", EPC_LICENCE_ACCEPTED: "true", EPC_DATA_PROTECTION_APPROVED: "true" });
     const admin = database.connect(database.adminUrl);
     await syncSourceRegistry(admin);
     await admin.update(referenceDataSources).set({ enabled: true, verifiedAt: new Date(), verifiedBy: "integration-test" }).where(sql`${referenceDataSources.key} in ('planning_data', 'epc_england_wales', 'historic_england_nhle')`);

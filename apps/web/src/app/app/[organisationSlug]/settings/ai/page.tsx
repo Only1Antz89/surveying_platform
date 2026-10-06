@@ -1,3 +1,4 @@
+import { requireWorkspacePageAccess } from "@/lib/workspace-page-access";
 import Link from "next/link";
 import { canManageTeam, canMutateOperations } from "@surveynt/domain";
 import { AiGovernancePanel } from "@/components/ai-governance-panel";
@@ -9,7 +10,7 @@ export const metadata = { title: "AI and assistant" };
 export const dynamic = "force-dynamic";
 
 export default async function AiSettingsPage({ params }: PageProps<"/app/[organisationSlug]/settings/ai">) {
-  const { organisationSlug } = await params;
+  const { organisationSlug } = await params; await requireWorkspacePageAccess(organisationSlug, "settings");
   const access = await requireFirmAccess(organisationSlug);
   const demo = access.userId === "demo_user";
   const governance = demo

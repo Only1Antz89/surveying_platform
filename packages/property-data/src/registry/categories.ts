@@ -18,6 +18,7 @@ export type CategoryInfo = { label: string; group: CategoryGroup; caveat: string
 // Professional caveats shown wherever a category appears. They are fixed
 // product wording and never generated per property.
 export const categoryCatalogue: Record<string, CategoryInfo> = {
+  postcode_geography: { label: "Postcode administrative geography", group: "environment", caveat: "Approximate postcode-level context, not a classification of the individual property." },
   conservation_area: { label: "Conservation area", group: "planning", caveat: "Planning coverage varies; confirm with the local planning authority." },
   listed_building: { label: "Listed building (planning record)", group: "planning", caveat: "Planning coverage varies; the official list entry is definitive." },
   article_4_direction: { label: "Article 4 direction", group: "planning", caveat: "Planning coverage varies; confirm with the local planning authority." },

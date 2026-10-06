@@ -1,3 +1,5 @@
+import { workspaceApiGuard } from "@/lib/workspace-api-guard";
+import { professionalApiGuard } from "@/lib/professional-access";
 import { z } from "zod";
 import { composeReport, type FieldValue, type InspectionStatus, type ServiceLevel } from "@surveynt/assistant";
 import { canMutateOperations } from "@surveynt/domain";
@@ -37,6 +39,10 @@ function demoReport(surveyId: string) {
 export async function GET(request: Request, route: RouteContext<"/api/v1/surveys/[id]/report">) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  const accessDenial = await workspaceApiGuard(request, context);
+  if (accessDenial) return accessDenial;
+  const professionalDenial = professionalApiGuard(request, context);
+  if (professionalDenial) return professionalDenial;
   const { id } = await route.params;
   if (context.demo) return ok({ surveyStatus: "in_progress", currentFingerprint: "demo", versions: [], latest: null }, { demo: true });
   if (!z.uuid().safeParse(id).success) return problem(404, "survey_not_found", "The survey could not be found.");
@@ -48,6 +54,8 @@ export async function GET(request: Request, route: RouteContext<"/api/v1/surveys
 export async function POST(request: Request, route: RouteContext<"/api/v1/surveys/[id]/report">) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  const accessDenial = await workspaceApiGuard(request, context);
+  if (accessDenial) return accessDenial;
   if (!canWriteWorkspace(context)) return problem(402, "workspace_read_only", "Restore billing before changing workspace records.");
   if (!canMutateOperations(context.role)) return problem(403, "forbidden", "Your role cannot compose reports.");
   const { id } = await route.params;

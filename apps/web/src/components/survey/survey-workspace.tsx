@@ -8,6 +8,8 @@ import { newOperationId, offlineStore, type OutboxEntry, type UploadEntry } from
 import { SurveyElementCard, type EarlierPhotoView, type ElementView, type ObservationView, type PhotoView } from "./survey-element-card";
 import type { FieldDisplay } from "./survey-field";
 import { AssistantPanel } from "./assistant-panel";
+import { SurveyEvidenceProvider } from "./survey-evidence-context";
+import { TemplateUpgrade } from "./template-upgrade";
 import { CompletionPanel } from "./completion-panel";
 import { DocumentsPanel } from "./documents-panel";
 import { ReportPanel } from "./report-panel";
@@ -21,7 +23,10 @@ function describeValue(value: unknown) {
   return parsed.state === "provided" ? String(parsed.value) : parsed.state.replace(/_/g, " ");
 }
 
-export function SurveyWorkspace({ surveyId, canEdit, canJudge }: { surveyId: string; canEdit: boolean; canJudge: boolean }) {
+export function SurveyWorkspace({ surveyId, canEdit: initialCanEdit, canJudge: initialCanJudge, canApprove }: { surveyId: string; canEdit: boolean; canJudge: boolean; canApprove: boolean }) {
+  const [recordingRevoked, setRecordingRevoked] = useState(false);
+  const canEdit = initialCanEdit && !recordingRevoked;
+  const canJudge = initialCanJudge && !recordingRevoked;
   const [pack, setPack] = useState<SurveyPack | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [outbox, setOutbox] = useState<OutboxEntry[]>([]);
@@ -43,6 +48,12 @@ export function SurveyWorkspace({ surveyId, canEdit, canJudge }: { surveyId: str
     try {
       const response = await fetch(`/api/v1/surveys/${surveyId}`, { cache: "no-store" });
       const payload = await response.json();
+      if ([401, 403, 404].includes(response.status)) {
+        await offlineStore.clearSurvey(surveyId);
+        setPack(null); setRecordingRevoked(true);
+        setLoadError(payload?.error?.message ?? "Access changed. The device copy has been removed.");
+        return;
+      }
       if (!response.ok) { setLoadError(payload?.error?.message ?? "The survey could not be loaded."); return; }
       setPack(payload.data as SurveyPack);
       setDemo(Boolean(payload.meta?.demo));
@@ -74,7 +85,7 @@ export function SurveyWorkspace({ surveyId, canEdit, canJudge }: { surveyId: str
   }, []);
 
   const sync = useCallback(async () => {
-    if (syncingRef.current || !navigator.onLine) return;
+    if (syncingRef.current || !navigator.onLine || recordingRevoked) return;
     syncingRef.current = true;
     setSyncing(true);
     try {
@@ -100,7 +111,7 @@ export function SurveyWorkspace({ surveyId, canEdit, canJudge }: { surveyId: str
       for (let index = 0; index < ready.length; index += 50) {
         const batch = ready.slice(index, index + 50);
         const response = await fetch(`/api/v1/surveys/${surveyId}/sync`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ operations: batch.map((entry) => entry.operation) }) });
-        if (!response.ok) { const payload = await response.json().catch(() => null); setNotice(payload?.error?.message ?? "Changes could not be synced yet. They are safe on this device."); break; }
+        if (!response.ok) { const payload = await response.json().catch(() => null); if (response.status === 403) setRecordingRevoked(true); setNotice(payload?.error?.message ?? "Changes could not be synced yet. They are safe on this device."); break; }
         const payload = await response.json();
         if (payload.meta?.demo) setNotice("Demo workspace: changes are not saved to a server.");
         for (const result of payload.data.results as SyncResult[]) {
@@ -119,7 +130,7 @@ export function SurveyWorkspace({ surveyId, canEdit, canJudge }: { surveyId: str
       setSyncing(false);
       await refreshLocal();
     }
-  }, [surveyId, fetchPack, refreshLocal]);
+  }, [surveyId, fetchPack, refreshLocal, recordingRevoked]);
 
   const pendingCount = outbox.filter((entry) => entry.status === "pending").length + uploads.filter((upload) => upload.status === "pending").length;
   useEffect(() => {
@@ -201,21 +212,22 @@ export function SurveyWorkspace({ surveyId, canEdit, canJudge }: { surveyId: str
       <div className="row-actions"><button type="button" className="button button-quiet" onClick={() => void sync()} disabled={!online || syncing}>Sync now</button><button type="button" className="button button-quiet danger" onClick={() => void removeOfflineCopy()}><Trash2 size={14} />Remove offline copy</button></div>
     </div>
     {notice ? <p className="form-success" role="status">{notice}</p> : null}
+    {canEdit && !demo && pack.survey.status === "in_progress" ? <TemplateUpgrade pack={pack} disabled={!online || syncing || outbox.length > 0 || uploads.length > 0} onChanged={fetchPack}/> : null}
     {attention.length ? <section className="panel attention-panel" aria-labelledby="attention-heading"><div className="panel-header"><div><h2 id="attention-heading">Changes needing attention</h2><p>Nothing is overwritten silently. Choose which value to keep.</p></div></div><ul>{attention.map((entry) => <li key={entry.operationId}><strong>{entry.operation.type === "set_field" ? entry.operation.fieldPath : entry.operation.type.replace(/_/g, " ")}</strong><span>{entry.message}</span>{entry.status === "conflict" && entry.operation.type === "set_field" ? <span className="cell-sub">Yours: {describeValue(entry.operation.value)} · Current: {describeValue(entry.current?.value)}</span> : null}<div className="row-actions">{entry.status === "conflict" ? <><button type="button" className="button button-secondary" onClick={() => void resolveConflict(entry, true)}>Keep mine</button><button type="button" className="button button-quiet" onClick={() => void resolveConflict(entry, false)}>Use current</button></> : <button type="button" className="button button-quiet danger" onClick={() => void resolveConflict(entry, false)}>Discard</button>}</div></li>)}</ul></section> : null}
     {openTasks.length ? <section className="panel tasks-panel" aria-labelledby="tasks-heading"><div className="panel-header"><div><h2 id="tasks-heading">Reminders from earlier surveys</h2><p>Historical context only. These are not current findings.</p></div><History size={17} color="#3b82f6" aria-hidden="true" /></div><ul>{openTasks.map((task) => <li key={task.id}><strong>{task.title}</strong><span>{task.detail}</span></li>)}</ul></section> : null}
-    <div className="survey-layout">
-    <aside className="survey-side" aria-label="Checks, suggestions, documents and report">
-      <CompletionPanel pack={pack} pendingCount={pendingCount} onGoTo={(sectionKey, elementKey) => { setSection(sectionKey); window.setTimeout(() => document.getElementById(`element-${sectionKey}-${elementKey}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 50); }} />
-      <DocumentsPanel surveyId={surveyId} pack={pack} canEdit={canEdit && pack.survey.status === "in_progress"} online={online} demo={demo} onChanged={fetchPack} />
-      <AssistantPanel surveyId={surveyId} pack={pack} canEdit={canEdit && pack.survey.status === "in_progress"} canJudge={canJudge} online={online} onChanged={fetchPack} />
-      <ReportPanel surveyId={surveyId} canEdit={canEdit} canJudge={canJudge} online={online} demo={demo} onChanged={fetchPack} />
-      <SharedCasesPanel pack={pack} sectionKey={activeSection.key} online={online} />
-    </aside>
+    <SurveyEvidenceProvider surveyId={surveyId} pack={pack} canEdit={canEdit && pack.survey.status === "in_progress"} canJudge={canJudge} online={online && outbox.length === 0 && uploads.length === 0} onChanged={fetchPack}><div className="survey-layout">
+
     <div className="survey-main">
     <nav className="workspace-tabs survey-sections" role="tablist" aria-label="Survey sections">
-      {pack.template.sections.map((item) => <button key={item.key} type="button" role="tab" aria-selected={item.key === activeSection.key} className={`workspace-tab ${item.key === activeSection.key ? "active" : ""}`} onClick={() => setSection(item.key)}>{item.label}</button>)}
+      {pack.template.sections.map((item, index) => <button key={item.key} id={`survey-tab-${item.key}`} type="button" role="tab" tabIndex={item.key === activeSection.key ? 0 : -1} aria-controls="survey-section-panel" aria-selected={item.key === activeSection.key} className={`workspace-tab ${item.key === activeSection.key ? "active" : ""}`} onClick={() => setSection(item.key)} onKeyDown={event => {
+        const count = pack.template.sections.length;
+        const next = event.key === "ArrowRight" ? (index + 1) % count : event.key === "ArrowLeft" ? (index + count - 1) % count : event.key === "Home" ? 0 : event.key === "End" ? count - 1 : null;
+        if (next === null) return;
+        event.preventDefault(); setSection(pack.template.sections[next].key);
+        document.getElementById(`survey-tab-${pack.template.sections[next].key}`)?.focus();
+      }}>{item.label}</button>)}
     </nav>
-    <div role="tabpanel" aria-label={activeSection.label} className="survey-section">
+    <div id="survey-section-panel" role="tabpanel" aria-labelledby={`survey-tab-${activeSection.key}`} tabIndex={0} className="survey-section">
       {activeSection.elements.map((element) => {
         const view = elementView(activeSection.key, element.key);
         // Observations may sit on located rows of the same element (for example "rear elevation").
@@ -260,6 +272,13 @@ export function SurveyWorkspace({ surveyId, canEdit, canJudge }: { surveyId: str
       })}
     </div>
     </div>
-    </div>
+    <aside className="survey-side" aria-label="Checks, suggestions, documents and report">
+      <CompletionPanel pack={pack} pendingCount={pendingCount} onGoTo={(sectionKey, elementKey) => { setSection(sectionKey); window.setTimeout(() => document.getElementById(`element-${sectionKey}-${elementKey}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 50); }} />
+      <DocumentsPanel surveyId={surveyId} pack={pack} canEdit={canEdit && pack.survey.status === "in_progress"} online={online} demo={demo} onChanged={fetchPack} />
+      <AssistantPanel surveyId={surveyId} pack={pack} hideSuggestions sectionKey={activeSection.key} canEdit={canEdit && pack.survey.status === "in_progress"} canJudge={canJudge} online={online && outbox.length === 0 && uploads.length === 0} onChanged={fetchPack} />
+      <ReportPanel surveyId={surveyId} canEdit={canEdit} canJudge={canApprove} online={online} demo={demo} onChanged={fetchPack} />
+      <SharedCasesPanel pack={pack} sectionKey={activeSection.key} online={online} />
+    </aside>
+    </div></SurveyEvidenceProvider>
   </div>;
 }

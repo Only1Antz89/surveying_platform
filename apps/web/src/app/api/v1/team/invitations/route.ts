@@ -1,3 +1,4 @@
+import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { clerkClient } from "@clerk/nextjs/server";
 import { z } from "zod";
 import { canManageTeam, organisationRoles } from "@surveynt/domain";
@@ -11,6 +12,8 @@ const invitationSchema = z.object({ email: z.email(), role: z.enum(organisationR
 export async function POST(request: Request) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  const accessDenial = await workspaceApiGuard(request, context);
+  if (accessDenial) return accessDenial;
   if (!canWriteWorkspace(context)) return problem(402, "workspace_read_only", "Restore billing before changing team access.");
   if (!canManageTeam(context.role)) return problem(403, "forbidden", "Only owners and administrators can invite teammates.");
   const parsed = await parseBody(request, invitationSchema);

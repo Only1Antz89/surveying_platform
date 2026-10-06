@@ -14,7 +14,7 @@ function membershipRole(clerkRole: string, metadata: Record<string, unknown>, cu
   // Read the former key so existing Clerk memberships keep their assigned role.
   const configured = organisationRoleSchema.safeParse(metadata.surveyntRole ?? metadata.fieldnoteRole);
   if (configured.success) return configured.data;
-  if (current === "owner") return current;
+  if (current) return current;
   return clerkRole === "org:admin" ? "administrator" : "surveyor";
 }
 
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
         const [current] = await db.select({ id: organisationMemberships.id, role: organisationMemberships.role }).from(organisationMemberships).where(and(eq(organisationMemberships.organisationId, organisation.id), eq(organisationMemberships.userId, memberUser.id))).limit(1);
         const role = membershipRole(data.role, data.public_metadata, current?.role);
         const active = parsed.data.type !== "organizationMembership.deleted";
-        await db.insert(organisationMemberships).values({ organisationId: organisation.id, userId: memberUser.id, role, active }).onConflictDoUpdate({ target: [organisationMemberships.organisationId, organisationMemberships.userId], set: { role, active, updatedAt: new Date() } });
+        await db.insert(organisationMemberships).values({ organisationId: organisation.id, userId: memberUser.id, role, active }).onConflictDoUpdate({ target: [organisationMemberships.organisationId, organisationMemberships.userId], set: { role, active, ...(current && current.role !== role ? { canRecordSurvey: false, canApproveReports: false } : {}), updatedAt: new Date() } });
         await db.insert(auditEvents).values({ organisationId: organisation.id, action: active ? "membership.synchronised" : "membership.deactivated", resourceType: "membership", resourceId: current?.id, metadata: { clerkUserId: data.public_user_data.user_id, role } });
       }
     }

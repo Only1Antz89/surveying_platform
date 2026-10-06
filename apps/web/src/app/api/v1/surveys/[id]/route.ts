@@ -1,3 +1,5 @@
+import { workspaceApiGuard } from "@/lib/workspace-api-guard";
+import { professionalApiGuard } from "@/lib/professional-access";
 import { z } from "zod";
 import { apiContext } from "@/lib/access";
 import { ok, problem } from "@/lib/api";
@@ -10,6 +12,10 @@ export const runtime = "nodejs";
 export async function GET(request: Request, route: RouteContext<"/api/v1/surveys/[id]">) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  const accessDenial = await workspaceApiGuard(request, context);
+  if (accessDenial) return accessDenial;
+  const professionalDenial = professionalApiGuard(request, context);
+  if (professionalDenial) return professionalDenial;
   const { id } = await route.params;
   if (context.demo) {
     const pack = demoSurveyPack(id.replace(/^demo-survey-/, ""));

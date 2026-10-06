@@ -1,5 +1,6 @@
+import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { z } from "zod";
-import { canManageTeam } from "@surveynt/domain";
+import { isManagementRole } from "@surveynt/domain";
 import { auditEvents, createDatabase, serviceDefinitions, servicePricingVersions, withTenant } from "@surveynt/db";
 import { and, desc, eq } from "drizzle-orm";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
@@ -9,6 +10,8 @@ const schema = z.object({ name: z.string().trim().min(2).max(160), baseAmountMin
 
 export async function GET(request: Request) {
   const context = await apiContext(request); if (!context) return problem(401, "unauthorised", "Authentication is required.");
+  const accessDenial = await workspaceApiGuard(request, context);
+  if (accessDenial) return accessDenial;
   if (context.demo) return ok([] as unknown[], { demo: true });
   const data = await withTenant(createDatabase(), context.organisationId, (tx) => tx.select({ service: serviceDefinitions, pricing: servicePricingVersions }).from(serviceDefinitions).leftJoin(servicePricingVersions, and(eq(servicePricingVersions.serviceDefinitionId, serviceDefinitions.id), eq(servicePricingVersions.active, true))).where(eq(serviceDefinitions.organisationId, context.organisationId)).orderBy(serviceDefinitions.name, desc(servicePricingVersions.version)));
   return ok(data);
@@ -16,8 +19,10 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const context = await apiContext(request); if (!context) return problem(401, "unauthorised", "Authentication is required.");
+  const accessDenial = await workspaceApiGuard(request, context);
+  if (accessDenial) return accessDenial;
   if (!canWriteWorkspace(context)) return problem(402, "workspace_read_only", "Restore billing before changing services.");
-  if (!canManageTeam(context.role)) return problem(403, "forbidden", "Only owners and administrators can change pricing.");
+  if (!isManagementRole(context.role)) return problem(403, "forbidden", "Only owners and administrators can change pricing.");
   const parsed = await parseBody(request, schema); if (!parsed.success) return problem(400, "invalid_request", "The service pricing is invalid.", parsed.error.flatten());
   if (context.demo) return ok({ id: crypto.randomUUID(), ...parsed.data }, { demo: true, persisted: false });
   const created = await withTenant(createDatabase(), context.organisationId, async (tx) => {

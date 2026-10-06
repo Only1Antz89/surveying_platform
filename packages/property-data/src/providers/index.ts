@@ -5,8 +5,10 @@ export * from "./epc";
 export * from "./reference-layer";
 export * from "./price-paid";
 export * from "./scottish-epc";
+export * from "./postcode-geography";
 
 import { epcProvider } from "./epc";
+import { postcodeGeographyProvider } from "./postcode-geography";
 import { planningDataProvider } from "./planning-data";
 import { pricePaidProvider } from "./price-paid";
 import { scottishEpcProvider } from "./scottish-epc";
@@ -14,7 +16,7 @@ import { cadwProvider, floodZonesProvider, geologyProvider, hesProvider, histori
 import type { IntelligenceProvider } from "./types";
 
 /** Providers available to enrichment runs. Each still requires operator enablement in reference.data_sources. */
-export const intelligenceProviders: IntelligenceProvider[] = [planningDataProvider, epcProvider, historicEnglandProvider, inspireProvider, floodZonesProvider, surfaceWaterProvider, geologyProvider, naturalEnglandProvider, pricePaidProvider,
+export const intelligenceProviders: IntelligenceProvider[] = [postcodeGeographyProvider, planningDataProvider, epcProvider, historicEnglandProvider, inspireProvider, floodZonesProvider, surfaceWaterProvider, geologyProvider, naturalEnglandProvider, pricePaidProvider,
   nrwFloodZonesProvider, cadwProvider, hesProvider, sepaFloodProvider, niHedProvider, scottishEpcProvider];
 
 import type { ReferenceLayerProvider } from "./reference-layer";

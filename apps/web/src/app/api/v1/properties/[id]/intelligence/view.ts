@@ -4,11 +4,13 @@ import { apiContext } from "@/lib/access";
 import { ok, problem } from "@/lib/api";
 import { demoIntelligence } from "@/lib/demo-intelligence";
 import { loadPropertyIntelligence } from "@/lib/intelligence";
+import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 
 /** Shared handler for the full and filtered intelligence views (one stored result, several lenses). */
 export async function intelligenceResponse(request: Request, id: string, groups?: CategoryGroup[]) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  const denial = await workspaceApiGuard(request,context); if (denial) return denial;
   const filter = <T extends { category: string }>(items: T[]) => groups ? items.filter((item) => groups.includes(categoryInfo(item.category).group)) : items;
   if (context.demo) {
     const demo = demoIntelligence();

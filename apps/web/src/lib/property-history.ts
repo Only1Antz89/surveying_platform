@@ -1,5 +1,6 @@
 import { and, asc, eq } from "drizzle-orm";
 import { createDatabase, jobs, jobStageEvents, surveys, withTenant } from "@surveynt/db";
+import { assignedJobScope, type WorkspaceViewer } from "./workspace-scope";
 import { loadPropertyIntelligence, type IntelligenceCategoryView } from "./intelligence";
 
 export type HistoryEvent = {
@@ -100,17 +101,17 @@ function externalEvents(category: IntelligenceCategoryView): HistoryEvent[] {
  * events for one property. Event, publication and retrieval dates are kept
  * apart; nothing here is inferred from addresses or nearby records.
  */
-export async function loadPropertyHistory(context: { organisationId: string; internalUserId: string | null }, propertyId: string): Promise<PropertyHistory | null> {
+export async function loadPropertyHistory(context: WorkspaceViewer & { internalUserId: string | null }, propertyId: string): Promise<PropertyHistory | null> {
   const intelligence = await loadPropertyIntelligence(context, propertyId);
   if (!intelligence) return null;
   const db = createDatabase();
   const firm = await withTenant(db, context.organisationId, async (tx) => {
     const stageRows = await tx.select({ id: jobStageEvents.id, toStage: jobStageEvents.toStage, reason: jobStageEvents.reason, createdAt: jobStageEvents.createdAt, reference: jobs.reference, serviceName: jobs.serviceName })
       .from(jobStageEvents).innerJoin(jobs, and(eq(jobStageEvents.jobId, jobs.id), eq(jobs.organisationId, context.organisationId)))
-      .where(and(eq(jobStageEvents.organisationId, context.organisationId), eq(jobs.propertyId, propertyId))).orderBy(asc(jobStageEvents.createdAt)).limit(500);
+      .where(and(eq(jobStageEvents.organisationId, context.organisationId), eq(jobs.propertyId, propertyId), assignedJobScope(context))).orderBy(asc(jobStageEvents.createdAt)).limit(500);
     const surveyRows = await tx.select({ id: surveys.id, status: surveys.status, createdAt: surveys.createdAt, reference: jobs.reference })
       .from(surveys).innerJoin(jobs, and(eq(surveys.jobId, jobs.id), eq(jobs.organisationId, context.organisationId)))
-      .where(and(eq(surveys.organisationId, context.organisationId), eq(surveys.propertyId, propertyId))).limit(200);
+      .where(and(eq(surveys.organisationId, context.organisationId), eq(surveys.propertyId, propertyId), assignedJobScope(context))).limit(200);
     return { stageRows, surveyRows };
   });
   const firmBase = { origin: "firm" as const, sourceKey: null, informationClass: null, stale: false, retrievedAt: null, publishedDate: null, evidence: [], notes: [] };

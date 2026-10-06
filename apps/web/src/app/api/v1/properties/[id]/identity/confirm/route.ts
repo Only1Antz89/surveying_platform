@@ -1,3 +1,5 @@
+import { workspaceApiGuard } from "@/lib/workspace-api-guard";
+import { professionalApiGuard } from "@/lib/professional-access";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { auditEvents, createDatabase, properties } from "@surveynt/db";
@@ -19,6 +21,10 @@ const identitySchema = z.object({
 export async function POST(request: Request, route: RouteContext<"/api/v1/properties/[id]/identity/confirm">) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  const accessDenial = await workspaceApiGuard(request, context);
+  if (accessDenial) return accessDenial;
+  const professionalDenial = professionalApiGuard(request, context);
+  if (professionalDenial) return professionalDenial;
   if (!canWriteWorkspace(context)) return problem(402, "workspace_read_only", "Restore billing before changing workspace records.");
   if (!canMutateOperations(context.role)) return problem(403, "forbidden", "Your role cannot confirm property identity.");
   const parsed = await parseBody(request, identitySchema);

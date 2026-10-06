@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import { valueStateLabels, valueStates, type FieldDefinition, type FieldValue, type FormTemplate, type ValueState } from "@surveynt/assistant";
+import { FieldEvidence } from "./field-evidence";
 
 export type FieldDisplay = { value: FieldValue | null; pending: boolean; origin: string | null };
 
@@ -59,7 +60,7 @@ export function SurveyField({ field, path, template, display, disabled, lockedRe
       case "enum":
       case "condition_rating": {
         const options = field.type === "condition_rating" ? Object.entries(template.conditionRatingLabels).map(([value, label]) => ({ value, label })) : field.options ?? [];
-        return <select {...common} className="select" value={text} onChange={(event) => { setText(event.target.value); commit(event.target.value); }}><option value="">Select…</option>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>;
+        return <><select {...common} className="select" value={text} onChange={(event) => { setText(event.target.value); commit(event.target.value); }}><option value="">Select…</option>{options.map((option) => <option key={option.value} value={option.value}>{field.type === "condition_rating" ? `${option.value} — ` : ""}{option.label}</option>)}</select>{field.type === "condition_rating" && template.key.startsWith("surveynt-home-survey") && text ? <span className={`home-rating home-rating-${text}`} aria-label={`Condition rating ${text}`}>{text}</span> : null}</>;
       }
       case "boolean":
         return <select {...common} className="select" value={current?.state === "provided" ? String(current.value) : ""} onChange={(event) => event.target.value && commit(event.target.value === "true")}><option value="">Select…</option><option value="true">Yes</option><option value="false">No</option></select>;
@@ -82,7 +83,9 @@ export function SurveyField({ field, path, template, display, disabled, lockedRe
     </div>
     {control()}
     <p className="form-help" id={`${id}-meta`}>
-      {lockedReason ?? (display.pending ? "Saved on this device. It will sync when online." : display.origin && display.origin !== "surveyor_entry" ? `Origin: ${display.origin.replace(/_/g, " ")}` : field.guidance ?? "")}
+      {lockedReason ?? (display.pending ? "Saved on this device. It will sync when online." : display.origin && display.origin !== "surveyor_entry" ? `Origin: ${display.origin.replace(/_/g, " ")}` : "")}
+      {field.guidance ? <span className="field-guidance">{field.guidance}</span> : null}
     </p>
+    <FieldEvidence path={path} />
   </div>;
 }

@@ -8,6 +8,13 @@ const eicr = [
 ];
 
 describe("certificate facts", () => {
+  it("keeps works completion separate from certificate issue and permission dates", () => {
+    const facts = findCertificateFacts(["Completion certificate\nIssue date: 10/10/2025\nPlanning permission date: 01/01/2020\nWorks completion date: 20/09/2025"]);
+    expect(facts.issueDate?.value).toBe("2025-10-10");
+    expect(facts.worksCompletionDate).toMatchObject({ value: "2025-09-20", span: { page: 1 } });
+    expect(facts.limitations.join(" ")).toContain("Confirm its association");
+    expect(findCertificateFacts(["Completion certificate\nIssue date: 10/10/2025"]).worksCompletionDate).toBeNull();
+  });
   it("parses day-first dates and refuses two-digit years and impossible dates", () => {
     expect(parseDocumentDate("14/02/2019")).toBe("2019-02-14");
     expect(parseDocumentDate("3rd Sept 2025")).toBe("2025-09-03");

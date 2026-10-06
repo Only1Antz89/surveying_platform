@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { AlertTriangle, Check, Lightbulb, PencilLine, RefreshCw, X } from "lucide-react";
-import { proposalOriginLabels, resolveField, type EvidenceRef, type FieldValue, type FormTemplate, type ProposalOrigin } from "@surveynt/assistant";
+import { homeSurveyEvidenceInventory, proposalOriginLabels, resolveField, type EvidenceRef, type FieldValue, type FormTemplate, type ProposalOrigin } from "@surveynt/assistant";
 import type { SurveyPack } from "@/lib/surveys";
+import { EvidenceReadiness } from "./evidence-readiness";
 
 function valueLabel(template: FormTemplate, fieldPath: string, value: FieldValue) {
   if (value.state !== "provided") return value.state.replace(/_/g, " ");
@@ -17,13 +18,16 @@ function valueLabel(template: FormTemplate, fieldPath: string, value: FieldValue
  * form until a person accepts or edits it; professional assessments need an
  * explicit confirmation as well.
  */
-export function AssistantPanel({ surveyId, pack, canEdit, canJudge, online, onChanged }: { surveyId: string; pack: SurveyPack; canEdit: boolean; canJudge: boolean; online: boolean; onChanged: () => Promise<void> }) {
+export function AssistantPanel({ surveyId, pack, sectionKey, fieldPath, hideSuggestions = false, canEdit, canJudge, online, onChanged }: { surveyId: string; pack: SurveyPack; sectionKey?: string; fieldPath?: string; hideSuggestions?: boolean; canEdit: boolean; canJudge: boolean; online: boolean; onChanged: () => Promise<void> }) {
+  const headingId = useId();
   const [busy, setBusy] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [confirmed, setConfirmed] = useState<Record<string, boolean>>({});
   const [message, setMessage] = useState<string | null>(null);
-  const discrepancies = pack.tasks.filter((task) => task.kind === "discrepancy" && task.status === "open");
+  const discrepancies = pack.tasks.filter((task) => task.kind === "discrepancy" && task.status === "open" && (!fieldPath || task.fieldPath === fieldPath));
+  const proposals = pack.proposals.filter(proposal => !hideSuggestions && (!fieldPath || proposal.fieldPath === fieldPath) && (!sectionKey || proposal.fieldPath.startsWith(`${sectionKey}.`)));
+  const inventory = !fieldPath && pack.template.key.startsWith("surveynt-home-survey-") ? homeSurveyEvidenceInventory(pack.template).filter(item => !sectionKey || item.path.startsWith(`${sectionKey}.`)) : [];
 
   async function review(proposalId: string, body: Record<string, unknown>) {
     setBusy(proposalId); setMessage(null);
@@ -42,7 +46,7 @@ export function AssistantPanel({ surveyId, pack, canEdit, canJudge, online, onCh
     const payload = await response.json().catch(() => null);
     setBusy(null);
     if (!response.ok) setMessage(payload?.error?.message ?? "Suggestions could not be refreshed.");
-    else setMessage(`${payload.data.created} new suggestion${payload.data.created === 1 ? "" : "s"}; ${payload.data.discrepancies} new discrepanc${payload.data.discrepancies === 1 ? "y" : "ies"}.`);
+    else setMessage(`${payload.data.created} new suggestion${payload.data.created === 1 ? "" : "s"}; ${payload.data.discrepancies} new discrepanc${payload.data.discrepancies === 1 ? "y" : "ies"}. ${payload.data.weather?.message ?? ""}`);
     await onChanged();
   }
 
@@ -59,14 +63,17 @@ export function AssistantPanel({ surveyId, pack, canEdit, canJudge, online, onCh
   const enabled = pack.assistantEnabled !== false;
   if (!discrepancies.length && (!enabled || (!pack.proposals.length && !canEdit))) return null;
 
-  return <section className="panel assistant-panel" aria-labelledby="assistant-heading">
-    <div className="panel-header"><div><h2 id="assistant-heading">Suggestions and checks</h2><p>Suggestions come from cited records. They change nothing until you accept them.</p></div>
-      {canEdit && enabled ? <button type="button" className="button button-quiet" onClick={() => void refresh()} disabled={!online || busy !== null}><RefreshCw size={14} />Refresh suggestions</button> : null}
-    </div>
+  if (fieldPath && !proposals.length && !discrepancies.length) return null;
+  return <section className="panel assistant-panel" aria-labelledby={headingId}>
+    {!fieldPath ? <div className="panel-header"><div><h2 id={headingId}>Preloaded answers and checks</h2><p>Load existing property evidence and historical weather for the saved inspection date. Review each answer before applying it; your recorded answers are never replaced.</p><p className="form-help">EPC: property type and approximate build period, when configured. Planning/heritage/flood layers: local context, not an inspection assessment. Extension and conversion completion dates need documentary evidence or manual entry.</p></div>
+      {canEdit && enabled ? <button type="button" className="button button-quiet" onClick={() => void refresh()} disabled={!online || busy !== null}><RefreshCw size={14} />Load evidence</button> : null}
+    </div> : <h3 id={headingId}>Review source suggestions</h3>}
     {!online ? <p className="identity-warning">Reviewing suggestions needs a connection, so the server can check they are still current.</p> : null}
+    {!fieldPath ? <EvidenceReadiness /> : null}
     {message ? <p className="form-success identity-message" role="status">{message}</p> : null}
+    {inventory.length ? <details className="assistant-group"><summary>Evidence opportunities in this section</summary><p className="form-help">This inventory describes supported mappings and planned source connections, not a claim that records are available. Current template: {pack.template.version}. Manual entry is always available.</p><ul>{inventory.map(item => <li key={item.path} className="assistant-item"><strong>{item.element}: {item.label}</strong><span>{item.mode === "manual_only" ? "Surveyor entry only" : item.mode === "context_only" ? "Context only — not an answer" : "Reviewable source mapping"}</span><span>{item.boundary}</span>{item.sources.length ? <span className="form-help">Sources: {item.sources.map(source => source.replace(/_/g, " ")).join(", ")}</span> : null}</li>)}</ul></details> : null}
     {discrepancies.length ? <div className="assistant-group"><h3><AlertTriangle size={14} aria-hidden="true" />Discrepancies</h3><ul>{discrepancies.map((task) => <li key={task.id} className="assistant-item discrepancy"><strong>{task.title}</strong><span>{task.detail}</span>{canEdit ? <div className="row-actions"><button type="button" className="button button-secondary" disabled={!online || busy !== null} onClick={() => void closeTask(task.id, "resolved")}>Mark resolved</button><button type="button" className="button button-quiet" disabled={!online || busy !== null} onClick={() => void closeTask(task.id, "dismissed")}>Dismiss</button></div> : null}</li>)}</ul></div> : null}
-    {!enabled ? null : pack.proposals.length ? <div className="assistant-group"><h3><Lightbulb size={14} aria-hidden="true" />Suggestions</h3><ul>{pack.proposals.map((proposal) => {
+    {!enabled || hideSuggestions ? null : proposals.length ? <div className="assistant-group"><h3><Lightbulb size={14} aria-hidden="true" />Suggestions for this section</h3><ul>{proposals.map((proposal) => {
       const resolved = resolveField(pack.template, proposal.fieldPath);
       const professional = resolved?.field.fieldClass === "professional_assessment";
       const value = proposal.proposedValue as unknown as FieldValue;
@@ -77,7 +84,7 @@ export function AssistantPanel({ surveyId, pack, canEdit, canJudge, online, onCh
         <p className="assistant-value">Suggested: <b>{valueLabel(pack.template, proposal.fieldPath, value)}</b></p>
         <ul className="assistant-evidence">{evidence.map((item) => <li key={`${item.type}-${item.id}`}>{item.label}{item.date ? ` · ${item.date.slice(0, 10)}` : ""}</li>)}</ul>
         {(proposal.limitations as string[]).length ? <ul className="assistant-limitations">{(proposal.limitations as string[]).map((item) => <li key={item}>{item}</li>)}</ul> : null}
-        {professional ? <label className="check-field"><input type="checkbox" checked={Boolean(confirmed[proposal.id])} onChange={(event) => setConfirmed({ ...confirmed, [proposal.id]: event.target.checked })} disabled={!canJudge} /> I confirm this professional assessment from my own inspection.</label> : null}
+        {professional ? <label className="check-field"><input type="checkbox" checked={Boolean(confirmed[proposal.id])} onChange={(event) => setConfirmed({ ...confirmed, [proposal.id]: event.target.checked })} disabled={!canJudge} /> I have reviewed the evidence and confirm its use in my professional record. Customer statements and historical descriptions remain labelled as such.</label> : null}
         {editing === proposal.id ? <div className="assistant-edit">
           {resolved?.field.options ? <select className="select" value={editValue} onChange={(event) => setEditValue(event.target.value)} aria-label="Edited value"><option value="">Select…</option>{resolved.field.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : <input className="input" value={editValue} onChange={(event) => setEditValue(event.target.value)} aria-label="Edited value" />}
           <button type="button" className="button button-primary" disabled={disabled || !editValue} onClick={() => void review(proposal.id, { decision: "edit", value: { state: "provided", value: editValue }, note: "Edited before accepting", confirmProfessional: confirmed[proposal.id] })}>Save edit</button>

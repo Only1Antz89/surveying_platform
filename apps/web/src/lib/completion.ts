@@ -1,6 +1,7 @@
 import { and, desc, eq, ne } from "drizzle-orm";
 import { checkOverrides, OTHER_OVERRIDE, type CheckItem, type CompletionOverride, type CompletionReport, type OverrideCheck } from "@surveynt/assistant";
 import { auditEvents, completionOverrides, createDatabase, surveys, withTenant, type TenantTransaction } from "@surveynt/db";
+import { currentProfessionalPermission } from "./professional-membership";
 import type { JobStage } from "@surveynt/domain";
 import { completionReportFromPack } from "./completion-input";
 import { approvedReportIsCurrent } from "./reports";
@@ -46,12 +47,16 @@ export async function enforceStageGate(tx: TenantTransaction, context: SurveyCon
       ruleId: null, justification: "A report is issued only after a person has reviewed and signed off the exact version.", fieldPath: null, elementKey: null,
       overrideReasons: ["Report produced and signed off outside Surveynt", OTHER_OVERRIDE],
     };
-    const items = [...computed.items, item];
+    const reviewedTemplate = !pack?.template.key.startsWith("surveynt-home-survey") || pack.template.reviewStatus === "surveyor_reviewed";
+    const permission = await currentProfessionalPermission(tx, context, "approve_reports");
+    const templateGate: CheckItem = { ...item, id: "report:template_review", title: "Professional template review", detail: "This Home Survey template is a firm draft. Professional review and any required licence verification must be completed before issue.", status: reviewedTemplate ? "pass" : "fail", overrideReasons: [] };
+    const permissionGate: CheckItem = { ...item, id: "report:professional_permission", title: "Professional issue permission", detail: "An active, explicit report approval permission is required.", status: permission ? "pass" : "fail", overrideReasons: [] };
+    const items = [...computed.items, item, templateGate, permissionGate];
     const hardGateFailures = items.filter((entry) => entry.status === "fail" && entry.severity === "hard_gate").length;
     report = { ...computed, items, hardGateFailures, ready: hardGateFailures === 0 };
   }
   if (report.ready) return { kind: "passed", surveyId: survey.id, report, overridden: 0 };
-  const mayOverride = canRecordProfessionalJudgement(context.role);
+  const mayOverride = canRecordProfessionalJudgement(context.role, context.canRecordSurvey);
   const check = checkOverrides(report, mayOverride ? input.overrides : []);
   if (!check.ok || !mayOverride) return { kind: "blocked", surveyId: survey.id, report, check, mayOverride };
   await tx.insert(completionOverrides).values(check.accepted.map((override) => ({

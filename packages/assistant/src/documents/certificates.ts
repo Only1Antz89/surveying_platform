@@ -3,7 +3,7 @@
 // a date that is ambiguous (for example a two-digit year) is not extracted, and
 // instruction-like text in a document is reported, never followed.
 
-export const CERTIFICATE_EXTRACTOR = "certificate-facts-v1";
+export const CERTIFICATE_EXTRACTOR = "certificate-facts-v2";
 
 export const certificateTypes = ["eicr", "electrical_installation_certificate", "gas_safety_record", "energy_performance_certificate", "fensa", "building_regulations_completion", "guarantee"] as const;
 export type CertificateType = (typeof certificateTypes)[number];
@@ -22,11 +22,13 @@ export type DocumentSpan = { page: number; start: number; end: number; excerpt: 
 export type Fact<T> = { value: T; span: DocumentSpan };
 
 export type CertificateFacts = {
-  extractor: typeof CERTIFICATE_EXTRACTOR;
+  extractor: typeof CERTIFICATE_EXTRACTOR | "certificate-facts-v1";
   documentType: Fact<CertificateType> | null;
   /** Other certificate types also named in the document; the type is then uncertain. */
   otherTypesMentioned: CertificateType[];
   issueDate: Fact<string> | null;
+  /** Explicitly stated works-completion date; never a certificate issue or permission date. */
+  worksCompletionDate?: Fact<string> | null;
   inspectionDate: Fact<string> | null;
   /** "Valid until", "expiry", "next inspection due" and similar. */
   dueDate: Fact<string> | null;
@@ -107,6 +109,8 @@ export function findCertificateFacts(pages: string[]): CertificateFacts {
   const due = findLabelled(pages, /next inspection(?: due| date| recommended(?: by| no later than)?)?(?: by)?|valid until|valid to|expiry date|expires(?: on)?|date of next (?:inspection|check|service)|renewal date|recommended (?:re-?)?inspection date/, datePattern, parseDocumentDate);
   const inspection = findLabelled(pages, /date of (?:the )?(?:inspection|check|assessment)|inspection date|date inspected/, datePattern, parseDocumentDate);
   const issue = findLabelled(pages, /date of issue|issue date|date issued|date of certificate|certificate date|date of report/, datePattern, parseDocumentDate);
+  const completion = findLabelled(pages, /date (?:the )?works (?:were )?completed|works completion date|date of (?:works|extension|conversion) completion/, datePattern, parseDocumentDate);
+  if (completion.fact) limitations.push("A stated works-completion date was found. Confirm its association with this property and the relevant works before suggesting an alteration year.");
   if (due.rejected || inspection.rejected || issue.rejected) limitations.push("A date with a two-digit year or an impossible value was found and not used.");
   const reference = findLabelled(pages, /certificate (?:number|no\.?|reference|ref\.?)|report (?:number|reference|no\.?|ref\.?)|serial (?:number|no\.?)|reference (?:number|no\.?)/, String.raw`([A-Z0-9][A-Z0-9\-\/]{3,40})`, (raw) => /\d/.test(raw) ? raw.toUpperCase() : null);
 
@@ -124,6 +128,7 @@ export function findCertificateFacts(pages: string[]): CertificateFacts {
     documentType: primary ? { value: primary.type, span: primary.span } : null,
     otherTypesMentioned,
     issueDate: issue.fact,
+    worksCompletionDate: completion.fact,
     inspectionDate: inspection.fact,
     dueDate: due.fact,
     reference: reference.fact,

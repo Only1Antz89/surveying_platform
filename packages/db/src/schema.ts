@@ -27,9 +27,36 @@ const timestamps = {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 };
 
+// Website form drafts are separate from immutable publications and customer evidence.
+export const websiteFormDrafts = pgTable("website_form_drafts", {
+  organisationId: uuid("organisation_id").primaryKey().references(() => organisations.id, { onDelete: "restrict" }),
+  config: jsonb("config").$type<Record<string, unknown>>().notNull(),
+  revision: integer("revision").notNull().default(1),
+  activeVersionId: uuid("active_version_id"),
+  updatedByUserId: uuid("updated_by_user_id").references(() => users.id),
+  ...timestamps,
+});
+export const websiteFormVersions = pgTable("website_form_versions", {
+  id: uuid("id").primaryKey().defaultRandom(), organisationId: uuid("organisation_id").notNull().references(() => organisations.id),
+  config: jsonb("config").$type<Record<string, unknown>>().notNull(),
+  publishedByUserId: uuid("published_by_user_id").references(() => users.id),
+  restoredFromId: uuid("restored_from_id"), createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => [unique("website_form_versions_org_id_uidx").on(table.organisationId, table.id)]);
+export const websiteEnquiries = pgTable("website_enquiries", {
+  id: uuid("id").primaryKey().defaultRandom(), organisationId: uuid("organisation_id").notNull().references(() => organisations.id),
+  formVersionId: uuid("form_version_id").notNull(), requestId: uuid("request_id").notNull(), requestHash: text("request_hash").notNull(),
+  reference: text("reference").notNull(), firstName: text("first_name").notNull(), lastName: text("last_name").notNull(), email: text("email").notNull(), phone: text("phone"),
+  address: jsonb("address").$type<Record<string, unknown>>().notNull(), answers: jsonb("answers").$type<Record<string, unknown>>().notNull(),
+  reason: text("reason").notNull(), isDemo: boolean("is_demo").notNull().default(false), status: text("status").notNull().default("new"),
+  ...timestamps,
+}, table => [uniqueIndex("website_enquiries_request_uidx").on(table.organisationId, table.requestId), index("website_enquiries_created_idx").on(table.organisationId, table.createdAt), foreignKey({ columns: [table.organisationId, table.formVersionId], foreignColumns: [websiteFormVersions.organisationId, websiteFormVersions.id] })]);
+export const websiteFormRateWindows = pgTable("website_form_rate_windows", {
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id), key: text("key").notNull(), windowStart: timestamp("window_start", { withTimezone: true }).notNull(), count: integer("count").notNull(),
+}, table => [primaryKey({ columns: [table.organisationId, table.key] })]);
+
 export const organisationStatus = pgEnum("organisation_status", ["provisioning", "active", "suspended", "closed"]);
 export const subscriptionStatus = pgEnum("subscription_status", ["incomplete", "trialing", "active", "past_due", "unpaid", "canceled"]);
-export const organisationRole = pgEnum("organisation_role", ["owner", "administrator", "surveyor", "coordinator", "finance", "read_only"]);
+export const organisationRole = pgEnum("organisation_role", ["owner", "administrator", "manager", "surveyor", "coordinator", "finance", "read_only"]);
 export const platformRole = pgEnum("platform_role", ["super_admin", "support", "billing", "compliance", "privacy_reviewer", "technical_reviewer", "release_manager"]);
 export const jobStage = pgEnum("job_stage", ["enquiry", "quoted", "instructed", "scheduled", "inspection_complete", "report_drafting", "internal_review", "issued", "paid", "archived"]);
 export const supportPermission = pgEnum("support_permission", ["read", "write"]);
@@ -64,6 +91,9 @@ export const organisations = pgTable("organisations", {
   region: text("region").notNull(),
   status: organisationStatus("status").notNull().default("provisioning"),
   suspendedReason: text("suspended_reason"),
+  isDemo: boolean("is_demo").notNull().default(false),
+  demoGeneration: integer("demo_generation").notNull().default(0),
+  demoSeededAt: timestamp("demo_seeded_at", { withTimezone: true }),
   ...timestamps,
 }, (table) => [index("organisations_status_idx").on(table.status)]);
 
@@ -101,6 +131,8 @@ export const organisationMemberships = pgTable("organisation_memberships", {
   organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "cascade" }),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   role: organisationRole("role").notNull(),
+  canRecordSurvey: boolean("can_record_survey").notNull().default(false),
+  canApproveReports: boolean("can_approve_reports").notNull().default(false),
   active: boolean("active").notNull().default(true),
   ...timestamps,
 }, (table) => [
@@ -265,6 +297,29 @@ export const providerRateLimits = pgTable("provider_rate_limits", {
   nextAvailableAt: timestamp("next_available_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** Only the authenticated user may read or update personal identity/preferences. */
+export const userProfiles = pgTable("user_profiles", {
+  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  ricsNumber: text("rics_number"),
+  professionalDetails: jsonb("professional_details").$type<{ droneOperatorId?: string; droneFlyerId?: string; droneQualification?: string; droneExpiry?: string }>().notNull().default({}),
+  reportName: text("report_name"),
+  reportContact: jsonb("report_contact").$type<{ email?: string; phone?: string }>().notNull().default({}),
+  appearance: jsonb("appearance").$type<{ theme: "system" | "light" | "dark"; reducedMotion: boolean; contrast: "standard" | "high"; density: "comfortable" | "compact"; textSize: "standard" | "large" }>().notNull().default({ theme: "system", reducedMotion: false, contrast: "standard", density: "comfortable", textSize: "standard" }),
+  notifications: jsonb("notifications").$type<Record<string, boolean>>().notNull().default({}),
+  ...timestamps,
+});
+
+export const memberWorkProfiles = pgTable("member_work_profiles", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  timezone: text("timezone").notNull().default("Europe/London"),
+  workingHours: jsonb("working_hours").$type<Record<string, { start: string; end: string; closed?: boolean }>>().notNull().default({}),
+  routeOrigin: text("route_origin"),
+  latitude: doublePrecision("latitude"), longitude: doublePrecision("longitude"),
+  ...timestamps,
+}, (table) => [uniqueIndex("member_work_profiles_org_user_uidx").on(table.organisationId, table.userId)]);
+
 /** Global cache for public-source responses only. Keys are hashes; rows carry no tenant identifiers or address text. */
 export const providerResponseCache = pgTable("provider_response_cache", {
   cacheKey: text("cache_key").primaryKey(),
@@ -347,6 +402,8 @@ export const organisationOperationalSettings = pgTable("organisation_operational
   documentRetentionDays: integer("document_retention_days").notNull().default(2555),
   publicQuotesEnabled: boolean("public_quotes_enabled").notNull().default(false),
   clientPaymentsEnabled: boolean("client_payments_enabled").notNull().default(false),
+  surveyEvidenceEnabled: boolean("survey_evidence_enabled").notNull().default(false),
+  reportIdentity: jsonb("report_identity").$type<{ companyName?: string; address?: string; email?: string; phone?: string }>().notNull().default({}),
   ...timestamps,
 }, (table) => [uniqueIndex("organisation_operational_settings_org_uidx").on(table.organisationId)]);
 
@@ -394,6 +451,60 @@ export const quoteSnapshots = pgTable("quote_snapshots", {
   id: uuid("id").primaryKey().defaultRandom(), organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }), quoteId: uuid("quote_id").notNull().references(() => customerQuotes.id, { onDelete: "restrict" }),
   event: text("event").notNull(), snapshot: jsonb("snapshot").$type<Record<string, unknown>>().notNull(), createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index("quote_snapshots_quote_idx").on(table.quoteId, table.createdAt), index("quote_snapshots_org_idx").on(table.organisationId)]);
+
+/** Customer statements are independent from quote snapshots and professional findings. */
+export const preinspectionDrafts = pgTable("preinspection_drafts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  jobId: uuid("job_id").notNull(), propertyId: uuid("property_id").notNull(),
+  answers: jsonb("answers").$type<Record<string, unknown>>().notNull().default({}),
+  version: integer("version").notNull().default(0), ...timestamps,
+}, table => [uniqueIndex("preinspection_drafts_org_job_uidx").on(table.organisationId, table.jobId),
+  foreignKey({ columns: [table.organisationId, table.jobId], foreignColumns: [jobs.organisationId, jobs.id] }),
+  foreignKey({ columns: [table.organisationId, table.propertyId], foreignColumns: [properties.organisationId, properties.id] }),
+  check("preinspection_drafts_version_chk", sql`version >= 0`)]);
+
+export const preinspectionSubmissions = pgTable("preinspection_submissions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  jobId: uuid("job_id").notNull(), propertyId: uuid("property_id").notNull(),
+  version: integer("version").notNull(), requestId: uuid("request_id").notNull(),
+  answers: jsonb("answers").$type<Record<string, unknown>>().notNull(),
+  source: text("source").notNull(), actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "restrict" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => [uniqueIndex("preinspection_submissions_org_job_version_uidx").on(table.organisationId, table.jobId, table.version),
+  uniqueIndex("preinspection_submissions_request_uidx").on(table.organisationId, table.jobId, table.requestId),
+  foreignKey({ columns: [table.organisationId, table.jobId], foreignColumns: [jobs.organisationId, jobs.id] }),
+  foreignKey({ columns: [table.organisationId, table.propertyId], foreignColumns: [properties.organisationId, properties.id] }),
+  check("preinspection_submissions_source_chk", sql`source in ('customer', 'staff_transcribed_client')`),
+  check("preinspection_submissions_version_chk", sql`version > 0`)]);
+
+export const preinspectionDocuments = pgTable("preinspection_documents", {
+  id: uuid("id").primaryKey().defaultRandom(), organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  jobId: uuid("job_id").notNull(), propertyId: uuid("property_id").notNull(),
+  requestId: uuid("request_id").notNull(), name: text("name").notNull(), contentType: text("content_type").notNull(), sizeBytes: integer("size_bytes").notNull(), checksum: text("checksum").notNull(), storageKey: text("storage_key").notNull(),
+  replacesId: uuid("replaces_id"), supersededAt: timestamp("superseded_at", { withTimezone: true }),
+  analysis: jsonb("analysis").$type<Record<string, unknown>>().notNull().default({}),
+  worksKind: text("works_kind"), associationFingerprint: text("association_fingerprint"), associatedByUserId: uuid("associated_by_user_id").references(() => users.id, { onDelete: "restrict" }), associatedAt: timestamp("associated_at", { withTimezone: true }), associationReason: text("association_reason"),
+  source: text("source").notNull(), actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "restrict" }), createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => [uniqueIndex("preinspection_documents_request_uidx").on(table.organisationId, table.jobId, table.requestId),
+  index("preinspection_documents_job_idx").on(table.organisationId, table.jobId),
+  foreignKey({ columns: [table.organisationId, table.jobId], foreignColumns: [jobs.organisationId, jobs.id] }),
+  foreignKey({ columns: [table.organisationId, table.propertyId], foreignColumns: [properties.organisationId, properties.id] }),
+  check("preinspection_documents_size_chk", sql`size_bytes > 0 and size_bytes <= 10485760`),
+  check("preinspection_documents_association_chk", sql`(works_kind is null and associated_at is null and associated_by_user_id is null and association_fingerprint is null and association_reason is null) or (works_kind in ('extension', 'conversion') and associated_at is not null and associated_by_user_id is not null and association_fingerprint is not null and association_reason is not null)`),
+  check("preinspection_documents_source_chk", sql`source in ('customer', 'staff_transcribed_client')`)]);
+
+export const preinspectionLinks = pgTable("preinspection_links", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  jobId: uuid("job_id").notNull(), quoteId: uuid("quote_id").notNull().references(() => customerQuotes.id, { onDelete: "restrict" }),
+  tokenHash: text("token_hash").notNull(), purpose: text("purpose").notNull().default("preinspection"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(), revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => [uniqueIndex("preinspection_links_hash_uidx").on(table.tokenHash), index("preinspection_links_org_job_idx").on(table.organisationId, table.jobId),
+  foreignKey({ columns: [table.organisationId, table.jobId], foreignColumns: [jobs.organisationId, jobs.id] }),
+  check("preinspection_links_purpose_chk", sql`purpose = 'preinspection'`)]);
 
 export const availabilityBlocks = pgTable("availability_blocks", {
   id: uuid("id").primaryKey().defaultRandom(), organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "cascade" }), userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
@@ -1109,7 +1220,7 @@ export const fieldProposals = pgTable("field_proposals", {
   uniqueIndex("field_proposals_dedupe_uidx").on(table.surveyId, table.dedupeKey),
   index("field_proposals_pending_idx").on(table.surveyId, table.reviewStatus),
   check("field_proposals_status_chk", sql`review_status in ('pending', 'accepted', 'edited', 'rejected', 'superseded')`),
-  check("field_proposals_origin_chk", sql`origin_class in ('external_record', 'job_record', 'prior_survey', 'document_extraction', 'image_analysis', 'model_draft')`),
+  check("field_proposals_origin_chk", sql`origin_class in ('external_record', 'job_record', 'practice_record', 'customer_statement', 'prior_survey', 'document_extraction', 'image_analysis', 'model_draft')`),
 ]);
 
 // Completion checks (A3). A surveyor may proceed past a failing hard gate only

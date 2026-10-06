@@ -11,7 +11,7 @@ import { getSourceDefinition } from "./sources";
 // Every capability is configured, so only country coverage can make a provider decline.
 const context: ProviderContext = {
   now: new Date("2026-10-02T12:00:00Z"),
-  env: { EPC_API_BASE_URL: "https://epc.example.test", EPC_API_TOKEN: "token" },
+  env: { EPC_API_BASE_URL: "https://epc.example.test", EPC_API_TOKEN: "token", EPC_LICENCE_ACCEPTED: "true", EPC_DATA_PROTECTION_APPROVED: "true" },
   spatial: { featuresAt: async () => [] },
   history: { salesForUprn: async () => ({ available: false, reason: "price_paid_not_imported" }) },
   scottishEpc: { certificatesForUprn: async () => ({ available: false }) },

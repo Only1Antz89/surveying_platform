@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { PropertyLocation } from "../contract";
 import { runProviders } from "./orchestrator";
 import { planningDataProvider } from "./planning-data";
-import { epcProvider, normaliseAgeBand } from "./epc";
+import { legacyEpcProvider as epcProvider, normaliseAgeBand } from "./epc";
 import { historicEnglandProvider } from "./reference-layer";
 import type { IntelligenceProvider, ProviderContext, SpatialQuery } from "./types";
 
@@ -58,10 +58,12 @@ describe("planning data provider", () => {
 });
 
 describe("EPC provider", () => {
-  const env = { EPC_API_BASE_URL: "https://epc.example.gov.uk", EPC_API_EMAIL: "ops@example.test", EPC_API_KEY: "test-key" };
+  const env = { EPC_API_BASE_URL: "https://epc.example.gov.uk", EPC_API_EMAIL: "ops@example.test", EPC_API_KEY: "test-key", EPC_LICENCE_ACCEPTED: "true", EPC_DATA_PROTECTION_APPROVED: "true" };
 
   it("requires configuration, coverage and a confirmed UPRN before querying", () => {
     expect(epcProvider.applicability(location(), context())).toMatchObject({ ok: false, status: "not_configured" });
+    expect(epcProvider.applicability(location(), context({ env: { ...env, EPC_LICENCE_ACCEPTED: "false" } }))).toMatchObject({ ok: false, status: "not_configured" });
+    expect(epcProvider.applicability(location(), context({ env: { ...env, EPC_DATA_PROTECTION_APPROVED: "false" } }))).toMatchObject({ ok: false, status: "not_configured" });
     expect(epcProvider.applicability(location({ uprn: null }), context({ env }))).toMatchObject({ ok: false, status: "unsupported" });
     expect(epcProvider.applicability(location({ country: "SCT" }), context({ env }))).toMatchObject({ ok: false, status: "unsupported", coverage: "not_covered" });
     expect(epcProvider.applicability(location(), context({ env }))).toEqual({ ok: true });

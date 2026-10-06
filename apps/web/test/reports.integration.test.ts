@@ -1,3 +1,4 @@
+import { organisationMemberships } from "@surveynt/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { clients, createDatabase, jobs, organisations, properties, reportApprovals, reportVersions, users, withTenant, wordingClauses } from "@surveynt/db";
@@ -59,12 +60,13 @@ describe.skipIf(!integrationEnabled)("wording library and report assembly", () =
       { id: firmB, clerkOrganisationId: "org_ba", name: "Firm B", slug: "firm-ba", practiceType: "residential", region: "Leeds" },
     ]);
     const [ownerUser, surveyorUser] = await admin.insert(users).values([{ clerkUserId: "user_aa_owner", email: "owner@aa.test" }, { clerkUserId: "user_aa_surveyor", email: "surveyor@aa.test" }]).returning();
-    owner = { organisationId: firmA, internalUserId: ownerUser.id, role: "owner" };
+    await admin.insert(organisationMemberships).values([{ organisationId: firmA, userId: ownerUser.id, role: "owner", canRecordSurvey: true, canApproveReports: true }, { organisationId: firmA, userId: surveyorUser.id, role: "surveyor" }]);
+    owner = { organisationId: firmA, internalUserId: ownerUser.id, role: "owner", canRecordSurvey: true, canApproveReports: true };
     surveyor = { organisationId: firmA, internalUserId: surveyorUser.id, role: "surveyor" };
     coordinator = { organisationId: firmA, internalUserId: surveyorUser.id, role: "coordinator" };
     const [client] = await admin.insert(clients).values({ organisationId: firmA, kind: "individual", displayName: "Client A" }).returning();
     const [property] = await admin.insert(properties).values({ organisationId: firmA, clientId: client.id, line1: "5 Report Street", city: "Bristol", postcode: "BS3 3CC", country: "ENG" }).returning();
-    [{ id: jobId }] = await admin.insert(jobs).values({ organisationId: firmA, clientId: client.id, propertyId: property.id, reference: "R-1", serviceName: "Condition report", stage: "internal_review" }).returning();
+    [{ id: jobId }] = await admin.insert(jobs).values({ organisationId: firmA, clientId: client.id, propertyId: property.id, reference: "R-1", assignedSurveyorId: surveyor.internalUserId, serviceName: "Condition report", stage: "internal_review" }).returning();
     const created = await createSurvey(surveyor, jobId, { serviceLevel: "level_1" });
     if (created.kind !== "created") throw new Error(created.kind);
     surveyId = created.survey.id;
@@ -107,6 +109,9 @@ describe.skipIf(!integrationEnabled)("wording library and report assembly", () =
   });
 
   it("requires a surveyor's explicit sign-off of the latest unchanged version, then closes capture", async () => {
+    await expect(approveReportVersion(surveyor, surveyId, firstVersionId, { confirm: true })).rejects.toMatchObject({ status: 403 });
+    await database.connect(database.adminUrl).update(organisationMemberships).set({ canApproveReports: true }).where(eq(organisationMemberships.userId, surveyor.internalUserId!));
+    surveyor.canApproveReports = true;
     await expect(approveReportVersion(coordinator, surveyId, firstVersionId, { confirm: true })).rejects.toMatchObject({ status: 403 });
     await expect(approveReportVersion(surveyor, surveyId, firstVersionId, { confirm: false })).rejects.toMatchObject({ code: "confirmation_required" });
     // A change after composing makes the version out of date.

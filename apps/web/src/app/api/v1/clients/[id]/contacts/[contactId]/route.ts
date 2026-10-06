@@ -1,3 +1,4 @@
+import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { z } from "zod";
 import { and, eq, sql } from "drizzle-orm";
 import { canMutateOperations } from "@surveynt/domain";
@@ -16,6 +17,8 @@ const contactPatch = z.object({
 async function access(request: Request) {
   const context = await apiContext(request);
   if (!context) return { problem: problem(401, "unauthorised", "Authentication and an active organisation are required.") } as const;
+  const accessDenial = await workspaceApiGuard(request, context);
+  if (accessDenial) return { problem: accessDenial } as const;
   if (!canWriteWorkspace(context)) return { problem: problem(402, "workspace_read_only", "Restore billing before changing workspace records.") } as const;
   if (!canMutateOperations(context.role)) return { problem: problem(403, "forbidden", "Your role cannot change client contacts.") } as const;
   return { context } as const;

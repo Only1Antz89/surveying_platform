@@ -3,19 +3,21 @@ import type { FieldValue } from "../forms/types";
 export const proposalReviewStates = ["pending", "accepted", "edited", "rejected", "superseded"] as const;
 export type ProposalReviewState = (typeof proposalReviewStates)[number];
 
-export const proposalOrigins = ["external_record", "job_record", "prior_survey", "document_extraction", "image_analysis", "model_draft"] as const;
+export const proposalOrigins = ["external_record", "job_record", "practice_record", "customer_statement", "prior_survey", "document_extraction", "image_analysis", "model_draft"] as const;
 export type ProposalOrigin = (typeof proposalOrigins)[number];
 
 export const proposalOriginLabels: Record<ProposalOrigin, string> = {
   external_record: "Sourced from an external record: unverified",
   job_record: "From the job record: confirm",
+  customer_statement: "Customer statement: unverified",
+  practice_record: "Practitioner / firm record: review",
   prior_survey: "From an earlier survey: historical",
   document_extraction: "Extracted from a document: unverified",
   image_analysis: "From a photograph: draft only",
   model_draft: "AI draft: unverified",
 };
 
-export type EvidenceRef = { type: "intelligence_snapshot" | "job" | "media" | "document_span" | "prior_survey" | "observation"; id: string; label: string; url?: string; date?: string | null };
+export type EvidenceRef = { type: "intelligence_snapshot" | "job" | "media" | "document_span" | "prior_survey" | "observation" | "weather_record" | "customer_submission" | "practitioner_profile" | "firm_report_identity"; id: string; label: string; url?: string; date?: string | null; context?: string };
 
 export type ProposalDraft = {
   fieldPath: string;

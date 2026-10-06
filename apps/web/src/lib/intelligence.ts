@@ -6,6 +6,8 @@ import { intelligenceEnabled } from "./property-identity";
 import { databasePublicCache } from "./provider-cache";
 import { propertyFingerprint, toLocation } from "./fingerprint";
 import { refreshProposalsForProperty } from "./proposals";
+import { isDemoOrganisation } from "./stakeholder-demo";
+import { demoProviderResults } from "./demo-providers";
 
 export { propertyFingerprint };
 
@@ -29,7 +31,7 @@ export type RefreshOutcome =
  * unchanged property within a short window, return the existing run.
  */
 export async function requestIntelligenceRefresh(context: TenantContext, propertyId: string, input: { idempotencyKey?: string } = {}): Promise<RefreshOutcome> {
-  if (!intelligenceEnabled()) return { kind: "disabled" };
+  if (!intelligenceEnabled() && !await isDemoOrganisation(context.organisationId)) return { kind: "disabled" };
   const db = createDatabase();
   return withTenant(db, context.organisationId, async (tx) => {
     const [property] = await tx.select().from(properties).where(and(eq(properties.id, propertyId), eq(properties.organisationId, context.organisationId))).limit(1);
@@ -120,7 +122,8 @@ export async function processIntelligenceRun(organisationId: string, runId: stri
     const providers = options.providers ?? intelligenceProviders;
     const enabled = await getSourceStates(db, providers.map((provider) => provider.key));
     const active = providers.filter((provider) => enabled[provider.key]);
-    const outcomes = await runProviders(active, toLocation(property), { now: new Date(), env: process.env, fetchImpl: options.fetchImpl, spatial: databaseSpatialQuery(db), history: databaseHistoryQuery(db), scottishEpc: databaseScottishEpcQuery(db), cache: databasePublicCache(db) }, { concurrency: 3, timeoutMs: 20_000 });
+    const simulated=await isDemoOrganisation(organisationId,db);
+    const outcomes = simulated ? [{providerKey:"demo",durationMs:0,results:demoProviderResults()}] : await runProviders(active, toLocation(property), { now: new Date(), env: process.env, fetchImpl: options.fetchImpl, spatial: databaseSpatialQuery(db), history: databaseHistoryQuery(db), scottishEpc: databaseScottishEpcQuery(db), cache: databasePublicCache(db) }, { concurrency: 3, timeoutMs: 20_000 });
     const results = outcomes.flatMap((outcome) => outcome.results);
     const providerStatuses = Object.fromEntries([
       ...providers.filter((provider) => !enabled[provider.key]).map((provider) => [provider.key, { status: "not_configured", message: "Source not enabled after verification." }]),
@@ -228,7 +231,7 @@ export async function loadPropertyIntelligence(context: TenantContext, propertyI
   const enabled = await getSourceStates(db, sourceDefinitions.map((source) => source.key));
   const latestRun = data.runs[0];
   return {
-    enabled: intelligenceEnabled(),
+    enabled: intelligenceEnabled() || await isDemoOrganisation(context.organisationId,db),
     fingerprint,
     location: { country: data.property.country, confidence: data.property.locationConfidence, uprnConfirmed: Boolean(data.property.uprn) },
     latestRun: latestRun ? { id: latestRun.id, status: latestRun.status, createdAt: latestRun.createdAt.toISOString(), completedAt: latestRun.completedAt?.toISOString() ?? null, error: latestRun.error, current: latestRun.inputFingerprint === fingerprint } : null,

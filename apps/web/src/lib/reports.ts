@@ -1,8 +1,10 @@
+import { hasProfessionalPermission } from "@surveynt/domain";
+import { currentProfessionalPermission } from "./professional-membership";
 import { and, desc, eq, inArray, max } from "drizzle-orm";
 import { canonicalJson, composeReport, composerInputFingerprint, COMPOSER, REPORT_SIGN_OFF_STATEMENT, type ComposedReport, type ComposerInput, type FieldValue, type InspectionStatus, type ServiceLevel } from "@surveynt/assistant";
 import { auditEvents, completionOverrides, createDatabase, jobs, reportApprovals, reportVersions, surveys, withTenant, type TenantTransaction } from "@surveynt/db";
 import { completionReportFromPack } from "./completion-input";
-import { canRecordProfessionalJudgement, readSurveyPack, type SurveyContext, type SurveyPack } from "./surveys";
+import { readSurveyPack, type SurveyContext, type SurveyPack } from "./surveys";
 import { approvedClauses } from "./wording";
 
 export const SIGN_OFF_STATEMENT = REPORT_SIGN_OFF_STATEMENT;
@@ -39,7 +41,9 @@ export async function currentReportInput(tx: TenantTransaction, context: Pick<Su
 
 /** Composes a new, immutable draft version from approved material only. */
 export async function composeSurveyReport(context: SurveyContext, surveyId: string) {
+  if (!hasProfessionalPermission(context.role, "record_survey", context.canRecordSurvey)) throw new ReportError(403, "professional_recording_required", "Professional survey recording permission is required.");
   return withTenant(createDatabase(), context.organisationId, async (tx) => {
+    if (!await currentProfessionalPermission(tx, context, "record_survey")) throw new ReportError(403, "professional_recording_required", "Your professional recording permission has changed.");
     const current = await currentReportInput(tx, context, surveyId);
     if (!current) throw new ReportError(404, "survey_not_found", "The survey could not be found.");
     const { report, trace } = composeReport(current.input);
@@ -82,11 +86,13 @@ export async function loadSurveyReports(context: Pick<SurveyContext, "organisati
  * resolved or covered by a recorded override. Capture then closes.
  */
 export async function approveReportVersion(context: SurveyContext, surveyId: string, versionId: string, input: { confirm: boolean; note?: string | null }) {
-  if (!canRecordProfessionalJudgement(context.role)) throw new ReportError(403, "forbidden", "Only surveyors, administrators and owners can sign off a report.");
+  if (!hasProfessionalPermission(context.role, "approve_reports", context.canApproveReports)) throw new ReportError(403, "forbidden", "Explicit professional report approval permission is required.");
   if (!input.confirm) throw new ReportError(400, "confirmation_required", "Confirm that you have reviewed the full report.");
   return withTenant(createDatabase(), context.organisationId, async (tx) => {
+    if (!await currentProfessionalPermission(tx, context, "approve_reports")) throw new ReportError(403, "professional_approval_required", "Your professional report approval permission has changed.");
     const current = await currentReportInput(tx, context, surveyId);
     if (!current) throw new ReportError(404, "survey_not_found", "The survey could not be found.");
+    if (current.pack.template.key.startsWith("surveynt-home-survey") && current.pack.template.reviewStatus !== "surveyor_reviewed") throw new ReportError(409, "template_review_required", "This firm Home Survey template is a draft. Complete professional template review and any required licence verification before approving or issuing reports.");
     const [latest] = await tx.select().from(reportVersions).where(and(eq(reportVersions.surveyId, surveyId), eq(reportVersions.organisationId, context.organisationId))).orderBy(desc(reportVersions.versionNumber)).limit(1);
     if (!latest || latest.id !== versionId) throw new ReportError(409, "not_latest", "Only the latest report version can be signed off.");
     if (latest.inputFingerprint !== current.fingerprint) throw new ReportError(409, "out_of_date", "The survey or approved wording changed after this version was composed. Compose a new version and review it.");
@@ -109,8 +115,9 @@ export async function approveReportVersion(context: SurveyContext, surveyId: str
 
 /** Reopens an approved survey for changes; a new version must then be composed and signed off. */
 export async function reopenSurvey(context: SurveyContext, surveyId: string, reason: string) {
-  if (!canRecordProfessionalJudgement(context.role)) throw new ReportError(403, "forbidden", "Only surveyors, administrators and owners can reopen a survey.");
+  if (!hasProfessionalPermission(context.role, "approve_reports", context.canApproveReports)) throw new ReportError(403, "forbidden", "Only surveyors, administrators and owners can reopen a survey.");
   return withTenant(createDatabase(), context.organisationId, async (tx) => {
+    if (!await currentProfessionalPermission(tx, context, "approve_reports")) throw new ReportError(403, "professional_approval_required", "Your professional approval permission has changed.");
     const [survey] = await tx.select().from(surveys).where(and(eq(surveys.id, surveyId), eq(surveys.organisationId, context.organisationId))).limit(1);
     if (!survey) throw new ReportError(404, "survey_not_found", "The survey could not be found.");
     if (survey.status !== "approved") throw new ReportError(409, "not_approved", "Only an approved survey can be reopened.");

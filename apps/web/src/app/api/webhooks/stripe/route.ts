@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import Stripe from "stripe";
-import { auditEvents, clientPayments, createDatabase, onboardingSteps, organisations, settlementLedger, subscriptionEvents, subscriptions, webhookEvents } from "@surveynt/db";
+import { auditEvents, clientPayments, createDatabase, invoices, onboardingSteps, organisations, settlementLedger, subscriptionEvents, subscriptions, webhookEvents } from "@surveynt/db";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { queueSubscriptionEmail } from "@/lib/email-queue";
 import { convertPaidQuote, settleBalancePayment } from "@/lib/firm-operations";
@@ -118,11 +118,20 @@ export async function POST(request: Request) {
       if (paymentIntentId) {
         const [payment] = await db.select().from(clientPayments).where(eq(clientPayments.stripePaymentIntentId, paymentIntentId)).limit(1);
         if (payment) {
-          const refundedMinor = charge.amount_refunded;
-          const status = refundedMinor >= payment.amountMinor ? "refunded" as const : "partially_refunded" as const;
           await db.transaction(async (tx) => {
-            const delta = refundedMinor - payment.refundedMinor;
+            // Lock the invoice first: refunds to different payments must share one aggregation boundary.
+            const [invoice] = await tx.select().from(invoices).where(eq(invoices.id, payment.invoiceId)).for("update");
+            const [current] = await tx.select().from(clientPayments).where(eq(clientPayments.id, payment.id)).for("update");
+            if (!current || !invoice) throw new Error("Refund payment invoice is missing.");
+            const refundedMinor = Math.min(current.amountMinor, charge.amount_refunded);
+            const delta = refundedMinor - current.refundedMinor;
+            // Old Stripe events cannot regress a newer refund or create another liability adjustment.
+            if (delta <= 0) return;
+            const status = refundedMinor >= current.amountMinor ? "refunded" as const : "partially_refunded" as const;
             await tx.update(clientPayments).set({ refundedMinor, status, updatedAt: new Date() }).where(eq(clientPayments.id, payment.id));
+            const payments = await tx.select().from(clientPayments).where(and(eq(clientPayments.invoiceId, invoice.id), eq(clientPayments.organisationId, invoice.organisationId)));
+            const received = payments.filter((row) => ["succeeded", "partially_refunded", "refunded"].includes(row.status)).reduce((total, row) => total + row.amountMinor - row.refundedMinor, 0);
+            if (invoice.status !== "void" && invoice.status !== "draft") await tx.update(invoices).set({ status: received >= invoice.totalMinor ? "paid" : received > 0 ? "part_paid" : "open", paidAt: received >= invoice.totalMinor ? invoice.paidAt ?? new Date() : null, updatedAt: new Date() }).where(eq(invoices.id, invoice.id));
             if (delta > 0) await tx.insert(settlementLedger).values({ organisationId: payment.organisationId, paymentId: payment.id, entryType: "refund_liability_adjustment", currency: payment.currency, amountMinor: -delta, metadata: { stripeChargeId: charge.id, stripeEventId: event.id } });
             await tx.insert(auditEvents).values({ organisationId: payment.organisationId, action: "client_payment.refunded", resourceType: "client_payment", resourceId: payment.id, metadata: { refundedMinor, status, stripeEventId: event.id } });
           });

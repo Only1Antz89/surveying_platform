@@ -3,6 +3,7 @@ import { createDatabase, properties, withTenant } from "@surveynt/db";
 import { ukCountryLabels } from "@surveynt/domain";
 import { getSourceDefinition, licenceFor, mapLayerProviders, sourceCoversCountry } from "@surveynt/property-data";
 import { featuresNear, getSourceStates } from "@surveynt/property-data/importers";
+import { isDemoOrganisation } from "./stakeholder-demo";
 
 export type MapLayerView = {
   id: string;
@@ -28,6 +29,7 @@ export async function loadPropertyMap(context: { organisationId: string }, prope
   if (!property) return null;
   if (property.latitude === null || property.longitude === null) return { point: null, layers: [], notChecked: [] };
   const point = { latitude: property.latitude, longitude: property.longitude, confidence: property.locationConfidence };
+  if(await isDemoOrganisation(context.organisationId,db))return {point,layers:[],notChecked:[{label:"Demonstration layers",reason:"Fictional property. No live heritage, title or flood assessment is represented; refresh intelligence to exercise labelled simulated outcomes."}]};
   if (!property.country) return { point, layers: [], notChecked: [{ label: "All reference layers", reason: "Set the property's country" }] };
   const enabled = await getSourceStates(db, mapLayerProviders.map((provider) => provider.key));
   const layers: MapLayerView[] = [];

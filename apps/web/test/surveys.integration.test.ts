@@ -1,3 +1,4 @@
+import { organisationMemberships } from "@surveynt/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
 import { assistantTasks, clients, evidenceLinks, jobs, mediaAssets, organisations, properties, surveyFieldValues, surveys, users } from "@surveynt/db";
@@ -19,6 +20,7 @@ describe.skipIf(!integrationEnabled)("survey capture service", () => {
   let database: TestDatabase;
   let surveyor: SurveyContext;
   let coordinator: SurveyContext;
+  let otherPractitioner: SurveyContext;
   const ids: Record<string, string> = {};
   const storage = createMemoryStorage();
 
@@ -32,8 +34,11 @@ describe.skipIf(!integrationEnabled)("survey capture service", () => {
       { id: firmB, clerkOrganisationId: "org_b3", name: "Firm B", slug: "firm-b3", practiceType: "residential", region: "Leeds" },
     ]);
     const [user] = await admin.insert(users).values({ clerkUserId: "user_a3", email: "surveyor@a3.test" }).returning();
+    await admin.insert(organisationMemberships).values({ organisationId: firmA, userId: user.id, role: "surveyor" });
     surveyor = { organisationId: firmA, internalUserId: user.id, role: "surveyor" };
     coordinator = { organisationId: firmA, internalUserId: user.id, role: "coordinator" };
+    await admin.insert(organisationMemberships).values({ organisationId: firmB, userId: user.id, role: "surveyor" });
+    otherPractitioner = { organisationId: firmB, internalUserId: user.id, role: "surveyor" };
     const [clientA] = await admin.insert(clients).values({ organisationId: firmA, kind: "individual", displayName: "Client A" }).returning();
     const [clientB] = await admin.insert(clients).values({ organisationId: firmB, kind: "individual", displayName: "Client B" }).returning();
     const confirmed = { uprn: "990000000002", uprnConfirmedAt: new Date(), uprnEvidenceType: "title_documents" };
@@ -42,7 +47,7 @@ describe.skipIf(!integrationEnabled)("survey capture service", () => {
     const [sameAddressNoUprn] = await admin.insert(properties).values({ organisationId: firmA, clientId: clientA.id, line1: "Flat 2, 1 Test Terrace", city: "Bristol", postcode: "BS8 4JX", country: "ENG" }).returning();
     const [noCountry] = await admin.insert(properties).values({ organisationId: firmA, clientId: clientA.id, line1: "9 Unknown Road", city: "Bristol", postcode: "BS1 1AA" }).returning();
     const [otherFirmFlat] = await admin.insert(properties).values({ organisationId: firmB, clientId: clientB.id, line1: "Flat 2, 1 Test Terrace", city: "Bristol", postcode: "BS8 4JX", country: "ENG", ...confirmed }).returning();
-    const job = async (organisationId: string, clientId: string, propertyId: string, reference: string) => (await admin.insert(jobs).values({ organisationId, clientId, propertyId, reference, serviceName: "Survey" }).returning())[0].id;
+    const job = async (organisationId: string, clientId: string, propertyId: string, reference: string) => (await admin.insert(jobs).values({ organisationId, clientId, propertyId, reference, assignedSurveyorId: surveyor.internalUserId, serviceName: "Survey" }).returning())[0].id;
     ids.priorJob = await job(firmA, clientA.id, duplicateRecord.id, "A-1");
     ids.addressOnlyJob = await job(firmA, clientA.id, sameAddressNoUprn.id, "A-2");
     ids.currentJob = await job(firmA, clientA.id, flat.id, "A-3");
@@ -75,7 +80,7 @@ describe.skipIf(!integrationEnabled)("survey capture service", () => {
   it("brings in history from the same firm and confirmed UPRN only, as reminders", async () => {
     await seedPriorObservation(surveyor, ids.priorJob, "Slipped slates near the valley");
     await seedPriorObservation(surveyor, ids.addressOnlyJob, "Address-only record: should not be used");
-    await seedPriorObservation({ organisationId: firmB, internalUserId: null, role: "surveyor" }, ids.otherFirmJob, "Another firm's confidential finding");
+    await seedPriorObservation(otherPractitioner, ids.otherFirmJob, "Another firm's confidential finding");
     const created = await createSurvey(surveyor, ids.currentJob, { serviceLevel: "level_2" });
     if (created.kind !== "created") throw new Error("expected a new survey");
     ids.survey = created.survey.id;
@@ -112,7 +117,7 @@ describe.skipIf(!integrationEnabled)("survey capture service", () => {
       { type: "set_field", operationId: op(), fieldPath: "inside.roof_structure.condition_rating", value: { state: "inaccessible", reason: "No hatch" }, baseValueId: null },
       { type: "set_field", operationId: op(), fieldPath: "inspection.visit.weather", value: { state: "provided", value: "Dry, overcast" }, baseValueId: null },
     ]);
-    expect(results.map((result) => result.status)).toEqual(["rejected", "rejected", "rejected", "rejected", "applied"]);
+    expect(results.map((result) => result.status)).toEqual(["rejected", "rejected", "rejected", "rejected", "rejected"]);
     const [rating] = await applySyncOperations(surveyor, ids.survey, [{ type: "set_field", operationId: op(), fieldPath: "inside.roof_structure.condition_rating", value: { state: "inaccessible", reason: "No hatch" }, baseValueId: null }]);
     expect(rating.status).toBe("applied");
   });
@@ -158,7 +163,7 @@ describe.skipIf(!integrationEnabled)("survey capture service", () => {
   });
 
   it("refuses another firm's survey and stops capture when the pinned template changes", async () => {
-    const [foreign] = await applySyncOperations({ organisationId: firmB, internalUserId: null, role: "owner" }, ids.survey, [{ type: "set_field", operationId: op(), fieldPath: "inspection.visit.weather", value: { state: "provided", value: "Hijack" }, baseValueId: null }]);
+    const [foreign] = await applySyncOperations(otherPractitioner, ids.survey, [{ type: "set_field", operationId: op(), fieldPath: "inspection.visit.weather", value: { state: "provided", value: "Hijack" }, baseValueId: null }]);
     expect(foreign).toMatchObject({ status: "rejected", message: "Survey not found." });
     expect(await loadSurveyPack({ organisationId: firmB }, ids.survey)).toBeNull();
     const admin = database.connect(database.adminUrl);

@@ -47,10 +47,11 @@ describe("firm permissions", () => {
     expect(canManageTeam("read_only")).toBe(false);
   });
 
-  it("allows owners, administrators and finance to manage billing", () => {
+  it("reserves subscription billing for owners, separate from client finance", () => {
     expect(canManageBilling("owner")).toBe(true);
-    expect(canManageBilling("administrator")).toBe(true);
-    expect(canManageBilling("finance")).toBe(true);
+    expect(canManageBilling("administrator")).toBe(false);
+    expect(canManageBilling("finance")).toBe(false);
+    expect(canManageBilling("manager")).toBe(false);
     expect(canManageBilling("surveyor")).toBe(false);
     expect(canManageBilling("coordinator")).toBe(false);
     expect(canManageBilling("read_only")).toBe(false);

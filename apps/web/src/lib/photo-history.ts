@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, lt, ne } from "drizzle-orm";
 import { createDatabase, evidenceLinks, jobs, mediaAssets, observations, surveyElements, surveys, withTenant } from "@surveynt/db";
 import { relatedPropertyIds } from "./surveys";
+import { assignedJobScope, type WorkspaceViewer } from "./workspace-scope";
 
 export type EarlierPhoto = { mediaId: string; surveyId: string; jobReference: string; surveyDate: string; capturedAt: string | null; locationLabel: string | null };
 
@@ -10,7 +11,7 @@ export type EarlierPhoto = { mediaId: string; surveyId: string; jobReference: st
  * surveyor to compare on site. Any difference is a possible change, never a
  * finding, and no automatic comparison is made.
  */
-export async function earlierPhotosForElement(context: { organisationId: string }, surveyId: string, sectionKey: string, elementKey: string): Promise<EarlierPhoto[] | null> {
+export async function earlierPhotosForElement(context: WorkspaceViewer, surveyId: string, sectionKey: string, elementKey: string): Promise<EarlierPhoto[] | null> {
   const db = createDatabase();
   return withTenant(db, context.organisationId, async (tx) => {
     const [survey] = await tx.select().from(surveys).where(and(eq(surveys.id, surveyId), eq(surveys.organisationId, context.organisationId))).limit(1);
@@ -18,7 +19,7 @@ export async function earlierPhotosForElement(context: { organisationId: string 
     const related = await relatedPropertyIds(tx, context.organisationId, survey.propertyId);
     const earlier = await tx.select({ id: surveys.id, createdAt: surveys.createdAt, reference: jobs.reference }).from(surveys)
       .innerJoin(jobs, and(eq(surveys.jobId, jobs.id), eq(jobs.organisationId, context.organisationId)))
-      .where(and(eq(surveys.organisationId, context.organisationId), inArray(surveys.propertyId, related), ne(surveys.id, survey.id), lt(surveys.createdAt, survey.createdAt), ne(surveys.status, "withdrawn")))
+      .where(and(eq(surveys.organisationId, context.organisationId), inArray(surveys.propertyId, related), ne(surveys.id, survey.id), lt(surveys.createdAt, survey.createdAt), ne(surveys.status, "withdrawn"), assignedJobScope(context)))
       .orderBy(desc(surveys.createdAt)).limit(10);
     if (!earlier.length) return [];
     const elements = await tx.select({ id: surveyElements.id, surveyId: surveyElements.surveyId, locationLabel: surveyElements.locationLabel }).from(surveyElements)

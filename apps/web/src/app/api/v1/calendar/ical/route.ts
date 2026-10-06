@@ -1,3 +1,4 @@
+import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { and, asc, eq, gt } from "drizzle-orm";
 import { appointments, createDatabase, jobs, properties, withTenant } from "@surveynt/db";
 import { apiContext } from "@/lib/access";
@@ -9,8 +10,10 @@ const icalDate = (value: Date) => value.toISOString().replaceAll(/[-:]/g, "").re
 export async function GET(request: Request) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication is required.");
+  const accessDenial = await workspaceApiGuard(request, context);
+  if (accessDenial) return accessDenial;
   if (context.demo) return new Response("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Surveynt//Firm calendar//EN\r\nEND:VCALENDAR\r\n", { headers: { "content-type": "text/calendar; charset=utf-8", "content-disposition": "attachment; filename=surveynt-calendar.ics" } });
-  const rows = await withTenant(createDatabase(), context.organisationId, (tx) => tx.select({ appointment: appointments, reference: jobs.reference, line1: properties.line1, city: properties.city, postcode: properties.postcode }).from(appointments).innerJoin(jobs, and(eq(jobs.id, appointments.jobId), eq(jobs.organisationId, appointments.organisationId))).innerJoin(properties, and(eq(properties.id, jobs.propertyId), eq(properties.organisationId, appointments.organisationId))).where(and(eq(appointments.organisationId, context.organisationId), gt(appointments.endsAt, new Date()), eq(appointments.status, "confirmed"))).orderBy(asc(appointments.startsAt)).limit(500));
+  const rows = await withTenant(createDatabase(), context.organisationId, (tx) => tx.select({ appointment: appointments, reference: jobs.reference, line1: properties.line1, city: properties.city, postcode: properties.postcode }).from(appointments).innerJoin(jobs, and(eq(jobs.id, appointments.jobId), eq(jobs.organisationId, appointments.organisationId))).innerJoin(properties, and(eq(properties.id, jobs.propertyId), eq(properties.organisationId, appointments.organisationId))).where(and(context.role === "surveyor" ? eq(jobs.assignedSurveyorId, context.internalUserId!) : undefined, eq(appointments.organisationId, context.organisationId), gt(appointments.endsAt, new Date()), eq(appointments.status, "confirmed"))).orderBy(asc(appointments.startsAt)).limit(500));
   const events = rows.map(({ appointment, reference, line1, city, postcode }) => [
     "BEGIN:VEVENT", `UID:${appointment.id}@surveynt`, `DTSTAMP:${icalDate(appointment.updatedAt)}`, `DTSTART:${icalDate(appointment.startsAt)}`, `DTEND:${icalDate(appointment.endsAt)}`,
     `SUMMARY:${escapeIcal(`Surveynt inspection ${reference}`)}`, `LOCATION:${escapeIcal(`${line1}, ${city}, ${postcode}`)}`, `DESCRIPTION:${escapeIcal(`Surveynt job ${reference}`)}`, "END:VEVENT",

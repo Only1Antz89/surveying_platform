@@ -1,3 +1,4 @@
+import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { z } from "zod";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { canApproveSupportAccess } from "@surveynt/domain";
@@ -10,6 +11,8 @@ const decisionSchema = z.object({ decision: z.enum(["approve", "deny"]) });
 export async function PATCH(request: Request, route: RouteContext<"/api/v1/support-sessions/[id]">) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  const accessDenial = await workspaceApiGuard(request, context);
+  if (accessDenial) return accessDenial;
   if (!canApproveSupportAccess(context.role)) return problem(403, "forbidden", "Only a practice owner can approve support write access.");
   const parsed = await parseBody(request, decisionSchema);
   if (!parsed.success) return problem(400, "invalid_request", "Choose whether to approve or deny this support request.", parsed.error.flatten());

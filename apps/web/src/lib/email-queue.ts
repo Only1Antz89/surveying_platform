@@ -1,6 +1,7 @@
 import { and, asc, eq, inArray, lt, lte } from "drizzle-orm";
 import { auditEvents, backgroundJobs, communicationDeliveries, createDatabase, organisationMemberships, organisations, subscriptions, users } from "@surveynt/db";
 import { applicationUrl, emailDeliveryConfigured, type EmailJobType, emailJobTypes, renderEmail, sendEmail } from "./email";
+import { isDemoOrganisation } from "./stakeholder-demo";
 
 const maximumAttempts = 5;
 const dayMs = 24 * 60 * 60 * 1000;
@@ -77,7 +78,8 @@ export async function processEmailQueue(limit = 20) {
     try {
       if (!emailJobTypes.includes(job.type as EmailJobType)) throw new Error(`Unsupported email job type: ${job.type}`);
       const message = renderEmail(job.type as EmailJobType, job.payload);
-      const delivery = await sendEmail(message);
+      const simulated = job.organisationId ? await isDemoOrganisation(job.organisationId, db) : false;
+      const delivery = simulated ? { providerMessageId: `demo_${job.id}` } : await sendEmail(message);
       await db.update(backgroundJobs).set({ status: "completed", completedAt: new Date(), failedAt: null, error: null, providerMessageId: delivery.providerMessageId, updatedAt: new Date() }).where(eq(backgroundJobs.id, job.id));
       if (typeof job.payload.deliveryId === "string") await db.update(communicationDeliveries).set({ status: "sent", attempts: job.attempts, providerMessageId: delivery.providerMessageId, sentAt: new Date(), lastError: null, updatedAt: new Date() }).where(and(eq(communicationDeliveries.id, job.payload.deliveryId), eq(communicationDeliveries.organisationId, job.organisationId!)));
       await db.insert(auditEvents).values({ organisationId: job.organisationId, action: "notification.email_accepted", resourceType: "background_job", resourceId: job.id, metadata: { type: job.type, providerMessageId: delivery.providerMessageId } });

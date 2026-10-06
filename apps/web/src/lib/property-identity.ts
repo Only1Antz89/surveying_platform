@@ -23,6 +23,7 @@ import {
 } from "@surveynt/property-data";
 import { findUprnCandidates, getSourceState, uprnExists } from "@surveynt/property-data/db";
 import { databasePublicCache } from "./provider-cache";
+import { isDemoOrganisation } from "./stakeholder-demo";
 
 export const intelligenceEnabled = () => process.env.PROPERTY_INTELLIGENCE_ENABLED === "true";
 
@@ -89,7 +90,7 @@ type TenantContext = { organisationId: string; internalUserId: string | null; de
 export async function searchAddresses(context: TenantContext, rawQuery: string): Promise<AddressSearchResponse> {
   const query = rawQuery.trim().replace(/\s+/g, " ");
   if (query.length < 3 || query.length > 200) return { lookupId: null, status: "invalid", message: "Enter between 3 and 200 characters.", candidates: [], attribution: [], demo: context.demo };
-  if (context.demo) {
+  if (context.demo || await isDemoOrganisation(context.organisationId)) {
     return { lookupId: "demo", status: "matched", message: "Demo results only. These are not live address records.", candidates: demoCandidates, attribution: ["Demo data"], demo: true };
   }
   if (!intelligenceEnabled()) return { lookupId: null, status: "not_configured", message: "Address search is not enabled for this deployment. Enter the address manually.", candidates: [], attribution: [], demo: false };
@@ -164,7 +165,7 @@ async function resolveUprns(db: Database | TenantTransaction, input: { latitude:
 export type ResolveResponse = { candidate: AddressCandidate; uprn: UprnResolution; demo: boolean } | { problem: "not_found" | "too_imprecise"; message: string };
 
 export async function resolveCandidate(context: TenantContext, lookupId: string, index: number): Promise<ResolveResponse> {
-  if (context.demo) {
+  if (context.demo || await isDemoOrganisation(context.organisationId)) {
     const candidate = demoCandidates[index];
     if (!candidate || lookupId !== "demo") return { problem: "not_found", message: "That search result has expired. Search again." };
     const point = { latitude: 51.4544, longitude: -2.6198 };
@@ -199,6 +200,7 @@ export type IdentityOutcome =
 /** Applies one audited identity change with optimistic concurrency. External data never overwrites a surveyor confirmation silently. */
 export async function updatePropertyIdentity(context: TenantContext & { organisationId: string }, propertyId: string, input: IdentityAction): Promise<IdentityOutcome> {
   const db = createDatabase();
+  const persistedDemo = await isDemoOrganisation(context.organisationId, db);
   return withTenant(db, context.organisationId, async (tx) => {
     const [current] = await tx.select().from(properties).where(and(eq(properties.id, propertyId), eq(properties.organisationId, context.organisationId))).limit(1);
     if (!current) return { kind: "missing" };
@@ -210,7 +212,7 @@ export async function updatePropertyIdentity(context: TenantContext & { organisa
     switch (input.action) {
       case "set_location": {
         if (normaliseLocationConfidence(current.locationConfidence) === "surveyor_confirmed" && !input.replaceConfirmed) return { kind: "invalid", message: "This location was confirmed by a surveyor. Choose to replace it explicitly." };
-        const candidate = await loadCandidate(tx, context.organisationId, input.lookupId, input.index);
+        const candidate = persistedDemo && input.lookupId === "demo" ? demoCandidates[input.index] : await loadCandidate(tx, context.organisationId, input.lookupId, input.index);
         if (!candidate) return { kind: "invalid", message: "That search result has expired. Search again." };
         if (candidate.precision === "area" || !isWithinUkBounds(candidate.latitude, candidate.longitude)) return { kind: "invalid", message: "That result is too imprecise to locate the property." };
         changes = {

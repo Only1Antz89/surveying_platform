@@ -58,12 +58,15 @@ function authHeader(env: ProviderContext["env"]) {
   return null;
 }
 
-export const epcProvider: IntelligenceProvider = {
+export { modernEpcProvider as epcProvider } from "./epc-modern";
+/** Retained only for explicit legacy fixture compatibility; orchestration uses the bearer API. */
+export const legacyEpcProvider: IntelligenceProvider = {
   key: sourceKey,
   categories: ["energy_certificate"],
   applicability(location, context) {
     if (location.country !== "ENG" && location.country !== "WLS") return { ok: false, status: "unsupported", message: location.country ? "This EPC register covers England and Wales only." : "Set the property's country to check energy certificates.", coverage: location.country ? "not_covered" : "unknown" };
     if (!context.env.EPC_API_BASE_URL || !authHeader(context.env)) return { ok: false, status: "not_configured", message: "EPC access is not configured for this deployment.", coverage: "unknown" };
+    if (context.env.EPC_LICENCE_ACCEPTED !== "true" || context.env.EPC_DATA_PROTECTION_APPROVED !== "true") return { ok: false, status: "not_configured", message: "EPC access remains disabled until licence acceptance and data-protection handling are approved.", coverage: "unknown" };
     if (!location.uprn) return { ok: false, status: "unsupported", message: "EPC records are matched by confirmed UPRN only. Confirm the property's UPRN to check them.", coverage: "unknown" };
     return { ok: true };
   },

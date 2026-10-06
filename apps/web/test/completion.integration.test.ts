@@ -1,3 +1,4 @@
+import { organisationMemberships } from "@surveynt/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { auditEvents, clients, completionOverrides, createDatabase, jobs, organisations, properties, users, withTenant } from "@surveynt/db";
@@ -58,13 +59,14 @@ describe.skipIf(!integrationEnabled)("completion checks and the stage gate", () 
       { id: firmB, clerkOrganisationId: "org_b7", name: "Firm B", slug: "firm-b7", practiceType: "residential", region: "Leeds" },
     ]);
     const [user] = await admin.insert(users).values({ clerkUserId: "user_a7", email: "surveyor@a7.test" }).returning();
-    surveyor = { organisationId: firmA, internalUserId: user.id, role: "surveyor" };
+    await admin.insert(organisationMemberships).values({ organisationId: firmA, userId: user.id, role: "surveyor", canApproveReports: true });
+    surveyor = { organisationId: firmA, internalUserId: user.id, role: "surveyor", canApproveReports: true };
     coordinator = { organisationId: firmA, internalUserId: user.id, role: "coordinator" };
     const [client] = await admin.insert(clients).values({ organisationId: firmA, kind: "individual", displayName: "Client A" }).returning();
     const [property] = await admin.insert(properties).values({ organisationId: firmA, clientId: client.id, line1: "1 Gate Road", city: "Bristol", postcode: "BS1 1AA", country: "ENG" }).returning();
     [{ id: jobId }, { id: jobWithoutSurvey }] = await admin.insert(jobs).values([
-      { organisationId: firmA, clientId: client.id, propertyId: property.id, reference: "G-1", serviceName: "Condition report", stage: "inspection_complete" },
-      { organisationId: firmA, clientId: client.id, propertyId: property.id, reference: "G-2", serviceName: "Legacy job", stage: "report_drafting" },
+      { organisationId: firmA, clientId: client.id, propertyId: property.id, reference: "G-1", assignedSurveyorId: surveyor.internalUserId, serviceName: "Condition report", stage: "inspection_complete" },
+      { organisationId: firmA, clientId: client.id, propertyId: property.id, reference: "G-2", assignedSurveyorId: surveyor.internalUserId, serviceName: "Legacy job", stage: "report_drafting" },
     ]).returning();
     const created = await createSurvey(surveyor, jobId, { serviceLevel: "level_1" });
     if (created.kind !== "created") throw new Error(`unexpected ${created.kind}`);
@@ -115,7 +117,7 @@ describe.skipIf(!integrationEnabled)("completion checks and the stage gate", () 
   it("lets only surveyors classify defects, and gates a defect until it has evidence", async () => {
     const element = { sectionKey: "outside", elementKey: "roof_coverings", locationLabel: "Rear slope" };
     const refused = await applySyncOperations(coordinator, surveyId, [{ type: "add_observation", operationId: op(), element, kind: "current_observation", text: "Slipped slates.", defect: { nextAction: "repair" } }]);
-    expect(refused[0]).toMatchObject({ status: "rejected", message: expect.stringMatching(/classify a defect/) });
+    expect(refused[0]).toMatchObject({ status: "rejected", message: expect.stringMatching(/Professional survey recording permission/) });
     const [added] = await applySyncOperations(surveyor, surveyId, [{ type: "add_observation", operationId: op(), element, kind: "current_observation", text: "Slipped slates.", defect: { nextAction: "repair" } }]);
     if (added.status !== "applied") throw new Error(added.status);
     const observationId = String(added.record?.id);

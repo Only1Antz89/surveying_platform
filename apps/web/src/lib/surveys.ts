@@ -1,4 +1,6 @@
 import { and, asc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { assignedJobScope } from "./workspace-scope";
+import { currentProfessionalPermission } from "./professional-membership";
 import {
   assistantTasks,
   auditEvents,
@@ -38,8 +40,9 @@ import {
 import { canConfirmPropertyIdentity, type OrganisationRole, type UkCountry } from "@surveynt/domain";
 import { assistantEnabled } from "./assistant-flags";
 import { getObjectStorage, maxUploadBytes } from "./storage";
+import { wholeFormEvidenceEnabled } from "./whole-form-evidence";
 
-export type SurveyContext = { organisationId: string; internalUserId: string | null; role: OrganisationRole };
+export type SurveyContext = { organisationId: string; internalUserId: string | null; role: OrganisationRole; canRecordSurvey?: boolean; canApproveReports?: boolean };
 
 export class TemplateIntegrityError extends Error {}
 
@@ -68,9 +71,12 @@ export async function pinnedTemplate(tx: TenantTransaction, survey: Pick<typeof 
 export type CreateSurveyInput = { serviceLevel: ServiceLevel; jurisdiction?: UkCountry; templateKey?: string; templateVersion?: string; clientGeneratedId?: string };
 
 export async function createSurvey(context: SurveyContext, jobId: string, input: CreateSurveyInput) {
+  if (!canRecordProfessionalJudgement(context.role, context.canRecordSurvey)) return { kind: "invalid" as const, message: "Professional survey recording permission is required." };
   const db = createDatabase();
   return withTenant(db, context.organisationId, async (tx) => {
-    const [job] = await tx.select().from(jobs).where(and(eq(jobs.id, jobId), eq(jobs.organisationId, context.organisationId))).limit(1);
+    if (!await currentProfessionalPermission(tx, context, "record_survey")) return { kind: "invalid" as const, message: "Your professional recording permission has changed. Reload before continuing." };
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${context.organisationId + ":survey:" + jobId}, 0))`);
+    const [job] = await tx.select().from(jobs).where(and(eq(jobs.id, jobId), eq(jobs.organisationId, context.organisationId), assignedJobScope(context))).for("update").limit(1);
     if (!job) return { kind: "missing" as const };
     const [existing] = await tx.select().from(surveys).where(and(eq(surveys.organisationId, context.organisationId), eq(surveys.jobId, jobId), ne(surveys.status, "withdrawn"))).limit(1);
     if (existing) return { kind: "existing" as const, survey: existing };
@@ -79,6 +85,7 @@ export async function createSurvey(context: SurveyContext, jobId: string, input:
     if (!jurisdiction) return { kind: "invalid" as const, message: "Set the property's country or choose the jurisdiction before starting the survey." };
     const template = input.templateKey && input.templateVersion ? await resolveTemplate(tx, input.templateKey, input.templateVersion) : defaultTemplate;
     if (!template) return { kind: "invalid" as const, message: "That form template is not published." };
+    if (template.version === "1.2.0" && template.key.startsWith("surveynt-home-survey-") && !await wholeFormEvidenceEnabled(tx, context.organisationId)) return { kind: "invalid" as const, message: "Whole-form evidence is enabled for flagged private demos only." };
     if (!template.jurisdictions.includes(jurisdiction)) return { kind: "invalid" as const, message: "That template does not cover the property's jurisdiction." };
     if (!template.serviceLevels.includes(input.serviceLevel)) return { kind: "invalid" as const, message: "That template does not support the selected service scope." };
     const [survey] = await tx.insert(surveys).values({
@@ -132,16 +139,16 @@ async function refreshHistoryTasks(tx: TenantTransaction, organisationId: string
   return drafts.length;
 }
 
-export async function loadSurveyPack(context: Pick<SurveyContext, "organisationId">, surveyId: string) {
+export async function loadSurveyPack(context: Pick<SurveyContext, "organisationId"> & Partial<SurveyContext>, surveyId: string) {
   const db = createDatabase();
   return withTenant(db, context.organisationId, (tx) => readSurveyPack(tx, context, surveyId));
 }
 
 /** Reads a survey pack inside an existing tenant transaction. */
-export async function readSurveyPack(tx: TenantTransaction, context: Pick<SurveyContext, "organisationId">, surveyId: string) {
+export async function readSurveyPack(tx: TenantTransaction, context: Pick<SurveyContext, "organisationId"> & Partial<SurveyContext>, surveyId: string) {
   const [row] = await tx.select({ survey: surveys, jobReference: jobs.reference, serviceName: jobs.serviceName, line1: properties.line1, city: properties.city, postcode: properties.postcode })
     .from(surveys).innerJoin(jobs, eq(surveys.jobId, jobs.id)).innerJoin(properties, eq(surveys.propertyId, properties.id))
-    .where(and(eq(surveys.id, surveyId), eq(surveys.organisationId, context.organisationId))).limit(1);
+    .where(and(eq(surveys.id, surveyId), eq(surveys.organisationId, context.organisationId), assignedJobScope(context))).limit(1);
   if (!row) return null;
   const template = await pinnedTemplate(tx, row.survey);
   const [elements, values, observationRows, media, evidence, tasks] = await Promise.all([
@@ -150,7 +157,7 @@ export async function readSurveyPack(tx: TenantTransaction, context: Pick<Survey
     tx.select().from(observations).where(and(eq(observations.surveyId, surveyId), eq(observations.organisationId, context.organisationId), eq(observations.status, "recorded"))).orderBy(asc(observations.createdAt)),
     tx.select({ id: mediaAssets.id, kind: mediaAssets.kind, originalFilename: mediaAssets.originalFilename, contentType: mediaAssets.contentType, byteSize: mediaAssets.byteSize, width: mediaAssets.width, height: mediaAssets.height, capturedAt: mediaAssets.capturedAt, captureContext: mediaAssets.captureContext, derivation: mediaAssets.derivation, clientGeneratedId: mediaAssets.clientGeneratedId, createdAt: mediaAssets.createdAt }).from(mediaAssets).where(and(eq(mediaAssets.surveyId, surveyId), eq(mediaAssets.organisationId, context.organisationId), eq(mediaAssets.status, "stored"))),
     tx.select().from(evidenceLinks).where(and(eq(evidenceLinks.surveyId, surveyId), eq(evidenceLinks.organisationId, context.organisationId), isNull(evidenceLinks.removedAt))),
-    tx.select().from(assistantTasks).where(and(eq(assistantTasks.surveyId, surveyId), eq(assistantTasks.organisationId, context.organisationId))).orderBy(asc(assistantTasks.createdAt)),
+    tx.select().from(assistantTasks).where(and(eq(assistantTasks.surveyId, surveyId), eq(assistantTasks.organisationId, context.organisationId), context.role === "surveyor" ? sql`(${assistantTasks.kind} <> 'reinspect' or exists (select 1 from surveys prior join jobs prior_job on prior_job.id = prior.job_id and prior_job.organisation_id = prior.organisation_id where prior.id::text = ${assistantTasks.evidence}->>'priorSurveyId' and prior.organisation_id = ${context.organisationId} and prior_job.assigned_surveyor_id = ${context.internalUserId}))` : undefined)).orderBy(asc(assistantTasks.createdAt)),
   ]);
   const analyses = await tx.select({ mediaId: mediaAnalyses.mediaId, analyser: mediaAnalyses.analyser, status: mediaAnalyses.status, result: mediaAnalyses.result, createdAt: mediaAnalyses.createdAt }).from(mediaAnalyses).where(and(eq(mediaAnalyses.surveyId, surveyId), eq(mediaAnalyses.organisationId, context.organisationId)));
   const analysisByMedia = new Map(analyses.map((item) => [item.mediaId, { analyser: item.analyser, status: item.status, result: item.result, createdAt: item.createdAt.toISOString() }]));
@@ -172,6 +179,28 @@ export async function readSurveyPack(tx: TenantTransaction, context: Pick<Survey
 }
 
 export type SurveyPack = NonNullable<Awaited<ReturnType<typeof loadSurveyPack>>>;
+
+/** Explicit additive metadata upgrade. Existing values, observations, media and reports are untouched. */
+export async function upgradeHomeSurveyTemplate(context: SurveyContext, surveyId: string, version: number) {
+  return withTenant(createDatabase(), context.organisationId, async tx => {
+    if (!await currentProfessionalPermission(tx, context, "record_survey") || !await wholeFormEvidenceEnabled(tx, context.organisationId)) return { kind: "denied" as const };
+    const [row] = await tx.select({ survey: surveys }).from(surveys).innerJoin(jobs, eq(jobs.id, surveys.jobId)).where(and(eq(surveys.id, surveyId), eq(surveys.organisationId, context.organisationId), assignedJobScope(context))).for("update", { of: jobs }).limit(1);
+    if (!row) return { kind: "missing" as const };
+    const [survey] = await tx.select().from(surveys).where(eq(surveys.id, row.survey.id)).for("update").limit(1);
+    if (survey.version !== version || survey.status !== "in_progress") return { kind: "conflict" as const };
+    if (!survey.templateKey.startsWith("surveynt-home-survey-") || !["1.0.0", "1.1.0"].includes(survey.templateVersion)) return { kind: "unsupported" as const };
+    const previous = await pinnedTemplate(tx, survey);
+    const next = getBuiltInTemplate(survey.templateKey, "1.2.0");
+    if (!next) return { kind: "unsupported" as const };
+    const structure = (template: FormTemplate) => template.sections.map(section => [section.key, section.label, section.elements.map(element => [element.key, element.label, element.fields.map(field => [field.key, field.label, field.type, field.fieldClass, field.requirement])])]);
+    if (canonicalJson(structure(previous)) !== canonicalJson(structure(next)) || canonicalJson(previous.conditionRatingLabels) !== canonicalJson(next.conditionRatingLabels)) throw new TemplateIntegrityError("The upgrade would change the survey's protected form structure.");
+    const now = new Date();
+    await tx.update(surveys).set({ templateVersion: next.version, templateFingerprint: await templateFingerprint(next), version: survey.version + 1, updatedAt: now }).where(eq(surveys.id, survey.id));
+    await tx.update(fieldProposals).set({ reviewStatus: "superseded", reviewedAt: now, reviewNote: "Explicit template upgrade; reload evidence." }).where(and(eq(fieldProposals.surveyId, survey.id), eq(fieldProposals.organisationId, context.organisationId), eq(fieldProposals.reviewStatus, "pending")));
+    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "survey.template_upgraded", resourceType: "survey", resourceId: survey.id, metadata: { fromVersion: survey.templateVersion, toVersion: next.version, previousFingerprint: survey.templateFingerprint, nextFingerprint: await templateFingerprint(next), valuesPreserved: true } });
+    return { kind: "upgraded" as const, version: next.version };
+  });
+}
 
 class OperationOutcome extends Error {
   constructor(public readonly result: SyncResult) {
@@ -213,7 +242,7 @@ async function applyOperation(tx: TenantTransaction, context: SurveyContext, sur
     case "set_field": {
       const resolved = resolveField(template, operation.fieldPath);
       if (!resolved) return reject(operationId, "That field is not part of this survey's template.");
-      if (resolved.field.fieldClass === "professional_assessment" && !canRecordProfessionalJudgement(context.role)) return reject(operationId, "Only surveyors, administrators and owners can record professional assessments.");
+      if (resolved.field.fieldClass === "professional_assessment" && !canRecordProfessionalJudgement(context.role, context.canRecordSurvey)) return reject(operationId, "Only surveyors, administrators and owners can record professional assessments.");
       const validation = validateFieldValue(resolved.field, operation.value);
       if (!validation.ok) return reject(operationId, validation.message);
       const [current] = await tx.select().from(surveyFieldValues).where(and(eq(surveyFieldValues.surveyId, survey.id), eq(surveyFieldValues.fieldPath, resolved.path), isNull(surveyFieldValues.supersededAt))).limit(1);
@@ -224,7 +253,7 @@ async function applyOperation(tx: TenantTransaction, context: SurveyContext, sur
       return { id: created.id, fieldPath: created.fieldPath, value: created.value, supersedesId: created.supersedesId };
     }
     case "add_observation": {
-      if (operation.defect && !canRecordProfessionalJudgement(context.role)) return reject(operationId, "Only surveyors, administrators and owners can classify a defect.");
+      if (operation.defect && !canRecordProfessionalJudgement(context.role, context.canRecordSurvey)) return reject(operationId, "Only surveyors, administrators and owners can classify a defect.");
       if (operation.defect && operation.kind !== "current_observation") return reject(operationId, "Only a current observation can be classified as a defect.");
       const element = operation.element ? await elementRow(tx, context.organisationId, survey.id, template, operationId, operation.element, context.internalUserId) : null;
       if (element && !resolveElement(template, element.sectionKey, element.elementKey)?.element.inspectable) return reject(operationId, "Observations attach to building elements only.");
@@ -294,13 +323,17 @@ async function applyOperation(tx: TenantTransaction, context: SurveyContext, sur
  * ledger; replays return "duplicate" with the original record.
  */
 export async function applySyncOperations(context: SurveyContext, surveyId: string, operations: SyncOperation[]) {
+  if (!canRecordProfessionalJudgement(context.role, context.canRecordSurvey)) return operations.map((operation): SyncResult => ({ operationId: operation.operationId, status: "rejected", message: "Professional survey recording permission is required." }));
   const db = createDatabase();
   const results: SyncResult[] = [];
   for (const operation of operations) {
     try {
       const result = await withTenant(db, context.organisationId, async (tx) => {
+        if (!await currentProfessionalPermission(tx, context, "record_survey")) return reject(operation.operationId, "Your professional recording permission has been revoked or your membership has changed.");
         const [survey] = await tx.select().from(surveys).where(and(eq(surveys.id, surveyId), eq(surveys.organisationId, context.organisationId))).limit(1);
         if (!survey) return reject(operation.operationId, "Survey not found.");
+        const [assignedJob] = await tx.select({ id: jobs.id }).from(jobs).where(and(eq(jobs.id, survey.jobId), eq(jobs.organisationId, context.organisationId), assignedJobScope(context))).for("update").limit(1);
+        if (!assignedJob) return reject(operation.operationId, "This survey is no longer assigned to you.");
         const [ledger] = await tx.insert(syncOperations).values({ organisationId: context.organisationId, surveyId, operationId: operation.operationId, operationType: operation.type, appliedByUserId: context.internalUserId }).onConflictDoNothing().returning();
         if (!ledger) {
           const [previous] = await tx.select().from(syncOperations).where(and(eq(syncOperations.organisationId, context.organisationId), eq(syncOperations.operationId, operation.operationId))).limit(1);
@@ -333,14 +366,17 @@ export type StoreMediaInput = { file: File; clientGeneratedId: string; capturedA
 
 /** Stores an immutable original. Idempotent per client id, so a retried upload never duplicates the file. */
 export async function storeSurveyMedia(context: SurveyContext, surveyId: string, input: StoreMediaInput) {
+  if (!canRecordProfessionalJudgement(context.role, context.canRecordSurvey)) return { kind: "invalid" as const, message: "Professional recording permission is required." };
   const storage = getObjectStorage();
   if (!storage) return { kind: "not_configured" as const, message: "Photo and document storage is not configured. Text capture continues to work." };
   const kind = photoTypes.includes(input.file.type) ? "photo" as const : documentTypes.includes(input.file.type) ? "document" as const : null;
   if (!kind) return { kind: "invalid" as const, message: "Upload a JPEG, PNG, WebP or HEIC photo, or a PDF document." };
   if (input.file.size > maxUploadBytes() || input.file.size === 0) return { kind: "invalid" as const, message: `Files must be between 1 byte and ${Math.round(maxUploadBytes() / 1048576)} MB.` };
   const db = createDatabase();
-  const survey = await withTenant(db, context.organisationId, async (tx) => {
-    const [row] = await tx.select().from(surveys).where(and(eq(surveys.id, surveyId), eq(surveys.organisationId, context.organisationId))).limit(1);
+  const survey = await withTenant<{ row?: typeof surveys.$inferSelect; duplicate?: typeof mediaAssets.$inferSelect }>(db, context.organisationId, async (tx) => {
+    if (!await currentProfessionalPermission(tx, context, "record_survey")) return { row: undefined, duplicate: undefined };
+    const [record] = await tx.select({ row: surveys }).from(surveys).innerJoin(jobs, eq(jobs.id, surveys.jobId)).where(and(eq(surveys.id, surveyId), eq(surveys.organisationId, context.organisationId), assignedJobScope(context))).limit(1);
+    const row = record?.row;
     const [duplicate] = row ? await tx.select().from(mediaAssets).where(and(eq(mediaAssets.organisationId, context.organisationId), eq(mediaAssets.clientGeneratedId, input.clientGeneratedId))).limit(1) : [];
     return { row, duplicate };
   });
@@ -355,6 +391,9 @@ export async function storeSurveyMedia(context: SurveyContext, surveyId: string,
   await storage.put(storageKey, body, input.file.type);
   try {
     const media = await withTenant(db, context.organisationId, async (tx) => {
+      if (!await currentProfessionalPermission(tx, context, "record_survey")) throw new Error("Professional recording permission changed during upload.");
+      const [assigned] = await tx.select({ id: jobs.id }).from(jobs).where(and(eq(jobs.id, survey.row!.jobId), eq(jobs.organisationId, context.organisationId), assignedJobScope(context))).for("update").limit(1);
+      if (!assigned) throw new Error("Survey assignment changed during upload.");
       const [created] = await tx.insert(mediaAssets).values({
         id: mediaId, organisationId: context.organisationId, propertyId: survey.row!.propertyId, surveyId, kind, storageKey, contentType: input.file.type, byteSize: input.file.size, sha256,
         originalFilename: input.file.name ? input.file.name.slice(0, 200) : null, capturedAt: input.capturedAt ? new Date(input.capturedAt) : null, captureContext: input.captureContext ?? {},

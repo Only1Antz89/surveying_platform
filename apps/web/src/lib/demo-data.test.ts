@@ -13,6 +13,6 @@ describe("demonstration workspace", () => {
   });
 
   it("never uses negative fees", () => {
-    expect(jobs.every((job) => job.fee >= 0)).toBe(true);
+    expect(jobs.every((job) => (job.fee ?? -1) >= 0)).toBe(true);
   });
 });

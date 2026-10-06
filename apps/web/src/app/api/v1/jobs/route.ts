@@ -1,3 +1,5 @@
+import { assignedJobScope } from "@/lib/workspace-scope";
+import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { z } from "zod";
 import { canMutateOperations, jobStages } from "@surveynt/domain";
 import { auditEvents, clients, createDatabase, jobAssignments, jobs, jobStageEvents, organisationMemberships, properties } from "@surveynt/db";
@@ -11,18 +13,22 @@ const createJob = z.object({ clientId: z.string().min(1), propertyId: z.string()
 export async function GET(request: Request) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  const accessDenial = await workspaceApiGuard(request, context);
+  if (accessDenial) return accessDenial;
   if (context.demo) return ok(demoJobs, { demo: true, nextCursor: null });
   const db = createDatabase();
   const rows = await db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
-    return tx.select().from(jobs).where(eq(jobs.organisationId, context.organisationId)).orderBy(desc(jobs.updatedAt)).limit(50);
+    return tx.select().from(jobs).where(and(assignedJobScope(context), eq(jobs.organisationId, context.organisationId), assignedJobScope(context))).orderBy(desc(jobs.updatedAt)).limit(50);
   });
-  return ok(rows, { nextCursor: null });
+  return ok(context.role === "surveyor" ? rows.map(({ fee, ...job }) => { void fee; return job; }) : rows, { nextCursor: null });
 }
 
 export async function POST(request: Request) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  const accessDenial = await workspaceApiGuard(request, context);
+  if (accessDenial) return accessDenial;
   if (!canWriteWorkspace(context)) return problem(402, "workspace_read_only", "Restore billing before changing workspace records.");
   const parsed = await parseBody(request, createJob);
   if (!parsed.success) return problem(400, "invalid_request", "The job details are invalid.", parsed.error.flatten());

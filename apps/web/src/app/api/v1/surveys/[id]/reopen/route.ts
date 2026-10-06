@@ -1,3 +1,5 @@
+import { workspaceApiGuard } from "@/lib/workspace-api-guard";
+import { professionalApiGuard } from "@/lib/professional-access";
 import { z } from "zod";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
@@ -9,6 +11,10 @@ export const runtime = "nodejs";
 export async function POST(request: Request, route: RouteContext<"/api/v1/surveys/[id]/reopen">) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  const accessDenial = await workspaceApiGuard(request, context);
+  if (accessDenial) return accessDenial;
+  const professionalDenial = professionalApiGuard(request, context);
+  if (professionalDenial) return professionalDenial;
   if (!canWriteWorkspace(context)) return problem(402, "workspace_read_only", "Restore billing before changing workspace records.");
   const parsed = await parseBody(request, z.object({ reason: z.string().trim().min(10).max(1000) }));
   if (!parsed.success) return problem(400, "invalid_request", "Give a reason for reopening (at least 10 characters).");

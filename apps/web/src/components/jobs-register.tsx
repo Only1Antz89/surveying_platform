@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ClipboardList, Clock3, Download, Eye, Pencil, Plus, Search, X } from "lucide-react";
 import { canTransitionJob, jobStageLabels, jobStages, type JobStage } from "@surveynt/domain";
@@ -32,7 +32,7 @@ const formatTarget = (value: string | null) => value
   : "Not scheduled";
 const formatDateTime = (value: string) => new Date(value).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/London" });
 
-export function JobsRegister({ slug, jobs: initialJobs, options, canEdit = true }: { slug: string; jobs: Job[]; options: JobFormOptions; canEdit?: boolean }) {
+export function JobsRegister({ slug, jobs: initialJobs, options, canEdit = true, showFinance = true,initialSelectedId }: { slug: string; jobs: Job[]; options: JobFormOptions; canEdit?: boolean; showFinance?: boolean;initialSelectedId?:string }) {
   const [jobs, setJobs] = useState(initialJobs);
   const [query, setQuery] = useState("");
   const [stage, setStage] = useState("All stages");
@@ -42,13 +42,14 @@ export function JobsRegister({ slug, jobs: initialJobs, options, canEdit = true 
   const [saving, setSaving] = useState(false);
   const [workingId, setWorkingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  useEffect(()=>{if(!initialSelectedId)return;let active=true;fetch(`/api/v1/jobs/${initialSelectedId}`).then(async r=>{const p=await r.json();if(!r.ok)throw new Error(p.error?.message??"Job could not be opened.");if(active)setDetail(p.data);}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[initialSelectedId]);
   // A stage change refused by the survey's completion checks, waiting for fixes or recorded reasons.
   const [gate, setGate] = useState<{ jobId: string; body: Record<string, unknown>; details: StageGateDetails; message: string; onDone: (data: ApiJob) => Promise<void> | void } | null>(null);
   const [gateBusy, setGateBusy] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState(options.clients[0]?.id ?? "");
   const selectableProperties = useMemo(() => options.properties.filter((property) => property.clientId === selectedClientId), [options.properties, selectedClientId]);
   const visible = useMemo(() => jobs.filter((job) => `${job.reference} ${job.client} ${job.address} ${job.service}`.toLowerCase().includes(query.toLowerCase()) && (stage === "All stages" || job.stage === stage)), [jobs, query, stage]);
-  const csv = `reference,client,address,service,stage,assignee,target,fee\n${visible.map((job) => [job.reference, job.client, job.address, job.service, job.stage, job.assignee, job.target, job.fee].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n")}`;
+  const csv = `reference,client,address,service,stage,assignee,target${showFinance ? ",fee" : ""}\n${visible.map((job) => [job.reference, job.client, job.address, job.service, job.stage, job.assignee, job.target, ...(showFinance ? [job.fee] : [])].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n")}`;
   const canCreate = options.clients.length > 0 && options.properties.length > 0;
 
   async function createJob(event: FormEvent<HTMLFormElement>) {
@@ -129,7 +130,7 @@ export function JobsRegister({ slug, jobs: initialJobs, options, canEdit = true 
         <button className="button button-primary" onClick={() => { setError(null); setCreating(true); }} disabled={!canCreate || !canEdit}><Plus size={15} />New job</button>
       </div>
       {error && !creating && !detail && !detailLoading ? <div className="form-section"><p className="form-error" role="alert">{error}</p></div> : null}
-      {visible.length ? <div className="data-table-wrap"><table className="data-table"><thead><tr><th>Job</th><th>Service</th><th>Stage</th><th>Surveyor</th><th>Target</th><th>Fee</th>{canEdit ? <th>Next stage</th> : null}<th>Record</th></tr></thead><tbody>{visible.map((job) => { const nextStages = jobStages.filter((candidate) => canTransitionJob(job.stage, candidate)); return <tr key={job.id}><td data-label="Job"><button className="table-link-button" onClick={() => loadDetail(job)}><strong>{job.client}</strong><span className="cell-sub">{job.address}</span><span className="reference">{job.reference}</span></button></td><td data-label="Service">{job.service}</td><td data-label="Stage"><StatusDot tone={tones[job.stage] ?? "slate"}>{jobStageLabels[job.stage]}</StatusDot></td><td data-label="Surveyor">{job.assignee}</td><td data-label="Target">{job.target}</td><td data-label="Fee">£{job.fee.toLocaleString("en-GB")}</td>{canEdit ? <td data-label="Next stage">{nextStages.length ? <select className="select" aria-label={`Move ${job.reference} to next stage`} value="" disabled={workingId === job.id} onChange={(event) => { if (event.target.value) advanceStage(job, event.target.value as JobStage); }}><option value="">Choose…</option>{nextStages.map((candidate) => <option key={candidate} value={candidate}>{jobStageLabels[candidate]}</option>)}</select> : <span className="cell-sub">Complete</span>}</td> : null}<td data-label="Record"><button className="button button-quiet" onClick={() => loadDetail(job)}><Eye size={14} />View</button></td></tr>; })}</tbody></table></div> : <div className="empty-state"><strong>No jobs found</strong><span>{jobs.length ? "Adjust your search or stage filter." : canCreate ? "Create the first job for this workspace." : "Create a client and property before adding a job."}</span></div>}
+      {visible.length ? <div className="data-table-wrap"><table className="data-table"><thead><tr><th>Job</th><th>Service</th><th>Stage</th><th>Surveyor</th><th>Target</th>{showFinance ? <th>Fee</th> : null}{canEdit ? <th>Next stage</th> : null}<th>Record</th></tr></thead><tbody>{visible.map((job) => { const nextStages = jobStages.filter((candidate) => canTransitionJob(job.stage, candidate)); return <tr key={job.id}><td data-label="Job"><button className="table-link-button" onClick={() => loadDetail(job)}><strong>{job.client}</strong><span className="cell-sub">{job.address}</span><span className="reference">{job.reference}</span></button></td><td data-label="Service">{job.service}</td><td data-label="Stage"><StatusDot tone={tones[job.stage] ?? "slate"}>{jobStageLabels[job.stage]}</StatusDot></td><td data-label="Surveyor">{job.assignee}</td><td data-label="Target">{job.target}</td>{showFinance ? <td data-label="Fee">£{(job.fee ?? 0).toLocaleString("en-GB")}</td> : null}{canEdit ? <td data-label="Next stage">{nextStages.length ? <select className="select" aria-label={`Move ${job.reference} to next stage`} value="" disabled={workingId === job.id} onChange={(event) => { if (event.target.value) advanceStage(job, event.target.value as JobStage); }}><option value="">Choose…</option>{nextStages.map((candidate) => <option key={candidate} value={candidate}>{jobStageLabels[candidate]}</option>)}</select> : <span className="cell-sub">Complete</span>}</td> : null}<td data-label="Record"><Link className="button button-primary" href={`/app/${slug}/jobs/${job.id}/survey`}><ClipboardList size={14} />Open survey</Link><Link className="button button-quiet" href={`/app/${slug}/jobs/${job.id}`}>Job details</Link><button className="button button-quiet" onClick={() => loadDetail(job)}><Eye size={14} />View</button></td></tr>; })}</tbody></table></div> : <div className="empty-state"><strong>No jobs found</strong><span>{jobs.length ? "Adjust your search or stage filter." : canCreate ? "Create the first job for this workspace." : "Create a client and property before adding a job."}</span></div>}
       <div className="table-footer"><span>Showing {visible.length} of {jobs.length} jobs</span><div className="pager"><button className="active" aria-label="Page 1">1</button></div></div>
     </section>
 

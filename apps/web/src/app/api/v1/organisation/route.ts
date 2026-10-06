@@ -1,3 +1,4 @@
+import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { clerkClient } from "@clerk/nextjs/server";
 import { z } from "zod";
 import { and, eq, sql } from "drizzle-orm";
@@ -18,6 +19,8 @@ const settingsSchema = z.object({
 export async function GET(request: Request) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  const accessDenial = await workspaceApiGuard(request, context);
+  if (accessDenial) return accessDenial;
   if (context.demo) return ok({ id: context.organisationId, name: "North Star Surveying", slug: "north-star-surveying", status: "active", region: "South West England", branding: { tradingName: "North Star Surveying", supportEmail: "hello@northstarsurveying.co.uk", accentColour: "#3b82f6" }, services: [] }, { demo: true });
   const db = createDatabase();
   const data = await db.transaction(async (tx) => {
@@ -33,6 +36,8 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  const accessDenial = await workspaceApiGuard(request, context);
+  if (accessDenial) return accessDenial;
   if (!canWriteWorkspace(context)) return problem(402, "workspace_read_only", "Restore billing before changing workspace settings.");
   if (!canManageTeam(context.role)) return problem(403, "forbidden", "Only owners and administrators can change practice settings.");
   const parsed = await parseBody(request, settingsSchema);

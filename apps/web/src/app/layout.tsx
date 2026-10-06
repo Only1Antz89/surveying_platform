@@ -1,23 +1,26 @@
 import type { Metadata } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
-import { ClerkProvider } from "@clerk/nextjs";
+import { AppearanceProvider } from "@/components/appearance-provider";
+import { appearanceBootstrap } from "@/lib/appearance";
 import "./globals.css";
+import "./surveynt.css";
 
 export const metadata: Metadata = {
   title: { default: "Surveynt", template: "%s · Surveynt" },
   description: "Survey intelligence, from site to report.",
+  icons: { icon: "/favicon.svg" },
 };
 
 function Document({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
-      <body>{children}</body>
+    <html lang="en" suppressHydrationWarning className={`${GeistSans.variable} ${GeistMono.variable}`}>
+      <head><script dangerouslySetInnerHTML={{ __html: appearanceBootstrap }} /></head>
+      <body><AppearanceProvider>{children}</AppearanceProvider></body>
     </html>
   );
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) return <Document>{children}</Document>;
-  return <ClerkProvider appearance={{ variables: { colorPrimary: "#3b82f6", colorForeground: "#0f1b2d", colorMutedForeground: "#64748b", colorBackground: "#ffffff", colorBorder: "#e5e7eb", borderRadius: "8px", fontFamily: "var(--font-geist-sans)" } }}><Document>{children}</Document></ClerkProvider>;
+  return <Document>{children}</Document>;
 }
