@@ -1,9 +1,10 @@
 import { beforeEach, expect, it, vi } from "vitest";
-const state = vi.hoisted(() => ({ context: { organisationId: "11111111-1111-4111-8111-111111111111", internalUserId: "manager", role: "owner", demo: false }, writable: true, request: vi.fn(), cancel: vi.fn(), database: vi.fn() }));
+const state = vi.hoisted(() => ({ context: { organisationId: "11111111-1111-4111-8111-111111111111", internalUserId: "manager", role: "owner", demo: false }, writable: true, dispose: vi.fn(), request: vi.fn(), cancel: vi.fn(), database: vi.fn() }));
 vi.mock("@/lib/access", () => ({ apiContext: async () => state.context, canWriteWorkspace: () => state.writable }));
 vi.mock("@/lib/workspace-api-guard", () => ({ workspaceApiGuard: async () => null }));
 vi.mock("@/lib/survey-file-removal-request", () => ({ requestReviewedSurveyFileRemoval: state.request, cancelReviewedSurveyFileRemoval: state.cancel }));
 vi.mock("@surveynt/db", () => ({ createDatabase: state.database, withTenant: async (_db: unknown, _org: string, callback: (tx: unknown) => unknown) => callback({}) }));
+vi.mock("@/lib/survey-file-questionnaire-disposition", () => ({ disposeQuestionnaireAnalysis: state.dispose }));
 import { POST } from "./route";
 const id = "22222222-2222-4222-8222-222222222222";
 const route = { params: Promise.resolve({ id }) };
@@ -28,4 +29,13 @@ it("does not persist preview decisions or expose internal database errors", asyn
   state.context.demo = true; expect((await (await POST(request(), route)).json()).data.persisted).toBe(false); expect(state.database).not.toHaveBeenCalled();
   state.context.demo = false; state.request.mockRejectedValue(new Error("private database details"));
   const response = await POST(request(), route); expect(response.status).toBe(409); expect(await response.text()).not.toContain("private database details");
+});
+
+it("binds analysis cleanup to the confirmed completed request without accepting storage paths", async () => {
+  const body = { action: "dispose_analysis", id, documentId: id, manifestVersion: "b".repeat(64), reason: decision.reason, confirmed: true };
+  state.dispose.mockResolvedValue({disposed:true,duplicate:false});
+  expect((await POST(request(body),route)).status).toBe(200);
+  expect(state.dispose).toHaveBeenCalledWith(expect.anything(),state.context.organisationId,id,"manager",id,{id,manifestVersion:body.manifestVersion,reason:body.reason,confirmed:true});
+  expect((await POST(request({...body,storagePath:"untrusted"}),route)).status).toBe(400);
+  expect((await POST(request({...body,confirmed:false}),route)).status).toBe(400);
 });
