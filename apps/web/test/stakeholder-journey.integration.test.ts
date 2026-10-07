@@ -18,8 +18,10 @@ import { cancelReviewedSurveyFileRemoval, requestReviewedSurveyFileRemoval } fro
 import { revalidateQueuedSurveyFileRemoval } from "../src/lib/survey-file-removal-revalidate";
 import { claimQueuedSurveyFileRemoval } from "../src/lib/survey-file-removal-claim";
 import { recordSurveyFileOriginalDispatch } from "../src/lib/survey-file-removal-object-dispatch";
+import { surveyFileRemovalCanCancel } from "../src/lib/survey-file-removal-cancellation";
+import { recordSurveyFilePreflightFailure } from "../src/lib/survey-file-removal-preflight-failure";
 import { recordSurveyFileOriginalOutcome } from "../src/lib/survey-file-removal-object-outcome";
-import { claimSurveyFileRemovalRecovery } from "../src/lib/survey-file-removal-recovery";
+import { claimSurveyFileRemovalRecovery, observeInterruptedSurveyFileOriginal } from "../src/lib/survey-file-removal-recovery";
 import { surveyFileRemovals } from "@surveynt/db";
 import { assistantTasks, fieldProposals, mediaAnalyses } from "@surveynt/db";
 import { readSurveyFileProvenance } from "../src/lib/survey-file-provenance-register";
@@ -129,6 +131,19 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     const removalRequest={requestId:crypto.randomUUID(),reviewVersion:questionnaireFile!.assessment.reviewVersion,reason:"Manager confirmed expiry and reviewed every retained original.",confirmed:true as const};
     const requested=await Promise.all([1,2].map(()=>withTenant(createDatabase(),context.organisationId,tx=>requestReviewedSurveyFileRemoval(tx,context.organisationId,jobId,context.internalUserId!,removalRequest))));
     expect(requested[0].id).toBe(requested[1].id);expect(requested.map(result=>result.duplicate).sort()).toEqual([false,true]);expect(requested.every(result=>result.storageRemoved===false)).toBe(true);
+    await expect(withTenant(createDatabase(),context.organisationId,async tx=>{
+      const claim=await claimQueuedSurveyFileRemoval(tx,context.organisationId,jobId,requested[0].id);
+      const first=claim.manifest.objects[0];const key=`${first.kind}:${first.id}`;
+      await expect(recordSurveyFilePreflightFailure(tx,context.organisationId,claim.id,crypto.randomUUID(),key,"unexpected_absence")).rejects.toThrow("replaced");
+      await recordSurveyFilePreflightFailure(tx,context.organisationId,claim.id,claim.leaseToken,key,"unexpected_absence");
+      const [failed]=await tx.select().from(surveyFileRemovals).where(eq(surveyFileRemovals.id,claim.id));
+      expect(failed.status).toBe("verification_required");expect(failed.lockedUntil).toBeNull();expect(failed.progress).toEqual({});
+      const [eligibility]=await tx.select({canCancel:surveyFileRemovalCanCancel}).from(surveyFileRemovals).where(eq(surveyFileRemovals.id,claim.id));expect(eligibility.canCancel).toBe(true);
+      await expect(claimSurveyFileRemovalRecovery(tx,context.organisationId,claim.id)).rejects.toThrow("No recorded original dispatch");
+      expect(await cancelReviewedSurveyFileRemoval(tx,context.organisationId,jobId,context.internalUserId!,{id:claim.id,manifestVersion:claim.manifest.manifestVersion,reason:"Cancel failed preflight to investigate missing original.",confirmed:true})).toMatchObject({status:"cancelled",duplicate:false});
+      expect(await cancelReviewedSurveyFileRemoval(tx,context.organisationId,jobId,context.internalUserId!,{id:claim.id,manifestVersion:claim.manifest.manifestVersion,reason:"Cancel failed preflight to investigate missing original.",confirmed:true})).toMatchObject({status:"cancelled",duplicate:true});
+      throw new Error("rollback preflight failure fixture");
+    })).rejects.toThrow("rollback preflight failure fixture");
     const removalRows=await db.select().from(surveyFileRemovals).where(eq(surveyFileRemovals.jobId,jobId));expect(removalRows).toHaveLength(1);expect(removalRows[0].manifestVersion).toBe(prepared.manifest.manifestVersion);
     expect((await withTenant(createDatabase(),context.organisationId,tx=>revalidateQueuedSurveyFileRemoval(tx,context.organisationId,jobId,requested[0].id))).manifest.manifestVersion).toBe(prepared.manifest.manifestVersion);
     await expect(withTenant(createDatabase(),context.organisationId,async tx=>{
@@ -152,9 +167,14 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
       const second=claim.manifest.objects[1];const secondKey=`${second.kind}:${second.id}`;
       await recordSurveyFileOriginalDispatch(tx,context.organisationId,jobId,claim.id,claim.leaseToken,secondKey);
       await recordSurveyFileOriginalOutcome(tx,context.organisationId,claim.id,claim.leaseToken,secondKey,{state:"verification_required",reason:"uncertain_delete"});
+      await expect(cancelReviewedSurveyFileRemoval(tx,context.organisationId,jobId,context.internalUserId!,{id:claim.id,manifestVersion:claim.manifest.manifestVersion,reason:"Attempt cancellation after an uncertain deletion.",confirmed:true})).rejects.toThrow("cannot be cancelled");
       const recovery=await claimSurveyFileRemovalRecovery(tx,context.organisationId,claim.id);
       expect(recovery.leaseToken).not.toBe(claim.leaseToken);expect(recovery.objects.map(object=>object.id)).toEqual([second.id]);
       throw new Error("Rollback dispatch claim fixture");
+    }).catch((error: unknown) => {
+      const cause = (error as { cause?: { message?: string } }).cause;
+      if (cause?.message) throw new Error(`Removal workflow database guard: ${cause.message}`);
+      throw error;
     })).rejects.toThrow("Rollback dispatch claim fixture");
     await expect(db.update(surveyFileRemovals).set({manifest:{objects:[]}}).where(eq(surveyFileRemovals.id,requested[0].id))).rejects.toThrow();
     await expect(db.delete(surveyFileRemovals).where(eq(surveyFileRemovals.id,requested[0].id))).rejects.toThrow();
@@ -308,7 +328,18 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     const removalIntent=await withTenant(createDatabase(),context.organisationId,tx=>requestReviewedSurveyFileRemoval(tx,context.organisationId,removalJob.id,context.internalUserId!,{requestId:crypto.randomUUID(),reviewVersion:removalFile!.assessment.reviewVersion,reason:"Manager reviewed fictional storage integration original.",confirmed:true}));
     const storageClaim=await withTenant(createDatabase(),context.organisationId,tx=>claimQueuedSurveyFileRemoval(tx,context.organisationId,removalJob.id,removalIntent.id));
     const fixtureStorage=createMemoryStorage();await fixtureStorage.put(removalOriginal.storageKey,originalBytes.buffer,"text/plain");
-    expect(await processSurveyFileOriginal(createDatabase(),context.organisationId,removalJob.id,storageClaim,`questionnaire:${removalOriginal.id}`,fixtureStorage)).toEqual({removed:true,verificationRequired:false});
+    const removeOriginal=fixtureStorage.remove.bind(fixtureStorage);
+    const deleteSpy=vi.spyOn(fixtureStorage,"remove").mockImplementation(async key=>{await removeOriginal(key);throw new Error("Fictional lost delete response");});
+    expect(await processSurveyFileOriginal(createDatabase(),context.organisationId,removalJob.id,storageClaim,`questionnaire:${removalOriginal.id}`,fixtureStorage)).toEqual({removed:false,verificationRequired:true});
+    const firstRecovery=await withTenant(createDatabase(),context.organisationId,tx=>claimSurveyFileRemovalRecovery(tx,context.organisationId,removalIntent.id));
+    const readSpy=vi.spyOn(fixtureStorage,"get").mockRejectedValueOnce(new Error("Fictional unavailable storage"));
+    expect(await observeInterruptedSurveyFileOriginal(createDatabase(),context.organisationId,firstRecovery,`questionnaire:${removalOriginal.id}`,fixtureStorage)).toEqual({removed:false,verificationRequired:true});
+    const [failedObservation]=await db.select().from(surveyFileRemovals).where(eq(surveyFileRemovals.id,removalIntent.id));
+    expect(failedObservation.status).toBe("verification_required");expect(failedObservation.error).toBe("storage_unavailable");expect(failedObservation.lockedUntil).toBeNull();
+    readSpy.mockRestore();
+    const secondRecovery=await withTenant(createDatabase(),context.organisationId,tx=>claimSurveyFileRemovalRecovery(tx,context.organisationId,removalIntent.id));
+    expect(await observeInterruptedSurveyFileOriginal(createDatabase(),context.organisationId,secondRecovery,`questionnaire:${removalOriginal.id}`,fixtureStorage)).toEqual({removed:true,verificationRequired:false});
+    expect(deleteSpy).toHaveBeenCalledOnce();
     expect(fixtureStorage.objects.size).toBe(0);
     const [completedRemoval]=await db.select().from(surveyFileRemovals).where(eq(surveyFileRemovals.id,removalIntent.id));expect(completedRemoval.status).toBe("completed");expect(completedRemoval.completedAt).not.toBeNull();
     expect(await withTenant(createDatabase(),context.organisationId,tx=>verifiedSurveyFileOriginalRemoval(tx,context.organisationId,"questionnaire",removalOriginal.id))).not.toBeNull();

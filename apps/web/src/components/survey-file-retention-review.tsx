@@ -1,7 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 
-type Register = { removals: { id: string; status: string; manifestVersion: string; createdAt: string; completedAt: string | null }[]; removalHistoryHasMore: boolean; analysisCount: number; adviserRecordCount: number; questionnaireDocuments: { id: string; name: string; supersededAt: string | null }[]; media: { id: string; filename: string | null; kind: string; derivation: string }[]; evidenceReferenceCount: number; externalEvidenceReferenceCount: number; hold: { revision: number; kind: string | null; reason: string } | null; reference: string; reportCount: number; deliveryCount: number; assessment: { reviewVersion: string; reason: string; retentionUntil: string | null; eligibleForManagerReview: boolean }; documents: { id: string; name: string; legalHold: boolean; archivedAt: string | null }[] };
+type Register = { removals: { id: string; status: string; manifestVersion: string; createdAt: string; completedAt: string | null; reviewMessage: string | null; canCancel: boolean }[]; removalHistoryHasMore: boolean; analysisCount: number; adviserRecordCount: number; questionnaireDocuments: { id: string; name: string; supersededAt: string | null }[]; media: { id: string; filename: string | null; kind: string; derivation: string }[]; evidenceReferenceCount: number; externalEvidenceReferenceCount: number; hold: { revision: number; kind: string | null; reason: string } | null; reference: string; reportCount: number; deliveryCount: number; assessment: { reviewVersion: string; reason: string; retentionUntil: string | null; eligibleForManagerReview: boolean }; documents: { id: string; name: string; legalHold: boolean; archivedAt: string | null }[] };
 const reasons: Record<string, string> = { evidence_review_required: "Evidence is shared, missing or inconsistent. Resolve its references before retention review.", policy_approval_required: "The practice policy needs approval in Operations settings.", protected: "A complaint, claim or legal hold protects this file.", job_open: "The job must be closed before retention review.", date_review_required: "Reliable final report delivery and closure dates are required.", retention_active: "The one-year retention period has not expired.", manager_review_required: "The retention period has expired. Review the file and any outstanding complaints or claims." };
 export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; canEdit: boolean }) {
   const [register, setRegister] = useState<Register | null>(null);
@@ -64,7 +64,7 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
       const response = await fetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "cancel", id, manifestVersion, reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "Removal cancellation failed.");
-      setRegister(null); setMessage(payload.data.persisted ? "Queued removal cancelled. Reload the assessment to see the recorded outcome." : "Preview only. No request changed.");
+      setRegister(null); setMessage(payload.data.persisted ? "Removal request cancelled. Reload the assessment to see the recorded outcome." : "Preview only. No request changed.");
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : "Removal cancellation failed."); }
     finally { setBusy(false); }
   }
@@ -79,10 +79,11 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
       <p>{register.hold?.kind ? `Job hold: ${register.hold.kind}. ${register.hold.reason}` : "No active job-level hold recorded."}</p>
       {register.removals?.length ? <><h3>Original removal requests</h3><ul>{register.removals.map(removal => <li key={removal.id}>
         <p>{({ queued: "Awaiting processing", dispatched: "Processing originals", verification_required: "Outcome review required", completed: "Removal verified", cancelled: "Cancelled" } as Record<string, string>)[removal.status] ?? "Review required"} · requested {new Date(removal.createdAt).toLocaleDateString("en-GB")}</p>
-        {removal.status === "queued" && canEdit ? <details><summary>Cancel this request</summary><form action={form => cancelRemoval(removal.id, removal.manifestVersion, form)} className="form-grid">
+        {removal.reviewMessage ? <p role="status">{removal.reviewMessage}</p> : null}
+        {removal.canCancel && canEdit ? <details><summary>Cancel this request</summary><form action={form => cancelRemoval(removal.id, removal.manifestVersion, form)} className="form-grid">
           <label className="field"><span>Cancellation reason</span><textarea name="reason" minLength={10} maxLength={2000} required disabled={busy}/></label>
-          <label><input type="checkbox" name="confirmed" required disabled={busy}/> I confirm this request should stop before removal begins.</label>
-          <button className="button button-secondary" disabled={busy}>Cancel queued removal</button>
+          <label><input type="checkbox" name="confirmed" required disabled={busy}/> I confirm this request should stop without removing any originals.</label>
+          <button className="button button-secondary" disabled={busy}>Cancel removal request</button>
         </form></details> : null}
       </li>)}</ul>{register.removalHistoryHasMore ? <p>Showing the 20 most recent requests. Older decisions remain in the audit history.</p> : null}</> : null}
       {canEdit ? <details><summary>Review job hold</summary><form action={saveHold} className="form-grid">

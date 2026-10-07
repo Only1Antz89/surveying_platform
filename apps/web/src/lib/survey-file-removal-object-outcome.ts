@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { auditEvents, surveyFileRemovals, type TenantTransaction } from "@surveynt/db";
 
 type Outcome = { state: "removed" } | { state: "verification_required"; reason: "storage_unavailable" | "checksum_mismatch" | "unexpected_absence" | "uncertain_delete" | "object_still_present" };
@@ -10,7 +10,10 @@ export async function recordSurveyFileOriginalOutcome(tx: TenantTransaction, org
   if (!existing || existing.attemptId !== leaseToken) throw new Error("No matching original dispatch was recorded.");
   if (existing.state === "removed") return { duplicate: true, status: request.status };
   if (request.status !== "dispatched" || !request.lockedUntil || request.lockedUntil <= new Date()) throw new Error("The removal outcome lease expired; operator verification is required.");
-  const progress = { ...request.progress, [objectKey]: outcome.state === "removed" ? { state: "removed", attemptId: leaseToken, removedAt: new Date().toISOString() } : { state: "verification_required", attemptId: leaseToken } };
+  // The evidence guard compares against the database clock. Host clock skew must
+  // not turn a verified absence into a rejected future observation.
+  const observation = outcome.state === "removed" ? await tx.execute(sql`select clock_timestamp()::text as "observedAt"`) : null;
+  const progress = { ...request.progress, [objectKey]: outcome.state === "removed" ? { state: "removed", attemptId: leaseToken, removedAt: new Date(String(observation!.rows[0].observedAt)).toISOString() } : { state: "verification_required", attemptId: leaseToken } };
   const objects = (request.manifest as { objects?: { kind: string; id: string }[] }).objects;
   if (!objects?.length || !objects.some(object => `${object.kind}:${object.id}` === objectKey)) throw new Error("The original is outside the approved manifest.");
   const complete = objects.every(object => progress[`${object.kind}:${object.id}`]?.state === "removed");

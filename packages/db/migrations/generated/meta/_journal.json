@@ -414,6 +414,13 @@
       "when": 1791369600000,
       "tag": "0058_survey_file_job_fence",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1791373200000,
+      "tag": "0059_survey_file_preflight_cancellation",
+      "breakpoints": true
     }
   ]
 }

@@ -6,10 +6,11 @@ import { createSurveyFileRemovalManifest } from "./survey-file-removal-manifest"
 import { processSurveyFileOriginal } from "./survey-file-removal-storage";
 import { observeInterruptedSurveyFileOriginal } from "./survey-file-removal-recovery";
 
-const mocks = vi.hoisted(() => ({ dispatch: vi.fn(), outcome: vi.fn() }));
+const mocks = vi.hoisted(() => ({ dispatch: vi.fn(), outcome: vi.fn(), preflight: vi.fn() }));
 vi.mock("@surveynt/db", () => ({ withTenant: async (_db: unknown, _org: string, callback: (tx: unknown) => unknown) => callback({}) }));
 vi.mock("./survey-file-removal-object-dispatch", () => ({ recordSurveyFileOriginalDispatch: mocks.dispatch }));
 vi.mock("./survey-file-removal-object-outcome", () => ({ recordSurveyFileOriginalOutcome: mocks.outcome }));
+vi.mock("./survey-file-removal-preflight-failure", () => ({ recordSurveyFilePreflightFailure: mocks.preflight }));
 const organisationId = "11111111-1111-4111-8111-111111111111";
 const jobId = "22222222-2222-4222-8222-222222222222";
 const id = "33333333-3333-4333-8333-333333333333";
@@ -30,12 +31,20 @@ describe("survey original storage processor", () => {
   });
   it("does not dispatch or delete checksum-mismatched originals", async () => {
     const storage = await fixture(); storage.objects.get(object.storagePath)!.body[0] ^= 1;
-    await expect(processSurveyFileOriginal(db, organisationId, jobId, claim, objectKey, storage)).rejects.toThrow("checksum");
+    expect(await processSurveyFileOriginal(db, organisationId, jobId, claim, objectKey, storage)).toEqual({ removed: false, verificationRequired: true });
+    expect(mocks.preflight).toHaveBeenCalledWith(expect.anything(), organisationId, id, id, objectKey, "original_verification_failed");
     expect(mocks.dispatch).not.toHaveBeenCalled(); expect(storage.objects.size).toBe(1);
   });
   it("does not infer successful deletion from initial absence", async () => {
-    await expect(processSurveyFileOriginal(db, organisationId, jobId, claim, objectKey, createMemoryStorage())).rejects.toThrow("unexpectedly absent");
+    expect(await processSurveyFileOriginal(db, organisationId, jobId, claim, objectKey, createMemoryStorage())).toEqual({ removed: false, verificationRequired: true });
+    expect(mocks.preflight).toHaveBeenCalledWith(expect.anything(), organisationId, id, id, objectKey, "unexpected_absence");
     expect(mocks.dispatch).not.toHaveBeenCalled(); expect(mocks.outcome).not.toHaveBeenCalled();
+  });
+  it("records unreadable storage as a preflight failure without dispatching deletion", async () => {
+    const storage = createMemoryStorage(); vi.spyOn(storage, "get").mockRejectedValue(new Error("Unavailable")); const remove = vi.spyOn(storage, "remove");
+    expect(await processSurveyFileOriginal(db, organisationId, jobId, claim, objectKey, storage)).toEqual({ removed: false, verificationRequired: true });
+    expect(mocks.preflight).toHaveBeenCalledWith(expect.anything(), organisationId, id, id, objectKey, "storage_unavailable");
+    expect(remove).not.toHaveBeenCalled(); expect(mocks.dispatch).not.toHaveBeenCalled(); expect(mocks.outcome).not.toHaveBeenCalled();
   });
   it("does not repeat an already recorded dispatch", async () => {
     const storage = await fixture(); const remove = vi.spyOn(storage, "remove"); mocks.dispatch.mockResolvedValue({ dispatch: false });
@@ -60,7 +69,13 @@ describe("survey original storage processor", () => {
   });
   it("does not infer absence from a failed storage read", async () => {
     const storage = createMemoryStorage(); vi.spyOn(storage, "get").mockRejectedValue(new Error("Unavailable")); const remove = vi.spyOn(storage, "remove");
-    await expect(observeInterruptedSurveyFileOriginal(db, organisationId, { id, leaseToken: id as typeof id, objects: [object] }, objectKey, storage)).rejects.toThrow("Unavailable");
-    expect(remove).not.toHaveBeenCalled(); expect(mocks.outcome).not.toHaveBeenCalled();
+    expect(await observeInterruptedSurveyFileOriginal(db, organisationId, { id, leaseToken: id as typeof id, objects: [object] }, objectKey, storage)).toEqual({ removed: false, verificationRequired: true });
+    expect(remove).not.toHaveBeenCalled(); expect(mocks.outcome).toHaveBeenLastCalledWith(expect.anything(), organisationId, id, id, objectKey, { state: "verification_required", reason: "storage_unavailable" });
+  });
+  it("does not infer absence if cancelling a surviving original stream fails", async () => {
+    const storage = createMemoryStorage(); const remove = vi.spyOn(storage, "remove");
+    vi.spyOn(storage, "get").mockResolvedValue({ contentType: "text/plain", stream: new ReadableStream({ cancel() { throw new Error("Stream unavailable"); } }) });
+    expect(await observeInterruptedSurveyFileOriginal(db, organisationId, { id, leaseToken: id as typeof id, objects: [object] }, objectKey, storage)).toEqual({ removed: false, verificationRequired: true });
+    expect(remove).not.toHaveBeenCalled(); expect(mocks.outcome).toHaveBeenLastCalledWith(expect.anything(), organisationId, id, id, objectKey, { state: "verification_required", reason: "storage_unavailable" });
   });
 });

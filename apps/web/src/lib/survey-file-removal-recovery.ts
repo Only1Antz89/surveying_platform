@@ -27,8 +27,14 @@ export async function claimSurveyFileRemovalRecovery(tx: TenantTransaction, orga
 export async function observeInterruptedSurveyFileOriginal(db: Database, organisationId: string, recovery: Awaited<ReturnType<typeof claimSurveyFileRemovalRecovery>>, objectKey: string, storage: ObjectStorage) {
   const object = recovery.objects.find(entry => `${entry.kind}:${entry.id}` === objectKey);
   if (!object) throw new Error("The original has no interrupted dispatch evidence.");
-  const existing = await boundedStorageOperation(storage.get(object.storagePath), value => { if (value) void value.stream.cancel().catch(() => undefined); });
-  if (existing) await existing.stream.cancel();
+  let existing: Awaited<ReturnType<ObjectStorage["get"]>>;
+  try {
+    existing = await boundedStorageOperation(storage.get(object.storagePath), value => { if (value) void value.stream.cancel().catch(() => undefined); });
+    if (existing) await existing.stream.cancel();
+  } catch {
+    await withTenant(db, organisationId, tx => recordSurveyFileOriginalOutcome(tx, organisationId, recovery.id, recovery.leaseToken, objectKey, { state: "verification_required", reason: "storage_unavailable" }));
+    return { removed: false, verificationRequired: true };
+  }
   await withTenant(db, organisationId, async tx => {
     const outcome = await recordSurveyFileOriginalOutcome(tx, organisationId, recovery.id, recovery.leaseToken, objectKey, existing ? { state: "verification_required", reason: "object_still_present" } : { state: "removed" });
     if (outcome.status === "dispatched") {

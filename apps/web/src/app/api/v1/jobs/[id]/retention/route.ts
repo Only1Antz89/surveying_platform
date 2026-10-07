@@ -5,7 +5,18 @@ import { isManagementRole } from "@surveynt/domain";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { ok, parseBody, problem } from "@/lib/api";
+import { surveyFileRemovalCanCancel } from "@/lib/survey-file-removal-cancellation";
 import { readSurveyFileRetention } from "@/lib/survey-file-retention-register";
+
+const removalReviewMessages: Record<string, string> = {
+  storage_unavailable: "Storage could not be checked. Removal remains unverified.",
+  unexpected_absence: "An original was missing before deletion was attempted. Investigate the missing original.",
+  original_verification_failed: "An original could not be matched to the reviewed checksum and size. Investigate before further processing.",
+  checksum_mismatch: "An original did not match the reviewed checksum. Investigate before further processing.",
+  uncertain_delete: "A deletion response was uncertain. Verify the outcome before any further processing.",
+  object_still_present: "An original remains in storage. Further deletion requires a reviewed decision.",
+  additional_originals_require_review: "Some originals have been checked; remaining originals require review.",
+};
 
 const input = z.object({ reviewVersion: z.string().regex(/^[a-f0-9]{64}$/), reason: z.string().trim().min(10).max(2000), noUnresolvedComplaintOrClaim: z.literal(true), confirmed: z.literal(true) }).strict();
 const holdInput = z.object({ expectedRevision: z.number().int().min(0), kind: z.enum(["complaint", "claim", "legal"]).nullable(), reason: z.string().trim().min(10).max(2000), confirmed: z.literal(true) }).strict();
@@ -39,8 +50,8 @@ export async function GET(request: Request, route: RouteContext<"/api/v1/jobs/[i
   const register = await withTenant(createDatabase(), context.organisationId, async tx => {
     const file = await readSurveyFileRetention(tx, context.organisationId, id);
     if (!file) return null;
-    const rows = await tx.select({ id: surveyFileRemovals.id, status: surveyFileRemovals.status, manifestVersion: surveyFileRemovals.manifestVersion, createdAt: surveyFileRemovals.createdAt, completedAt: surveyFileRemovals.completedAt }).from(surveyFileRemovals).where(and(eq(surveyFileRemovals.organisationId, context.organisationId), eq(surveyFileRemovals.jobId, id))).orderBy(desc(surveyFileRemovals.createdAt), desc(surveyFileRemovals.id)).limit(21);
-    return { ...file, removals: rows.slice(0, 20), removalHistoryHasMore: rows.length > 20 };
+    const rows = await tx.select({ id: surveyFileRemovals.id, status: surveyFileRemovals.status, manifestVersion: surveyFileRemovals.manifestVersion, createdAt: surveyFileRemovals.createdAt, completedAt: surveyFileRemovals.completedAt, error: surveyFileRemovals.error, canCancel: surveyFileRemovalCanCancel }).from(surveyFileRemovals).where(and(eq(surveyFileRemovals.organisationId, context.organisationId), eq(surveyFileRemovals.jobId, id))).orderBy(desc(surveyFileRemovals.createdAt), desc(surveyFileRemovals.id)).limit(21);
+    return { ...file, removals: rows.slice(0, 20).map(({ error, ...row }) => ({ ...row, reviewMessage: row.status === "verification_required" ? error && Object.hasOwn(removalReviewMessages, error) ? removalReviewMessages[error] : "Review this request before further processing." : null })), removalHistoryHasMore: rows.length > 20 };
   });
   return register ? ok(register) : problem(404, "not_found", "Job not found.");
 }

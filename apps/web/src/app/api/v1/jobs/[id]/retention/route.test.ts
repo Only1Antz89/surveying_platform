@@ -24,7 +24,16 @@ describe("manager survey retention review", () => {
     state.history = Array.from({ length: 21 }, (_, index) => ({ id: `request-${index}`, status: "queued", manifestVersion: version, createdAt: new Date(), completedAt: null }));
     const response = await GET(request(), route); expect(response.status).toBe(200);
     const data = (await response.json()).data; expect(data.removals).toHaveLength(20); expect(data.removalHistoryHasMore).toBe(true);
-    expect(Object.keys(state.selection.mock.lastCall![0])).toEqual(["id", "status", "manifestVersion", "createdAt", "completedAt"]);
+    expect(Object.keys(state.selection.mock.lastCall![0])).toEqual(["id", "status", "manifestVersion", "createdAt", "completedAt", "error", "canCancel"]);
+  });
+
+  it("shows a reviewed failure explanation without returning internal errors", async () => {
+    state.history = ["unexpected_absence", "private/storage/path", "toString"].map(error => ({ id: error, status: "verification_required", error }));
+    const data = (await (await GET(request(), route)).json()).data;
+    expect(data.removals[0].reviewMessage).toContain("before deletion was attempted");
+    expect(data.removals[1].reviewMessage).toBe("Review this request before further processing.");
+    expect(data.removals[2].reviewMessage).toBe("Review this request before further processing.");
+    expect(data.removals.every((row: Record<string, unknown>) => !("error" in row))).toBe(true);
   });
 
   it("records the exact file version, claim check and no removal authority", async () => {

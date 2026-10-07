@@ -3,12 +3,13 @@ import { and, eq, ne } from "drizzle-orm";
 import { z } from "zod";
 import { auditEvents, jobs, organisationMemberships, surveyFileRemovals, type TenantTransaction } from "@surveynt/db";
 import { isManagementRole } from "@surveynt/domain";
+import { surveyFileRemovalCanCancel } from "./survey-file-removal-cancellation";
 import { prepareReviewedSurveyFileRemoval } from "./survey-file-removal-prepare";
 
 const input = z.object({ requestId: z.uuid(), reviewVersion: z.string().regex(/^[a-f0-9]{64}$/), reason: z.string().trim().min(10).max(2000), confirmed: z.literal(true) }).strict();
 const cancellation = z.object({ id: z.uuid(), manifestVersion: z.string().regex(/^[a-f0-9]{64}$/), reason: z.string().trim().min(10).max(2000), confirmed: z.literal(true) }).strict();
 
-/** Cancellation is possible only before any storage dispatch. Preserve the original decision. */
+/** Cancel queued or failed-preflight intent only when no original dispatch exists. */
 export async function cancelReviewedSurveyFileRemoval(tx: TenantTransaction, organisationId: string, jobId: string, userId: string, value: z.infer<typeof cancellation>) {
   const parsed = cancellation.parse(value);
   const [member] = await tx.select().from(organisationMemberships).where(and(eq(organisationMemberships.organisationId, organisationId), eq(organisationMemberships.userId, userId), eq(organisationMemberships.active, true))).for("share");
@@ -18,8 +19,9 @@ export async function cancelReviewedSurveyFileRemoval(tx: TenantTransaction, org
   const [request] = await tx.select().from(surveyFileRemovals).where(and(eq(surveyFileRemovals.organisationId, organisationId), eq(surveyFileRemovals.jobId, jobId), eq(surveyFileRemovals.id, parsed.id))).for("update");
   if (!request || request.manifestVersion !== parsed.manifestVersion) throw new Error("The removal decision changed or is unavailable.");
   if (request.status === "cancelled") return { id: request.id, status: request.status, duplicate: true };
-  if (request.status !== "queued") throw new Error("Dispatched removal requires outcome verification and cannot be cancelled.");
-  await tx.update(surveyFileRemovals).set({ status: "cancelled", updatedAt: new Date() }).where(eq(surveyFileRemovals.id, request.id));
+  const [eligibility] = await tx.select({ canCancel: surveyFileRemovalCanCancel }).from(surveyFileRemovals).where(and(eq(surveyFileRemovals.organisationId, organisationId), eq(surveyFileRemovals.id, request.id))).limit(1);
+  if (!eligibility?.canCancel) throw new Error("Dispatched removal requires outcome verification and cannot be cancelled.");
+  await tx.update(surveyFileRemovals).set({ status: "cancelled", lockedUntil: null, updatedAt: new Date() }).where(eq(surveyFileRemovals.id, request.id));
   await tx.insert(auditEvents).values({ organisationId, actorUserId: userId, action: "job.original_removal_cancelled", resourceType: "survey_file_removal", resourceId: request.id, metadata: { jobId, manifestVersion: request.manifestVersion, reason: parsed.reason, confirmed: true, storageRemoved: false } });
   return { id: request.id, status: "cancelled" as const, duplicate: false };
 }
