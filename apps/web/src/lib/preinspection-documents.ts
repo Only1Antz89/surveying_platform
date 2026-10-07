@@ -1,4 +1,5 @@
 import "server-only";
+import { verifiedSurveyFileOriginalRemoval, verifiedSurveyFileOriginalRemovalDates } from "./survey-file-original-removal-status";
 import { createHash, randomUUID } from "node:crypto";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { auditEvents, preinspectionDocuments, properties, type TenantTransaction } from "@surveynt/db";
@@ -13,7 +14,9 @@ import { boundedQuestionnaireForm, validQuestionnaireFile } from "./questionnair
 
 const condition = (scope: Scope) => and(eq(preinspectionDocuments.organisationId, scope.organisationId), eq(preinspectionDocuments.jobId, scope.jobId), eq(preinspectionDocuments.propertyId, scope.propertyId));
 export async function listPreinspectionDocuments(tx: TenantTransaction, scope: Scope) {
-  return tx.select({ id: preinspectionDocuments.id, name: preinspectionDocuments.name, contentType: preinspectionDocuments.contentType, sizeBytes: preinspectionDocuments.sizeBytes, checksum: preinspectionDocuments.checksum, createdAt: preinspectionDocuments.createdAt, supersededAt: preinspectionDocuments.supersededAt, replacesId: preinspectionDocuments.replacesId, analysis: preinspectionDocuments.analysis, worksKind: preinspectionDocuments.worksKind, associatedAt: preinspectionDocuments.associatedAt }).from(preinspectionDocuments).where(condition(scope)).orderBy(desc(preinspectionDocuments.createdAt)).limit(100);
+  const rows = await tx.select({ id: preinspectionDocuments.id, name: preinspectionDocuments.name, contentType: preinspectionDocuments.contentType, sizeBytes: preinspectionDocuments.sizeBytes, checksum: preinspectionDocuments.checksum, createdAt: preinspectionDocuments.createdAt, supersededAt: preinspectionDocuments.supersededAt, replacesId: preinspectionDocuments.replacesId, analysis: preinspectionDocuments.analysis, worksKind: preinspectionDocuments.worksKind, associatedAt: preinspectionDocuments.associatedAt }).from(preinspectionDocuments).where(condition(scope)).orderBy(desc(preinspectionDocuments.createdAt)).limit(100);
+  const removed = await verifiedSurveyFileOriginalRemovalDates(tx, scope.organisationId, "questionnaire", rows.map(row => row.id));
+  return rows.map(row => ({ ...row, analysis: removed.has(row.id) ? null : row.analysis, originalRemovedAt: removed.get(row.id) ?? null }));
 }
 export async function uploadPreinspectionDocument(tx: TenantTransaction, scope: Scope, request: Request, stored: { key: string | null }) {
   const storage = getObjectStorage();
@@ -34,6 +37,7 @@ export async function uploadPreinspectionDocument(tx: TenantTransaction, scope: 
   if (all.length >= 100 || (!replacesId && all.filter(item => !item.supersededAt).length >= 20)) throw new PreinspectionError(409, "document_limit", "This job's document limit has been reached. Contact the practice.");
   const [previous] = replacesId ? await tx.select().from(preinspectionDocuments).where(and(condition(scope), eq(preinspectionDocuments.id, String(replacesId)), isNull(preinspectionDocuments.supersededAt))).for("update").limit(1) : [];
   if (replacesId && !previous) throw new PreinspectionError(409, "document_changed", "This document is unavailable or has already been replaced. Reload the list.");
+  if (previous && await verifiedSurveyFileOriginalRemoval(tx, scope.organisationId, "questionnaire", previous.id)) throw new PreinspectionError(410, "original_removed", "This original was removed after its retention review and cannot be replaced.");
   const id = randomUUID(); const key = `organisations/${scope.organisationId}/preinspection/${scope.jobId}/${id}/original`;
   const analysis = file.type === "application/pdf" ? await analyseDocument(new Uint8Array(bytes), { asOf: new Date().toISOString().slice(0, 10), maxPages: 30 }) : { status: "unavailable", reason: "Image document: manual review required. No OCR service is enabled." };
   stored.key = key; await storage.put(key, bytes, file.type);
@@ -49,6 +53,7 @@ export async function confirmDocumentWorks(tx: TenantTransaction, scope: Scope, 
   if (!parsed.success || !z.uuid().safeParse(id).success) throw new PreinspectionError(400, "invalid_association", "Confirm the property, relevant works, original document and reason.");
   const [row] = await tx.select().from(preinspectionDocuments).where(and(condition(scope), eq(preinspectionDocuments.id, id), isNull(preinspectionDocuments.supersededAt))).for("update").limit(1);
   if (!row || row.checksum !== parsed.data.checksum) throw new PreinspectionError(409, "document_changed", "The document changed or was replaced.");
+  if (await verifiedSurveyFileOriginalRemoval(tx, scope.organisationId, "questionnaire", row.id)) throw new PreinspectionError(410, "original_removed", "This original was removed after its retention review and cannot be associated with works.");
   const [property] = await tx.select().from(properties).where(and(eq(properties.id, scope.propertyId), eq(properties.organisationId, scope.organisationId))).for("share").limit(1);
   if (!property) throw new PreinspectionError(404, "property_unavailable", "Property unavailable.");
   await tx.update(preinspectionDocuments).set({ worksKind: parsed.data.worksKind, associationFingerprint: await propertyFingerprint(property), associatedAt: new Date(), associatedByUserId: context.internalUserId, associationReason: parsed.data.reason }).where(eq(preinspectionDocuments.id, id));
@@ -59,6 +64,7 @@ export async function downloadPreinspectionDocument(tx: TenantTransaction, scope
   if (!z.uuid().safeParse(id).success) throw new PreinspectionError(404, "document_unavailable", "Document unavailable.");
   const [row] = await tx.select().from(preinspectionDocuments).where(and(condition(scope), eq(preinspectionDocuments.id, id))).limit(1);
   if (!row) throw new PreinspectionError(404, "document_unavailable", "Document unavailable.");
+  if (await verifiedSurveyFileOriginalRemoval(tx, row.organisationId, "questionnaire", row.id)) throw new PreinspectionError(410, "original_removed", "This original was removed after its retention review.");
   const object = await getObjectStorage()?.get(row.storageKey);
   if (!object) throw new PreinspectionError(503, "document_unavailable", "The private document could not be retrieved.");
   return new Response(object.stream, { headers: { "content-type": row.contentType, "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(row.name)}`, "cache-control": "private, no-store", "x-content-type-options": "nosniff", "content-security-policy": "sandbox" } });

@@ -1,6 +1,7 @@
 import { and, asc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { assignedJobScope } from "./workspace-scope";
 import { currentProfessionalPermission } from "./professional-membership";
+import { verifiedSurveyFileOriginalRemoval } from "./survey-file-original-removal-status";
 import {
   assistantTasks,
   auditEvents,
@@ -410,11 +411,18 @@ export async function storeSurveyMedia(context: SurveyContext, surveyId: string,
 }
 
 export async function readSurveyMedia(context: Pick<SurveyContext, "organisationId">, mediaId: string) {
+  const db = createDatabase();
+  const result = await withTenant(db, context.organisationId, async tx => {
+    const [media] = await tx.select().from(mediaAssets).where(and(eq(mediaAssets.id, mediaId), eq(mediaAssets.organisationId, context.organisationId), eq(mediaAssets.status, "stored"))).limit(1);
+    if (!media) return null;
+    const removal = await verifiedSurveyFileOriginalRemoval(tx, context.organisationId, "media", media.id);
+    return removal ? { removed: true as const } : { media };
+  });
+  if (!result) return null;
+  if (result.removed) return { removed: true as const };
   const storage = getObjectStorage();
   if (!storage) return null;
-  const db = createDatabase();
-  const [media] = await withTenant(db, context.organisationId, (tx) => tx.select().from(mediaAssets).where(and(eq(mediaAssets.id, mediaId), eq(mediaAssets.organisationId, context.organisationId), eq(mediaAssets.status, "stored"))).limit(1));
-  if (!media) return null;
+  const { media } = result;
   const object = await storage.get(media.storageKey);
   return object ? { media, object } : null;
 }

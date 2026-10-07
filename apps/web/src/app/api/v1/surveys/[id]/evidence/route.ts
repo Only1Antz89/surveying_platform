@@ -39,19 +39,19 @@ export async function GET(request: Request, route: RouteContext<"/api/v1/surveys
   try {
     const collected = await staffPreinspection(context, pack.survey.jobId, async (tx, scope) => ({ questionnaire: await readPreinspection(tx, scope), documents: await listPreinspectionDocuments(tx, scope) }));
     sources.push(internal("customer_questionnaire", "Customer questionnaire", collected.questionnaire.submission ? "available" : "not_checked", "Submitted customer statements only; drafts never become evidence."));
-    const documents = collected.documents.filter(document => !document.supersededAt);
+    const documents = collected.documents.filter(document => !document.supersededAt && !document.originalRemovedAt);
     const answers = preinspectionAnswersSchema.safeParse(collected.questionnaire.submission?.answers);
     for (const field of homeSurveyEvidenceInventory(pack.template)) {
       const context = answers.success ? questionnaireFieldContext(field.path, answers.data) : [];
       if (field.sources.includes("document_extraction")) for (const document of documents) {
-        const facts = document.analysis.status === "completed" ? document.analysis.facts as CertificateFacts | undefined : undefined;
+        const facts = document.analysis?.status === "completed" ? document.analysis.facts as CertificateFacts | undefined : undefined;
         if (!facts) continue;
         const values = [facts.reference, facts.issueDate, facts.inspectionDate, facts.dueDate].filter(Boolean);
         for (const fact of values) if (fact) context.push(`Uploaded document ${document.name}, page ${fact.span.page}: “${fact.span.excerpt}”. Unverified; not proof of current safety or compliance.`);
       }
       contexts.set(field.path, context);
     }
-    sources.push(internal("document_extraction", "Uploaded certificates and guarantees", documents.some(document => document.analysis.status === "completed") ? "available" : documents.length ? "unavailable" : "not_checked", "Unverified document text, not proof of safety, compliance or current guarantees. Scans need manual review."));
+    sources.push(internal("document_extraction", "Uploaded certificates and guarantees", documents.some(document => document.analysis?.status === "completed") ? "available" : documents.length ? "unavailable" : "not_checked", "Unverified document text, not proof of safety, compliance or current guarantees. Scans need manual review."));
     sources.push(internal("confirmed_completion_document", "Works-completion documents", pack.proposals.some(proposal => (proposal.evidenceRefs as { type?: string; context?: string }[]).some(ref => ref.type === "document_span" && ref.context)) ? "available" : documents.length ? "not_checked" : "unavailable", "An explicit completion date and reviewed property/works association are required. Issue and permission dates are not completion dates."));
   } catch (error) {
     if (!(error instanceof PreinspectionError)) throw error;

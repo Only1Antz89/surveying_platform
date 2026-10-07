@@ -1,7 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+vi.mock("server-only", () => ({}));
 import { createHash } from "node:crypto";
 import { createMemoryStorage } from "../src/lib/storage";
 import { processSurveyFileOriginal } from "../src/lib/survey-file-removal-storage";
+import { verifiedSurveyFileOriginalRemoval } from "../src/lib/survey-file-original-removal-status";
+import { confirmDocumentWorks, downloadPreinspectionDocument, listPreinspectionDocuments } from "../src/lib/preinspection-documents";
 import { eq, sql } from "drizzle-orm";
 import { createTestDatabase, integrationEnabled, stopRelay, type TestDatabase } from "@surveynt/db/testing";
 import { clientPayments, customerQuotes, invoices, jobs, jobStageEvents, organisations, organisationDocuments, organisationOperationalSettings, organisationMemberships, reportDeliveries, users, withTenant, createDatabase } from "@surveynt/db";
@@ -308,6 +311,12 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     expect(await processSurveyFileOriginal(createDatabase(),context.organisationId,removalJob.id,storageClaim,`questionnaire:${removalOriginal.id}`,fixtureStorage)).toEqual({removed:true,verificationRequired:false});
     expect(fixtureStorage.objects.size).toBe(0);
     const [completedRemoval]=await db.select().from(surveyFileRemovals).where(eq(surveyFileRemovals.id,removalIntent.id));expect(completedRemoval.status).toBe("completed");expect(completedRemoval.completedAt).not.toBeNull();
+    expect(await withTenant(createDatabase(),context.organisationId,tx=>verifiedSurveyFileOriginalRemoval(tx,context.organisationId,"questionnaire",removalOriginal.id))).not.toBeNull();
+    expect(await withTenant(createDatabase(),foreignOrg.id,tx=>verifiedSurveyFileOriginalRemoval(tx,foreignOrg.id,"questionnaire",removalOriginal.id))).toBeNull();
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>downloadPreinspectionDocument(tx,{organisationId:context.organisationId,jobId:removalJob.id,propertyId:retentionJob.propertyId,actorUserId:context.internalUserId!,source:"staff_transcribed_client",valuation:false},removalOriginal.id))).rejects.toMatchObject({status:410,code:"original_removed"});
+    const removedRegister=await withTenant(createDatabase(),context.organisationId,tx=>listPreinspectionDocuments(tx,{organisationId:context.organisationId,jobId:removalJob.id,propertyId:retentionJob.propertyId,actorUserId:context.internalUserId!,source:"staff_transcribed_client",valuation:false}));
+    expect(removedRegister[0].originalRemovedAt).not.toBeNull();expect(removedRegister[0].analysis).toBeNull();
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>confirmDocumentWorks(tx,{organisationId:context.organisationId,jobId:removalJob.id,propertyId:retentionJob.propertyId,actorUserId:context.internalUserId!,source:"staff_transcribed_client",valuation:false},context,removalOriginal.id,{worksKind:"extension",checksum:removalOriginal.checksum,reason:"Reviewed original association after retention removal.",confirm:true}))).rejects.toMatchObject({status:410,code:"original_removed"});
     expect(noExternal).not.toHaveBeenCalled();vi.unstubAllGlobals();
   },120000);
   it("allows only one concurrent customer claim for the same surveyor slot",async()=>{
