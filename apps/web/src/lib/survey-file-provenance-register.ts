@@ -1,0 +1,20 @@
+import { createHash } from "node:crypto";
+import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
+import { assistantTasks, fieldProposals, mediaAnalyses, surveys, type TenantTransaction } from "@surveynt/db";
+
+const limit = 5000;
+function complete<T>(rows: T[]) { if (rows.length > limit) throw new Error("The provenance records exceed the review register limit."); return rows; }
+function fingerprint(value: unknown) { return createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
+export async function readSurveyFileProvenance(tx: TenantTransaction, organisationId: string, jobId: string, mediaIdentities: string[], questionnaireIds: string[]) {
+  const surveyRows = complete(await tx.select({ id: surveys.id }).from(surveys).where(and(eq(surveys.organisationId, organisationId), eq(surveys.jobId, jobId))).orderBy(asc(surveys.id)).limit(limit + 1));
+  const surveyIds = surveyRows.map(survey => survey.id);
+  const analyses = mediaIdentities.length ? complete(await tx.select({ id: mediaAnalyses.id, mediaId: mediaAnalyses.mediaId, surveyId: mediaAnalyses.surveyId, status: mediaAnalyses.status, result: mediaAnalyses.result }).from(mediaAnalyses).where(and(eq(mediaAnalyses.organisationId, organisationId), sql`${mediaAnalyses.mediaId}::text = any(array[${sql.join(mediaIdentities.map(id => sql`${id}::text`), sql`, `)}])`)).orderBy(asc(mediaAnalyses.id)).limit(limit + 1)) : [];
+  const identities = [...new Set([...mediaIdentities, ...analyses.map(analysis => analysis.id), ...questionnaireIds])];
+  if (identities.length > limit) throw new Error("The provenance identities exceed the review register limit.");
+  const identityArray = sql`array[${sql.join(identities.map(id => sql`${id}::text`), sql`, `)}]`;
+  const tasks = surveyIds.length || identities.length ? complete(await tx.select({ id: assistantTasks.id, surveyId: assistantTasks.surveyId, status: assistantTasks.status, evidence: assistantTasks.evidence, updatedAt: assistantTasks.updatedAt }).from(assistantTasks).where(and(eq(assistantTasks.organisationId, organisationId), or(surveyIds.length ? inArray(assistantTasks.surveyId, surveyIds) : undefined, identities.length ? sql`jsonb_path_query_array(${assistantTasks.evidence}, '$.**.mediaId') ?| ${identityArray} or jsonb_path_query_array(${assistantTasks.evidence}, '$.**.analysisId') ?| ${identityArray} or jsonb_path_query_array(${assistantTasks.evidence}, '$.**.id') ?| ${identityArray}` : undefined))).orderBy(asc(assistantTasks.id)).limit(limit + 1)) : [];
+  const proposals = surveyIds.length || identities.length ? complete(await tx.select({ id: fieldProposals.id, surveyId: fieldProposals.surveyId, reviewStatus: fieldProposals.reviewStatus, evidenceRefs: fieldProposals.evidenceRefs, inputVersion: fieldProposals.inputVersion, reviewedAt: fieldProposals.reviewedAt }).from(fieldProposals).where(and(eq(fieldProposals.organisationId, organisationId), or(surveyIds.length ? inArray(fieldProposals.surveyId, surveyIds) : undefined, identities.length ? sql`jsonb_path_query_array(${fieldProposals.evidenceRefs}, '$.**.mediaId') ?| ${identityArray} or jsonb_path_query_array(${fieldProposals.evidenceRefs}, '$.**.analysisId') ?| ${identityArray} or jsonb_path_query_array(${fieldProposals.evidenceRefs}, '$.**.id') ?| ${identityArray}` : undefined))).orderBy(asc(fieldProposals.id)).limit(limit + 1)) : [];
+  const externalReferences = [...tasks, ...proposals].filter(record => !surveyIds.includes(record.surveyId)).map(record => ({ id: record.id, surveyId: record.surveyId }));
+  return { analyses: analyses.map(({ result, ...analysis }) => ({ ...analysis, resultFingerprint: fingerprint(result) })), tasks: tasks.map(({ evidence, ...task }) => ({ ...task, evidenceFingerprint: fingerprint(evidence) })), proposals: proposals.map(({ evidenceRefs, ...proposal }) => ({ ...proposal, evidenceFingerprint: fingerprint(evidenceRefs) })), externalReferences,
+    referenceReviewRequired: externalReferences.length > 0 || analyses.some(analysis => analysis.surveyId !== null && !surveyIds.includes(analysis.surveyId)) };
+}

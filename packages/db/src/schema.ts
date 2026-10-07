@@ -382,6 +382,26 @@ export const jobRetentionHolds = pgTable("job_retention_holds", {
   check("job_retention_holds_reason_chk", sql`length(btrim(reason)) between 10 and 2000`),
   check("job_retention_holds_revision_chk", sql`revision > 0`)]);
 
+export const surveyFileRemovals = pgTable("survey_file_removals", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  jobId: uuid("job_id").notNull(), requestId: uuid("request_id").notNull(),
+  requestedByUserId: uuid("requested_by_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  reviewId: uuid("review_id").notNull(), reviewVersion: text("review_version").notNull(),
+  requestFingerprint: text("request_fingerprint").notNull(), manifestVersion: text("manifest_version").notNull(),
+  manifest: jsonb("manifest").$type<Record<string, unknown>>().notNull(), reason: text("reason").notNull(),
+  status: text("status").notNull().default("queued"),
+  leaseToken: uuid("lease_token"), lockedUntil: timestamp("locked_until", { withTimezone: true }),
+  attempts: integer("attempts").notNull().default(0), error: text("error"),
+  progress: jsonb("progress").$type<Record<string, { state: string; attemptId?: string; removedAt?: string }>>().notNull().default({}),
+  completedAt: timestamp("completed_at", { withTimezone: true }), ...timestamps,
+}, table => [
+  foreignKey({ name: "survey_file_removals_job_fk", columns: [table.organisationId, table.jobId], foreignColumns: [jobs.organisationId, jobs.id] }).onDelete("restrict"),
+  uniqueIndex("survey_file_removals_request_uidx").on(table.organisationId, table.requestId),
+  uniqueIndex("survey_file_removals_active_job_uidx").on(table.organisationId, table.jobId).where(sql`status <> 'cancelled'`),
+  check("survey_file_removals_status_chk", sql`status in ('queued','dispatched','verification_required','completed','cancelled')`),
+]);
+
 export const jobAssignments = pgTable("job_assignments", {
   id: uuid("id").primaryKey().defaultRandom(),
   organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),

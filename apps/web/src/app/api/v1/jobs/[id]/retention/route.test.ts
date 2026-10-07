@@ -17,7 +17,7 @@ const version = "a".repeat(64);
 const request = (body: unknown = { reviewVersion: version, reason: "Checked the complete file and practice claim register.", noUnresolvedComplaintOrClaim: true, confirmed: true }) => new Request("http://surveynt.test/retention", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 beforeEach(() => {
   vi.clearAllMocks(); Object.assign(state.context, { role: "owner", demo: false }); state.member = { userId: "manager-1", role: "owner" }; state.writable = true;
-  state.read.mockResolvedValue({ jobId: id, policy: { revision: 1 }, assessment: { reviewVersion: version, eligibleForManagerReview: true, retentionUntil: new Date("2001-01-01T00:00:00Z") }, documents: [{ id: "document-1" }], reportCount: 1 });
+  state.read.mockResolvedValue({ jobId: id, policy: { revision: 1 }, assessment: { reviewVersion: version, eligibleForManagerReview: true, retentionUntil: new Date("2001-01-01T00:00:00Z") }, documents: [{ id: "document-1" }], media: [{ id: "media-1" }], questionnaireDocuments: [{ id: "questionnaire-1" }], reportCount: 1 });
 });
 describe("manager survey retention review", () => {
   it("records the exact file version, claim check and no removal authority", async () => {

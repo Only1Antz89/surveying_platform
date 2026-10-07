@@ -32,7 +32,10 @@ export async function POST(request: Request, route: RouteContext<"/api/v1/survey
   if (!z.uuid().safeParse(id).success) return problem(404, "survey_not_found", "The survey could not be found.");
   const form = await request.formData().catch(() => null);
   const file = form?.get("file");
-  const meta = metadata.safeParse(JSON.parse(String(form?.get("metadata") ?? "{}")));
+  let metadataValue: unknown;
+  try { metadataValue = JSON.parse(String(form?.get("metadata") ?? "{}")); }
+  catch { return problem(400, "invalid_request", "Send valid JSON metadata with the file."); }
+  const meta = metadata.safeParse(metadataValue);
   if (!(file instanceof File) || !meta.success) return problem(400, "invalid_request", "Send one file with its metadata.");
   const result = await storeSurveyMedia({ organisationId: context.organisationId, internalUserId: context.internalUserId, role: context.role, canRecordSurvey: context.canRecordSurvey, canApproveReports: context.canApproveReports }, id, { file, clientGeneratedId: meta.data.clientGeneratedId, capturedAt: meta.data.capturedAt, captureContext: meta.data.captureContext });
   if (result.kind === "missing") return problem(404, "survey_not_found", "The survey could not be found.");
