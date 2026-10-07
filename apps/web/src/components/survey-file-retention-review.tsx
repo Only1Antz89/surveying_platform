@@ -1,7 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 
-type Register = { removals: { id: string; status: string; manifestVersion: string; createdAt: string; completedAt: string | null; reviewMessage: string | null; canCancel: boolean }[]; removalHistoryHasMore: boolean; analysisCount: number; adviserRecordCount: number; questionnaireDocuments: { id: string; name: string; supersededAt: string | null; analysisDisposed: boolean }[]; media: { id: string; filename: string | null; kind: string; derivation: string }[]; evidenceReferenceCount: number; externalEvidenceReferenceCount: number; hold: { revision: number; kind: string | null; reason: string } | null; reference: string; reportCount: number; deliveryCount: number; assessment: { reviewVersion: string; reason: string; retentionUntil: string | null; eligibleForManagerReview: boolean }; documents: { id: string; name: string; legalHold: boolean; archivedAt: string | null }[] };
+type Register = { mediaAnalyses: { id: string; mediaId: string; status: string; analysisDisposed: boolean }[]; removals: { id: string; status: string; manifestVersion: string; createdAt: string; completedAt: string | null; reviewMessage: string | null; canCancel: boolean }[]; removalHistoryHasMore: boolean; analysisCount: number; adviserRecordCount: number; questionnaireDocuments: { id: string; name: string; supersededAt: string | null; analysisDisposed: boolean }[]; media: { id: string; filename: string | null; kind: string; derivation: string }[]; evidenceReferenceCount: number; externalEvidenceReferenceCount: number; hold: { revision: number; kind: string | null; reason: string } | null; reference: string; reportCount: number; deliveryCount: number; assessment: { reviewVersion: string; reason: string; retentionUntil: string | null; eligibleForManagerReview: boolean }; documents: { id: string; name: string; legalHold: boolean; archivedAt: string | null }[] };
 const reasons: Record<string, string> = { evidence_review_required: "Evidence is shared, missing or inconsistent. Resolve its references before retention review.", policy_approval_required: "The practice policy needs approval in Operations settings.", protected: "A complaint, claim or legal hold protects this file.", job_open: "The job must be closed before retention review.", date_review_required: "Reliable final report delivery and closure dates are required.", retention_active: "The one-year retention period has not expired.", manager_review_required: "The retention period has expired. Review the file and any outstanding complaints or claims." };
 export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; canEdit: boolean }) {
   const [register, setRegister] = useState<Register | null>(null);
@@ -78,6 +78,16 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : "Analysis cleanup failed."); }
     finally { setBusy(false); }
   }
+  async function disposeMedia(id: string, manifestVersion: string, form: FormData) {
+    setBusy(true); setMessage("");
+    try {
+      const response = await fetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "dispose_media_analysis", id, manifestVersion, analysisId: form.get("analysisId"), reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error?.message ?? "Media analysis cleanup failed.");
+      setRegister(null); setMessage(payload.data.persisted ? payload.data.duplicate ? "This media analysis was already removed." : "Media analysis removed. Original checksums and audit evidence remain recorded." : "Preview only. No media analysis was removed.");
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : "Media analysis cleanup failed."); }
+    finally { setBusy(false); }
+  }
   return <section className="panel"><div className="panel-header"><h2>Survey file retention review</h2></div><div className="panel-body">
     <p>The practice policy retains survey job files for one year from the later of final report delivery or job closure. Manager review is required after expiry.</p>
     <button className="button button-secondary" type="button" onClick={() => void load()} disabled={busy}>{busy ? "Working…" : "Load current file assessment"}</button>
@@ -101,6 +111,13 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
           <label className="field"><span>Cleanup reason</span><textarea name="reason" minLength={10} maxLength={2000} required disabled={busy}/></label>
           <label><input type="checkbox" name="confirmed" required disabled={busy}/> I confirm the retained analysis should be removed after reviewing this completed removal.</label>
           <button className="button button-secondary" disabled={busy}>Remove questionnaire analysis</button>
+        </form></details> : null}
+        {removal.status === "completed" && canEdit && register.assessment.eligibleForManagerReview && register.mediaAnalyses?.some(analysis => !analysis.analysisDisposed) ? <details><summary>Remove retained media analysis</summary><form action={form => disposeMedia(removal.id, removal.manifestVersion, form)} className="form-grid">
+          <p>Remove the stored analysis of media whose original removal has been verified. Checksums and cleanup audit remain recorded. This action cannot be undone.</p>
+          <label className="field"><span>Media analysis</span><select name="analysisId" required disabled={busy}>{register.mediaAnalyses.filter(analysis => !analysis.analysisDisposed).map((analysis, index) => <option key={analysis.id} value={analysis.id}>{register.media.find(media => media.id === analysis.mediaId)?.filename ?? "Media"} · analysis {index + 1}</option>)}</select></label>
+          <label className="field"><span>Cleanup reason</span><textarea name="reason" minLength={10} maxLength={2000} required disabled={busy}/></label>
+          <label><input type="checkbox" name="confirmed" required disabled={busy}/> I confirm this media analysis should be removed after reviewing the completed removal.</label>
+          <button className="button button-secondary" disabled={busy}>Remove media analysis</button>
         </form></details> : null}
       </li>)}</ul>{register.removalHistoryHasMore ? <p>Showing the 20 most recent requests. Older decisions remain in the audit history.</p> : null}</> : null}
       {canEdit ? <details><summary>Review job hold</summary><form action={saveHold} className="form-grid">

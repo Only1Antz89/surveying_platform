@@ -8,9 +8,12 @@ import { cancelReviewedSurveyFileRemoval, requestReviewedSurveyFileRemoval } fro
 
 import { disposeQuestionnaireAnalysis } from "@/lib/survey-file-questionnaire-disposition";
 
+import { disposeMediaAnalysis } from "@/lib/survey-file-media-analysis-disposition";
+
 const common = { reason: z.string().trim().min(10).max(2000), confirmed: z.literal(true) };
 const input = z.discriminatedUnion("action", [
   z.object({ ...common, action: z.literal("request"), requestId: z.uuid(), reviewVersion: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
+  z.object({ ...common, action: z.literal("dispose_media_analysis"), id: z.uuid(), manifestVersion: z.string().regex(/^[a-f0-9]{64}$/), analysisId: z.uuid() }).strict(),
   z.object({ ...common, action: z.literal("dispose_analysis"), id: z.uuid(), manifestVersion: z.string().regex(/^[a-f0-9]{64}$/), documentId: z.uuid() }).strict(),
   z.object({ ...common, action: z.literal("cancel"), id: z.uuid(), manifestVersion: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
 ]);
@@ -33,6 +36,7 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
       }
       const value = { id: decision.id, manifestVersion: decision.manifestVersion, reason: decision.reason, confirmed: decision.confirmed };
       if (decision.action === "dispose_analysis") return disposeQuestionnaireAnalysis(tx, context.organisationId, id, context.internalUserId!, decision.documentId, value);
+      if (decision.action === "dispose_media_analysis") return disposeMediaAnalysis(tx, context.organisationId, id, context.internalUserId!, decision.analysisId, value);
       return cancelReviewedSurveyFileRemoval(tx, context.organisationId, id, context.internalUserId!, value);
     });
     return ok({ ...result, persisted: true });

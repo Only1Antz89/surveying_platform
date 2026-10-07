@@ -1,10 +1,11 @@
 import { beforeEach, expect, it, vi } from "vitest";
-const state = vi.hoisted(() => ({ context: { organisationId: "11111111-1111-4111-8111-111111111111", internalUserId: "manager", role: "owner", demo: false }, writable: true, dispose: vi.fn(), request: vi.fn(), cancel: vi.fn(), database: vi.fn() }));
+const state = vi.hoisted(() => ({ context: { organisationId: "11111111-1111-4111-8111-111111111111", internalUserId: "manager", role: "owner", demo: false }, writable: true, mediaDispose: vi.fn(), dispose: vi.fn(), request: vi.fn(), cancel: vi.fn(), database: vi.fn() }));
 vi.mock("@/lib/access", () => ({ apiContext: async () => state.context, canWriteWorkspace: () => state.writable }));
 vi.mock("@/lib/workspace-api-guard", () => ({ workspaceApiGuard: async () => null }));
 vi.mock("@/lib/survey-file-removal-request", () => ({ requestReviewedSurveyFileRemoval: state.request, cancelReviewedSurveyFileRemoval: state.cancel }));
 vi.mock("@surveynt/db", () => ({ createDatabase: state.database, withTenant: async (_db: unknown, _org: string, callback: (tx: unknown) => unknown) => callback({}) }));
 vi.mock("@/lib/survey-file-questionnaire-disposition", () => ({ disposeQuestionnaireAnalysis: state.dispose }));
+vi.mock("@/lib/survey-file-media-analysis-disposition", () => ({ disposeMediaAnalysis: state.mediaDispose }));
 import { POST } from "./route";
 const id = "22222222-2222-4222-8222-222222222222";
 const route = { params: Promise.resolve({ id }) };
@@ -38,4 +39,19 @@ it("binds analysis cleanup to the confirmed completed request without accepting 
   expect(state.dispose).toHaveBeenCalledWith(expect.anything(),state.context.organisationId,id,"manager",id,{id,manifestVersion:body.manifestVersion,reason:body.reason,confirmed:true});
   expect((await POST(request({...body,storagePath:"untrusted"}),route)).status).toBe(400);
   expect((await POST(request({...body,confirmed:false}),route)).status).toBe(400);
+});
+
+it("routes confirmed media analysis cleanup and rejects unreviewed payloads", async () => {
+  const body={action:"dispose_media_analysis",id,analysisId:id,manifestVersion:"b".repeat(64),reason:decision.reason,confirmed:true};
+  state.mediaDispose.mockResolvedValue({disposed:true,duplicate:false});
+  expect((await POST(request(body),route)).status).toBe(200);
+  expect(state.mediaDispose).toHaveBeenCalledWith(expect.anything(),state.context.organisationId,id,"manager",id,{id,manifestVersion:body.manifestVersion,reason:body.reason,confirmed:true});
+  expect((await POST(request({...body,storagePath:"untrusted"}),route)).status).toBe(400);
+  expect((await POST(request({...body,confirmed:false}),route)).status).toBe(400);
+});
+it("keeps preview media cleanup nonpersistent and hides internal failure details", async () => {
+  const body={action:"dispose_media_analysis",id,analysisId:id,manifestVersion:"b".repeat(64),reason:decision.reason,confirmed:true};
+  state.context.demo=true;expect((await (await POST(request(body),route)).json()).data.persisted).toBe(false);expect(state.mediaDispose).not.toHaveBeenCalled();
+  state.context.demo=false;state.mediaDispose.mockRejectedValue(new Error("private storage path"));
+  const response=await POST(request(body),route);expect(response.status).toBe(409);expect(await response.text()).not.toContain("private storage path");
 });
