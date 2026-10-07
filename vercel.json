@@ -22,7 +22,7 @@
     },
     {
       "path": "/api/cron/calendar-subscriptions",
-      "schedule": "*/5 * * * *"
+      "schedule": "15 8 * * *"
     }
   ]
 }
