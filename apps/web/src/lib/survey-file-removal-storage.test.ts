@@ -6,11 +6,12 @@ import { createSurveyFileRemovalManifest } from "./survey-file-removal-manifest"
 import { processSurveyFileOriginal } from "./survey-file-removal-storage";
 import { observeInterruptedSurveyFileOriginal } from "./survey-file-removal-recovery";
 
-const mocks = vi.hoisted(() => ({ dispatch: vi.fn(), outcome: vi.fn(), preflight: vi.fn() }));
+const mocks = vi.hoisted(() => ({ dispatch: vi.fn(), outcome: vi.fn(), preflight: vi.fn(), recorded: vi.fn() }));
 vi.mock("@surveynt/db", () => ({ withTenant: async (_db: unknown, _org: string, callback: (tx: unknown) => unknown) => callback({}) }));
 vi.mock("./survey-file-removal-object-dispatch", () => ({ recordSurveyFileOriginalDispatch: mocks.dispatch }));
 vi.mock("./survey-file-removal-object-outcome", () => ({ recordSurveyFileOriginalOutcome: mocks.outcome }));
 vi.mock("./survey-file-removal-preflight-failure", () => ({ recordSurveyFilePreflightFailure: mocks.preflight }));
+vi.mock("./survey-file-removal-processing-state", () => ({ readOriginalProcessingOutcome: mocks.recorded }));
 const organisationId = "11111111-1111-4111-8111-111111111111";
 const jobId = "22222222-2222-4222-8222-222222222222";
 const id = "33333333-3333-4333-8333-333333333333";
@@ -20,8 +21,14 @@ const claim = { id, leaseToken: id as typeof id, attempts: 1, lockedUntil: new D
 const objectKey = `questionnaire:${id}`;
 const db = {} as Database;
 describe("survey original storage processor", () => {
-  beforeEach(() => { vi.clearAllMocks(); mocks.dispatch.mockResolvedValue({ dispatch: true, object }); mocks.outcome.mockResolvedValue({ status: "completed" }); });
+  beforeEach(() => { vi.clearAllMocks(); mocks.recorded.mockResolvedValue(null); mocks.dispatch.mockResolvedValue({ dispatch: true, object }); mocks.outcome.mockResolvedValue({ status: "completed" }); });
   async function fixture() { const storage = createMemoryStorage(); await storage.put(object.storagePath, body.slice().buffer, "text/plain"); return storage; }
+  it("returns verified removal evidence without reading or deleting storage on retry", async () => {
+    const storage = createMemoryStorage(); const get = vi.spyOn(storage, "get"); const remove = vi.spyOn(storage, "remove");
+    mocks.recorded.mockResolvedValue({ removed: true, verificationRequired: false });
+    expect(await processSurveyFileOriginal(db, organisationId, jobId, claim, objectKey, storage)).toEqual({ removed: true, verificationRequired: false });
+    expect(get).not.toHaveBeenCalled(); expect(remove).not.toHaveBeenCalled(); expect(mocks.dispatch).not.toHaveBeenCalled();
+  });
   it("verifies, records dispatch, removes and records observed absence", async () => {
     const storage = await fixture(); const remove = vi.spyOn(storage, "remove");
     expect(await processSurveyFileOriginal(db, organisationId, jobId, claim, objectKey, storage)).toEqual({ removed: true, verificationRequired: false });
