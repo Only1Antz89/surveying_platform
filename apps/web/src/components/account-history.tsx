@@ -1,0 +1,10 @@
+"use client";
+import { useState } from "react";
+type Entry={id:string;action:string;occurredAt:string;changedFields:string[]};
+const labels:Record<string,string>={"account.created":"Account synchronised","account.profile_synchronised":"Profile synchronised","account.profile_event_ignored":"Older or equal profile event ignored","account.settings_updated":"Personal settings changed"};
+const fields:Record<string,string>={photo:"profile photo",email:"email",firstName:"first name",lastName:"last name",professionalDetails:"professional details",ricsNumber:"RICS number",appearance:"appearance",notifications:"notifications",work:"availability",reportName:"report name",reportContact:"report contact"};
+export function AccountHistory(){
+  const [rows,setRows]=useState<Entry[]|null>(null),[busy,setBusy]=useState(false),[message,setMessage]=useState("");
+  async function load(){setBusy(true);setMessage("");try{const response=await fetch("/api/v1/me/history",{cache:"no-store"});const payload=await response.json();if(!response.ok)throw new Error(payload.error?.message??"History could not be loaded.");setRows(payload.data);}catch(error){setMessage(error instanceof Error?error.message:"History could not be loaded.");}finally{setBusy(false);}}
+  return <details className="settings-section" onToggle={event=>{if(event.currentTarget.open&&rows===null&&!busy)void load();}}><summary>Your account history</summary><p>The latest 50 recorded profile and personal settings events. Profile updates are recorded after provider synchronisation.</p><button type="button" className="button button-secondary" disabled={busy} onClick={()=>void load()}>{busy?"Loading…":"Refresh history"}</button>{rows?.length?<ul>{rows.map(row=><li key={row.id}><strong>{labels[row.action]??"Account event"}</strong> · {new Date(row.occurredAt).toLocaleString("en-GB")}{row.changedFields.length?<p>{row.changedFields.map(field=>fields[field]??field).join(", ")}</p>:null}</li>)}</ul>:rows?<p>No account events recorded.</p>:null}<p role="status">{message}</p></details>;
+}

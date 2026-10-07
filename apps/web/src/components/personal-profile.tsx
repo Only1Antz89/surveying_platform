@@ -1,4 +1,5 @@
 "use client";
+import { AccountHistory } from "./account-history";
 import { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
@@ -20,7 +21,7 @@ function ProfileForm({initial,onSave,onPhoto,preview=false}:{initial:Profile;onS
     <div className="personal-profile-actions"><p role="status">{message}</p><button type="submit" className="button button-primary" disabled={busy||!value.firstName.trim()}>{busy?"Saving…":"Save profile"}</button></div>
   </form>;
 }
-export function LivePersonalProfile(){const {user,isLoaded}=useUser();const router=useRouter();if(!isLoaded)return <p>Loading your profile…</p>;if(!user)return <p>Sign in to manage your profile.</p>;return <ProfileForm key={user.id} initial={{firstName:user.firstName??"",lastName:user.lastName??"",imageUrl:user.imageUrl}} onSave={async value=>{await user.update({firstName:value.firstName.trim(),lastName:value.lastName.trim()});router.refresh();}} onPhoto={async file=>{await user.setProfileImage({file});await user.reload();router.refresh();return user.imageUrl;}}/>;}
+export function LivePersonalProfile(){const {user,isLoaded}=useUser();const router=useRouter();if(!isLoaded)return <p>Loading your profile…</p>;if(!user)return <p>Sign in to manage your profile.</p>;return <><ProfileForm key={user.id} initial={{firstName:user.firstName??"",lastName:user.lastName??"",imageUrl:user.imageUrl}} onSave={async value=>{await user.update({firstName:value.firstName.trim(),lastName:value.lastName.trim()});router.refresh();}} onPhoto={async file=>{await user.setProfileImage({file});await user.reload();router.refresh();return user.imageUrl;}}/><AccountHistory/></>;}
 export function PreviewPersonalProfile(){
   const [value,setValue]=useState<Profile|null>(null);
   useEffect(()=>{Promise.resolve().then(()=>{try{setValue(JSON.parse(localStorage.getItem("surveynt:preview-profile")??"null")??{firstName:"Maya",lastName:"Patel",imageUrl:""});}catch{setValue({firstName:"Maya",lastName:"Patel",imageUrl:""});}});},[]);

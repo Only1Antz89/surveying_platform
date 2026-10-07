@@ -119,6 +119,8 @@ export const organisationDomains = pgTable("organisation_domains", {
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   clerkUserId: text("clerk_user_id").notNull().unique(),
+  clerkProfileUpdatedAt: timestamp("clerk_profile_updated_at", { withTimezone: true }),
+  clerkProfileImageFingerprint: text("clerk_profile_image_fingerprint"),
   email: text("email").notNull(),
   firstName: text("first_name"),
   lastName: text("last_name"),
@@ -395,6 +397,7 @@ export const organisationOperationalSettings = pgTable("organisation_operational
   workingHours: jsonb("working_hours").$type<Record<string, { start: string; end: string }>>().notNull().default({}),
   holidayDates: jsonb("holiday_dates").$type<string[]>().notNull().default([]),
   customerBranding: jsonb("customer_branding").$type<{ displayName?: string; logoUrl?: string; accentColour?: string }>().notNull().default({}),
+  emailTemplates: jsonb("email_templates").$type<{ customer_quote_issued?: { subject: string; introduction: string } }>().notNull().default({}),
   notificationPreferences: jsonb("notification_preferences").$type<Record<string, boolean>>().notNull().default({}),
   bookingHorizonDays: integer("booking_horizon_days").notNull().default(90),
   travelBufferMinutes: integer("travel_buffer_minutes").notNull().default(30),
@@ -517,7 +520,7 @@ export const appointments = pgTable("appointments", {
 }, (table) => [index("appointments_org_time_idx").on(table.organisationId, table.startsAt), uniqueIndex("appointments_quote_uidx").on(table.quoteId)]);
 
 export const calendarConnections = pgTable("calendar_connections", {
-  id: uuid("id").primaryKey().defaultRandom(), organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "cascade" }), userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }), provider: text("provider").notNull(), providerAccountId: text("provider_account_id").notNull(), encryptedCredentials: text("encrypted_credentials").notNull(), encryptionKeyVersion: integer("encryption_key_version").notNull().default(1), syncCursor: text("sync_cursor"), webhookChannelId: text("webhook_channel_id"), webhookExpiresAt: timestamp("webhook_expires_at", { withTimezone: true }), status: text("status").notNull().default("active"), lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }), lastError: text("last_error"), ...timestamps,
+  id: uuid("id").primaryKey().defaultRandom(), organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "cascade" }), userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }), provider: text("provider").notNull(), providerAccountId: text("provider_account_id").notNull(), encryptedCredentials: text("encrypted_credentials").notNull(), encryptionKeyVersion: integer("encryption_key_version").notNull().default(1), syncCursor: text("sync_cursor"), webhookChannelId: text("webhook_channel_id"), webhookAttemptId:uuid("webhook_attempt_id"), webhookResourceId:text("webhook_resource_id"), webhookExpiresAt: timestamp("webhook_expires_at", { withTimezone: true }), status: text("status").notNull().default("active"), lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }), lastError: text("last_error"), ...timestamps,
 }, (table) => [uniqueIndex("calendar_connections_provider_account_uidx").on(table.organisationId, table.provider, table.providerAccountId), index("calendar_connections_user_idx").on(table.userId)]);
 
 export const calendarEventLinks = pgTable("calendar_event_links", {
@@ -540,6 +543,47 @@ export const clientPayments = pgTable("client_payments", {
   id: uuid("id").primaryKey().defaultRandom(), organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }), invoiceId: uuid("invoice_id").notNull().references(() => invoices.id, { onDelete: "restrict" }), quoteId: uuid("quote_id").references(() => customerQuotes.id, { onDelete: "restrict" }), stripeCheckoutSessionId: text("stripe_checkout_session_id").unique(), stripePaymentIntentId: text("stripe_payment_intent_id").unique(), status: paymentStatus("status").notNull().default("pending"), purpose: text("purpose").notNull(), currency: text("currency").notNull().default("GBP"), amountMinor: integer("amount_minor").notNull(), refundedMinor: integer("refunded_minor").notNull().default(0), succeededAt: timestamp("succeeded_at", { withTimezone: true }), ...timestamps,
 }, (table) => [index("client_payments_org_status_idx").on(table.organisationId, table.status), index("client_payments_invoice_idx").on(table.invoiceId)]);
 
+export const invoiceCredits = pgTable("invoice_credits", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  invoiceId: uuid("invoice_id").notNull().references(() => invoices.id, { onDelete: "restrict" }),
+  requestId: uuid("request_id").notNull(), number: text("number").notNull(),
+  amountMinor: integer("amount_minor").notNull(), vatMinor: integer("vat_minor").notNull(),
+  reason: text("reason").notNull(), evidence: text("evidence").notNull(), fingerprint: text("fingerprint").notNull(),
+  issuedByUserId: uuid("issued_by_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => [
+  uniqueIndex("invoice_credits_org_request_uidx").on(table.organisationId, table.requestId),
+  uniqueIndex("invoice_credits_org_number_uidx").on(table.organisationId, table.number),
+  index("invoice_credits_invoice_idx").on(table.invoiceId),
+  check("invoice_credits_amount_chk", sql`amount_minor > 0 and vat_minor >= 0 and vat_minor <= amount_minor`),
+]);
+
+/** Evidence-backed external receipts/refunds; every verification is append-only. */
+export const manualPaymentReviews = pgTable("manual_payment_reviews", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  invoiceId: uuid("invoice_id").notNull().references(() => invoices.id, { onDelete: "restrict" }),
+  paymentId: uuid("payment_id").notNull().references(() => clientPayments.id, { onDelete: "restrict" }),
+  requestId: uuid("request_id").notNull(),
+  kind: text("kind").notNull(),
+  method: text("method").notNull(),
+  reference: text("reference").notNull(),
+  evidence: text("evidence").notNull(),
+  amountMinor: integer("amount_minor").notNull(),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+  fingerprint: text("fingerprint").notNull(),
+  verifiedByUserId: uuid("verified_by_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => [
+  uniqueIndex("manual_payment_reviews_org_request_uidx").on(table.organisationId, table.requestId),
+  uniqueIndex("manual_payment_reviews_invoice_reference_uidx").on(table.organisationId, table.invoiceId, table.kind, table.reference),
+  index("manual_payment_reviews_payment_idx").on(table.paymentId),
+  check("manual_payment_reviews_amount_chk", sql`amount_minor > 0`),
+  check("manual_payment_reviews_kind_chk", sql`kind in ('receipt', 'refund')`),
+  check("manual_payment_reviews_method_chk", sql`method in ('bank_transfer', 'cash', 'cheque', 'external_card')`),
+]);
+
 export const settlementLedger = pgTable("settlement_ledger", {
   id: uuid("id").primaryKey().defaultRandom(), organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }), paymentId: uuid("payment_id").references(() => clientPayments.id, { onDelete: "restrict" }), entryType: text("entry_type").notNull(), currency: text("currency").notNull().default("GBP"), amountMinor: integer("amount_minor").notNull(), externalSettlementReference: text("external_settlement_reference"), settledAt: timestamp("settled_at", { withTimezone: true }), metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}), createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }), createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index("settlement_ledger_org_time_idx").on(table.organisationId, table.createdAt), index("settlement_ledger_payment_idx").on(table.paymentId)]);
@@ -553,6 +597,7 @@ export const settlementBatchItems = pgTable("settlement_batch_items", {
 }, (table) => [uniqueIndex("settlement_batch_items_ledger_uidx").on(table.ledgerEntryId), index("settlement_batch_items_batch_idx").on(table.batchId)]);
 
 export const organisationDocuments = pgTable("organisation_documents", {
+  purgeStatus: text("purge_status").notNull().default("retained"), purgeRequestedAt: timestamp("purge_requested_at", { withTimezone: true }), purgedAt: timestamp("purged_at", { withTimezone: true }),
   id: uuid("id").primaryKey().defaultRandom(), organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }), jobId: uuid("job_id").references(() => jobs.id, { onDelete: "restrict" }), reportVersionId: uuid("report_version_id"), name: text("name").notNull(), category: text("category").notNull(), accessClass: text("access_class").notNull().default("firm"), blobUrl: text("blob_url").notNull(), blobPathname: text("blob_pathname").notNull(), checksum: text("checksum").notNull(), contentType: text("content_type").notNull(), sizeBytes: integer("size_bytes").notNull(), retentionUntil: timestamp("retention_until", { withTimezone: true }), legalHold: boolean("legal_hold").notNull().default(false), uploadedByUserId: uuid("uploaded_by_user_id").references(() => users.id, { onDelete: "set null" }), deletedAt: timestamp("deleted_at", { withTimezone: true }), ...timestamps,
 }, (table) => [index("organisation_documents_org_category_idx").on(table.organisationId, table.category), index("organisation_documents_job_idx").on(table.jobId)]);
 
@@ -675,6 +720,7 @@ export const backgroundJobs = pgTable("background_jobs", {
   attempts: integer("attempts").notNull().default(0),
   payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
   availableAt: timestamp("available_at", { withTimezone: true }).notNull().defaultNow(),
+  leaseToken: uuid("lease_token"),
   /** Lease for a claimed job; an expired lease lets another worker reclaim it after a crash. */
   lockedUntil: timestamp("locked_until", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),

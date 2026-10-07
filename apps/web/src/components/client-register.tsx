@@ -20,7 +20,7 @@ const toClient = (client: ApiClient): Client => ({
   version: client.version,
 });
 
-export function ClientRegister({ clients: initialClients, canEdit = true }: { clients: Client[]; canEdit?: boolean }) {
+export function ClientRegister({ clients: initialClients, canEdit = true, apiBase = "/api/v1/clients", organisationSlug }: { clients: Client[]; canEdit?: boolean; apiBase?: string; organisationSlug?: string }) {
   const [clients, setClients] = useState(initialClients);
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState("All clients");
@@ -33,91 +33,152 @@ export function ClientRegister({ clients: initialClients, canEdit = true }: { cl
   const visible = useMemo(() => clients.filter((client) => `${client.name} ${client.email}`.toLowerCase().includes(query.toLowerCase()) && (kind === "All clients" || client.kind === kind)), [clients, query, kind]);
   const csv = `name,type,email,phone,properties,last activity\n${visible.map((client) => [client.name, client.kind, client.email, client.phone, client.properties, client.lastActivity].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n")}`;
 
+  function fetchClient(url: string, options: RequestInit = {}) {
+    const headers = new Headers(options.headers);
+    if (organisationSlug) headers.set("x-demo-organisation-slug", organisationSlug);
+    return fetch(url, { ...options, headers });
+  }
+
   async function openClient(client: Client) {
-    setError(null); setLoadingRecord(true); setEditing(null);
-    const response = await fetch(`/api/v1/clients/${client.id}`);
-    const payload = await response.json(); setLoadingRecord(false);
-    if (!response.ok) return setError(payload?.error?.message ?? "The client record could not be opened.");
-    setContacts(payload.data.contacts as ClientContact[]);
-    setEditing(client);
+    try {
+      setError(null); setLoadingRecord(true); setEditing(null);
+      const response = await fetchClient(`${apiBase}/${client.id}`);
+      const payload = await response.json(); setLoadingRecord(false);
+      if (!response.ok) return setError(payload?.error?.message ?? "The client record could not be opened.");
+      setContacts(payload.data.contacts as ClientContact[]);
+      setEditing({ ...client, ...toClient(payload.data.client), properties: client.properties });
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "The client request failed. Please retry.");
+    } finally {
+      setSaving(false);
+      setLoadingRecord(false);
+    }
   }
 
   async function createClient(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSaving(true);
-    setError(null);
-    const form = new FormData(event.currentTarget);
-    const response = await fetch("/api/v1/clients", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        kind: form.get("kind"),
-        displayName: form.get("displayName"),
-        email: String(form.get("email") || "") || undefined,
-        phone: String(form.get("phone") || "") || undefined,
-      }),
-    });
-    const payload = await response.json();
-    setSaving(false);
-    if (!response.ok) {
-      setError(payload?.error?.message ?? "The client could not be created.");
-      return;
+    try {
+      if (!canEdit) return;
+      event.preventDefault();
+      setSaving(true);
+      setError(null);
+      const form = new FormData(event.currentTarget);
+      const response = await fetchClient(apiBase, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          kind: form.get("kind"),
+          displayName: form.get("displayName"),
+          email: String(form.get("email") || "") || undefined,
+          phone: String(form.get("phone") || "") || undefined,
+        }),
+      });
+      const payload = await response.json();
+      setSaving(false);
+      if (!response.ok) {
+        setError(payload?.error?.message ?? "The client could not be created.");
+        return;
+      }
+      setClients((current) => [toClient(payload.data), ...current]);
+      setCreating(false);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "The client request failed. Please retry.");
+    } finally {
+      setSaving(false);
+      setLoadingRecord(false);
     }
-    setClients((current) => [toClient(payload.data), ...current]);
-    setCreating(false);
   }
 
   async function updateClient(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!editing) return;
-    setSaving(true); setError(null);
-    const form = new FormData(event.currentTarget);
-    const response = await fetch(`/api/v1/clients/${editing.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ displayName: form.get("displayName"), email: String(form.get("email") || "") || null, phone: String(form.get("phone") || "") || null, version: editing.version ?? 1 }) });
-    const payload = await response.json(); setSaving(false);
-    if (!response.ok) return setError(payload?.error?.message ?? "The client could not be updated.");
-    setClients((current) => current.map((client) => client.id === editing.id ? { ...client, name: payload.data.displayName, email: payload.data.email ?? "—", phone: payload.data.phone ?? "—", lastActivity: "Just now", version: payload.data.version } : client));
-    setEditing((current) => current ? { ...current, name: payload.data.displayName, email: payload.data.email ?? "—", phone: payload.data.phone ?? "—", lastActivity: "Just now", version: payload.data.version } : current);
+    try {
+      if (!canEdit) return;
+      event.preventDefault();
+      if (!editing) return;
+      setSaving(true); setError(null);
+      const form = new FormData(event.currentTarget);
+      const response = await fetchClient(`${apiBase}/${editing.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ displayName: form.get("displayName"), email: String(form.get("email") || "") || null, phone: String(form.get("phone") || "") || null, version: editing.version ?? 1 }) });
+      const payload = await response.json(); setSaving(false);
+      if (!response.ok) return setError(payload?.error?.message ?? "The client could not be updated.");
+      setClients((current) => current.map((client) => client.id === editing.id ? { ...client, name: payload.data.displayName, email: payload.data.email ?? "—", phone: payload.data.phone ?? "—", lastActivity: "Just now", version: payload.data.version } : client));
+      setEditing((current) => current ? { ...current, name: payload.data.displayName, email: payload.data.email ?? "—", phone: payload.data.phone ?? "—", lastActivity: "Just now", version: payload.data.version } : current);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "The client request failed. Please retry.");
+    } finally {
+      setSaving(false);
+      setLoadingRecord(false);
+    }
   }
 
   async function archiveClient(client: Client) {
-    if (!window.confirm(`Archive ${client.name}? Existing jobs will retain their client reference.`)) return;
-    setError(null);
-    const response = await fetch(`/api/v1/clients/${client.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ archived: true, version: client.version ?? 1 }) });
-    const payload = await response.json();
-    if (!response.ok) return setError(payload?.error?.message ?? "The client could not be archived.");
-    setClients((current) => current.filter((item) => item.id !== client.id));
+    try {
+      if (!canEdit) return;
+      if (!window.confirm(`Archive ${client.name}? Existing jobs will retain their client reference.`)) return;
+      setError(null);
+      const response = await fetchClient(`${apiBase}/${client.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ archived: true, version: client.version ?? 1 }) });
+      const payload = await response.json();
+      if (!response.ok) return setError(payload?.error?.message ?? "The client could not be archived.");
+      setClients((current) => current.filter((item) => item.id !== client.id));
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "The client request failed. Please retry.");
+    } finally {
+      setSaving(false);
+      setLoadingRecord(false);
+    }
   }
 
   async function addContact(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!editing) return;
-    setSaving(true); setError(null);
-    const formElement = event.currentTarget;
-    const form = new FormData(formElement);
-    const response = await fetch(`/api/v1/clients/${editing.id}/contacts`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: form.get("name"), email: String(form.get("email") || "") || null, phone: String(form.get("phone") || "") || null, preferredChannel: form.get("preferredChannel"), primary: form.get("primary") === "on" }) });
-    const payload = await response.json(); setSaving(false);
-    if (!response.ok) return setError(payload?.error?.message ?? "The contact could not be added.");
-    const created = payload.data as ClientContact;
-    setContacts((current) => [created, ...current.map((contact) => created.primary ? { ...contact, primary: false } : contact)]);
-    formElement.reset();
+    try {
+      if (!canEdit) return;
+      event.preventDefault();
+      if (!editing) return;
+      setSaving(true); setError(null);
+      const formElement = event.currentTarget;
+      const form = new FormData(formElement);
+      const response = await fetchClient(`${apiBase}/${editing.id}/contacts`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: form.get("name"), email: String(form.get("email") || "") || null, phone: String(form.get("phone") || "") || null, preferredChannel: form.get("preferredChannel"), primary: form.get("primary") === "on" }) });
+      const payload = await response.json(); setSaving(false);
+      if (!response.ok) return setError(payload?.error?.message ?? "The contact could not be added.");
+      const created = payload.data as ClientContact;
+      setContacts((current) => [created, ...current.map((contact) => created.primary ? { ...contact, primary: false } : contact)]);
+      formElement.reset();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "The client request failed. Please retry.");
+    } finally {
+      setSaving(false);
+      setLoadingRecord(false);
+    }
   }
 
   async function updateContact(contact: ClientContact, changes: Partial<Pick<ClientContact, "preferredChannel" | "primary">>) {
-    if (!editing) return;
-    setError(null);
-    const response = await fetch(`/api/v1/clients/${editing.id}/contacts/${contact.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(changes) });
-    const payload = await response.json();
-    if (!response.ok) return setError(payload?.error?.message ?? "The contact could not be updated.");
-    setContacts((current) => current.map((item) => item.id === contact.id ? { ...item, ...changes } : changes.primary ? { ...item, primary: false } : item));
+    try {
+      if (!canEdit) return;
+      if (!editing) return;
+      setError(null);
+      const response = await fetchClient(`${apiBase}/${editing.id}/contacts/${contact.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(changes) });
+      const payload = await response.json();
+      if (!response.ok) return setError(payload?.error?.message ?? "The contact could not be updated.");
+      setContacts((current) => current.map((item) => item.id === contact.id ? { ...item, ...changes } : changes.primary ? { ...item, primary: false } : item));
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "The client request failed. Please retry.");
+    } finally {
+      setSaving(false);
+      setLoadingRecord(false);
+    }
   }
 
   async function deleteContact(contact: ClientContact) {
-    if (!editing || !window.confirm(`Remove ${contact.name} from this client record?`)) return;
-    setError(null);
-    const response = await fetch(`/api/v1/clients/${editing.id}/contacts/${contact.id}`, { method: "DELETE" });
-    const payload = await response.json();
-    if (!response.ok) return setError(payload?.error?.message ?? "The contact could not be removed.");
-    setContacts((current) => current.filter((item) => item.id !== contact.id));
+    try {
+      if (!canEdit) return;
+      if (!editing || !window.confirm(`Remove ${contact.name} from this client record?`)) return;
+      setError(null);
+      const response = await fetchClient(`${apiBase}/${editing.id}/contacts/${contact.id}`, { method: "DELETE" });
+      const payload = await response.json();
+      if (!response.ok) return setError(payload?.error?.message ?? "The contact could not be removed.");
+      setContacts((current) => current.filter((item) => item.id !== contact.id));
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "The client request failed. Please retry.");
+    } finally {
+      setSaving(false);
+      setLoadingRecord(false);
+    }
   }
 
   return <>

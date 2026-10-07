@@ -3,8 +3,19 @@ import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/neon-serverless";
 import * as schema from "./schema";
 
-export function createDatabase(connectionString = process.env.DATABASE_APP_URL ?? process.env.DATABASE_URL) {
+const databases = new Map<string, ReturnType<typeof buildDatabase>>();
+
+export function createDatabase(connectionString = process.env.DATABASE_APP_URL ?? process.env.DATABASE_URL, options?:{reuse?:boolean}) {
   if (!connectionString) throw new Error("DATABASE_APP_URL or DATABASE_URL is required for database access");
+  if(options?.reuse===false)return buildDatabase(connectionString);
+  const existing=databases.get(connectionString);
+  if(existing&&!existing.$client.ending&&!existing.$client.ended)return existing;
+  const database=buildDatabase(connectionString);
+  databases.set(connectionString,database);
+  return database;
+}
+
+function buildDatabase(connectionString:string) {
   // Tenant repositories set their RLS context inside an interactive transaction.
   // The Neon HTTP driver cannot run those transactions, so use the pooled
   // serverless driver for both local and Vercel runtimes.

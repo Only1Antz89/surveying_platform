@@ -1,3 +1,4 @@
+import { demoStore, recordDemoAudit } from "@/lib/demo-store";
 import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { z } from "zod";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
@@ -17,7 +18,14 @@ export async function PATCH(request: Request, route: RouteContext<"/api/v1/suppo
   const parsed = await parseBody(request, decisionSchema);
   if (!parsed.success) return problem(400, "invalid_request", "Choose whether to approve or deny this support request.", parsed.error.flatten());
   const { id } = await route.params;
-  if (context.demo) return ok({ id, decision: parsed.data.decision }, { demo: true, persisted: false });
+  if (context.demo) return demoStore.mutate(state => {
+    const session = state.sessions.find(item => item.id === id && item.organisationId === context.organisationId && item.permission === "write" && !item.breakGlass && !item.approvedByUserId && !item.revokedAt && new Date(item.expiresAt) > new Date());
+    if (!session) return problem(409, "support_request_unavailable", "This support request is no longer pending or has expired.");
+    if (parsed.data.decision === "approve") session.approvedByUserId = context.userId;
+    else session.revokedAt = new Date().toISOString();
+    recordDemoAudit(state, context.organisationId, `support.session_${parsed.data.decision === "approve" ? "approved" : "denied"}`, "support_session", id);
+    return ok({ id, decision: parsed.data.decision, expiresAt: session.expiresAt }, { demo: true, persisted: true });
+  });
   if (!context.internalUserId) return problem(403, "forbidden", "The owner account could not be resolved.");
 
   const db = createDatabase();

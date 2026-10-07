@@ -1,3 +1,4 @@
+import { invoiceBalance, refreshInvoiceBalance } from "./invoice-balance";
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { and, asc, desc, eq, getTableColumns, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
@@ -5,13 +6,13 @@ import { isDemoOrganisation } from "./stakeholder-demo";
 import { documentAccess } from "./document-access";
 import type { OrganisationRole } from "@surveynt/domain";
 import { apiContext } from "./access";
-import { quoteMoney, recommendCliftonService } from "./survey-adviser";
+import { quoteMoney, recommendCliftonService, selectRecommendedService } from "./survey-adviser";
 import type { FormSubmission } from "./website-form-config";
 import { propertyAddressSchema } from "./website-form-config";
 export { recommendCliftonService } from "./survey-adviser";
 import {
-  appointments, auditEvents, clientPayments, clients, createDatabase, customerQuotes,
-  invoices, invoiceLineItems, jobs, organisationDomains, organisationOperationalSettings, organisations, properties,
+  type TenantTransaction, appointments, auditEvents, clientPayments, clients, createDatabase, customerQuotes,
+  invoiceCredits, invoices, invoiceLineItems, jobs, organisationDomains, organisationOperationalSettings, organisations, properties,
   quoteSnapshots, serviceDefinitions, servicePricingVersions, settlementLedger, organisationDocuments, websiteEnquiries, withTenant,
 } from "@surveynt/db";
 
@@ -75,7 +76,7 @@ export async function createPublicQuote(input: { organisationId: string; request
     ]);
     if (!settings?.publicQuotesEnabled && !input.actorUserId) throw new Error("PUBLIC_QUOTES_DISABLED");
     const recommendation = recommendCliftonService(input.answers ?? {});
-    const recommended = !input.serviceId && catalogue.some((item) => item.pricing.recommendationRules.source === "clifton_adviser_v1") ? catalogue.find((item) => item.service.name === recommendation.match) ?? catalogue.find((item) => item.service.name.includes(recommendation.match)) : undefined;
+    const recommended = !input.serviceId ? selectRecommendedService(catalogue,input.answers??{}) : undefined;
     const service = selected?.service ?? recommended?.service; const pricing = selected?.pricing ?? recommended?.pricing;
     if (!service || !pricing) throw new Error("SERVICE_UNAVAILABLE");
     const surchargeEntries = Object.entries(pricing.surcharges).filter(([key]) => input.surchargeKeys?.includes(key));
@@ -102,11 +103,13 @@ export async function readPublicQuote(id: string, token: string) {
     quote.status = "expired";
   }
   const verifiedPayments=await db.select().from(clientPayments).where(and(eq(clientPayments.quoteId,quote.id),eq(clientPayments.organisationId,quote.organisationId),inArray(clientPayments.status,["succeeded","partially_refunded","refunded"])));
-  const received=(purpose:string)=>verifiedPayments.filter(payment=>payment.purpose===purpose).reduce((sum,payment)=>sum+payment.amountMinor-payment.refundedMinor,0);
-  const balanceMinor=Math.max(0,quote.totalMinor-quote.depositMinor-received("balance"));
+  const received=(purpose:string)=>verifiedPayments.filter(payment=>(payment.purpose===purpose || payment.purpose===`manual_${purpose}`)).reduce((sum,payment)=>sum+payment.amountMinor-payment.refundedMinor,0);
   const [appointment]=await db.select({id:appointments.id,status:appointments.status,startsAt:appointments.startsAt,endsAt:appointments.endsAt}).from(appointments).where(and(eq(appointments.quoteId,quote.id),eq(appointments.organisationId,quote.organisationId))).limit(1);
-  const customerInvoices=await db.select({id:invoices.id,number:invoices.number,status:invoices.status,currency:invoices.currency,totalMinor:invoices.totalMinor,dueAt:invoices.dueAt}).from(invoices).where(and(eq(invoices.quoteId,quote.id),eq(invoices.organisationId,quote.organisationId)));
-  return { row: quote, view: { ...publicQuote(quote), balanceMinor,balancePaid:balanceMinor===0,depositPaid:received("deposit")>=quote.depositMinor, demo: organisation.demo,appointment:appointment??null,invoices:customerInvoices } };
+  const customerInvoices=await db.select({id:invoices.id,number:invoices.number,status:invoices.status,currency:invoices.currency,totalMinor:invoices.totalMinor,creditedMinor:sql<number>`coalesce((select sum(c.amount_minor) from invoice_credits c where c.invoice_id=invoices.id and c.organisation_id=${quote.organisationId}),0)::bigint`,dueAt:invoices.dueAt}).from(invoices).where(and(eq(invoices.quoteId,quote.id),eq(invoices.organisationId,quote.organisationId)));
+  const balanceCredits=customerInvoices.filter(i=>i.number.endsWith("-B")).reduce((sum,i)=>sum+Number(i.creditedMinor),0);
+  const depositCredits=customerInvoices.filter(i=>i.number.endsWith("-D")).reduce((sum,i)=>sum+Number(i.creditedMinor),0);
+  const balanceMinor=Math.max(0,quote.totalMinor-quote.depositMinor-balanceCredits-received("balance"));
+  return { row: quote, view: { ...publicQuote(quote), balanceMinor,balancePaid:balanceMinor===0,manualBalanceReceived:verifiedPayments.filter(payment=>payment.purpose==="manual_balance").reduce((sum,payment)=>sum+payment.amountMinor-payment.refundedMinor,0),depositPaid:received("deposit")+depositCredits>=quote.depositMinor, demo: organisation.demo,appointment:appointment??null,invoices:customerInvoices } };
 }
 
 export async function acceptQuoteAddress(id: string, token: string, address: { line1: string; city: string; postcode: string }) {
@@ -137,21 +140,36 @@ async function createPendingQuotePayment(quote:typeof customerQuotes.$inferSelec
   if(amountMinor<=0)throw new Error("NO_BALANCE_DUE");
   return createDatabase(process.env.DATABASE_ADMIN_URL).transaction(async tx=>{
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`quote-payment:${quote.organisationId}:${quote.id}:${purpose}`}))`);
+    const invoice = await ensureQuoteInvoice(tx, quote, purpose);
     const [existing]=await tx.select({payment:clientPayments,invoice:invoices}).from(clientPayments).innerJoin(invoices,eq(clientPayments.invoiceId,invoices.id)).where(and(eq(clientPayments.organisationId,quote.organisationId),eq(clientPayments.quoteId,quote.id),eq(clientPayments.purpose,purpose),or(eq(clientPayments.status,"pending"),isNotNull(clientPayments.succeededAt)))).orderBy(desc(clientPayments.createdAt)).limit(1);
-    if(existing)return existing;
-    const number=`${quote.reference}-${purpose==="deposit"?"D":"B"}`;
-    let [invoice]=await tx.select().from(invoices).where(and(eq(invoices.organisationId,quote.organisationId),eq(invoices.quoteId,quote.id),eq(invoices.number,number))).for("update").limit(1);
-    if(invoice?.status==="void")throw new Error("INVOICE_VOID");
-    if(!invoice){
-      // Allocate VAT proportionately from the immutable quote, preserving its rounding.
-      const vatMinor=purpose==="deposit"?Math.round(quote.vatMinor*amountMinor/quote.totalMinor):quote.vatMinor-Math.round(quote.vatMinor*quote.depositMinor/quote.totalMinor);
-      [invoice]=await tx.insert(invoices).values({organisationId:quote.organisationId,jobId:quote.jobId,quoteId:quote.id,number,status:"open",currency:quote.currency,subtotalMinor:amountMinor-vatMinor,vatMinor,totalMinor:amountMinor,dueAt:purpose==="deposit"?quote.expiresAt:new Date(Date.now()+14*86400000),issuedAt:new Date()}).returning();
-      await tx.insert(invoiceLineItems).values({organisationId:quote.organisationId,invoiceId:invoice.id,description:`${purpose} for ${String(quote.pricingSnapshot.service??"survey")}`,unitAmountMinor:invoice.subtotalMinor,vatBasisPoints:Number(quote.pricingSnapshot.vatBasisPoints??0)});
-      await tx.insert(auditEvents).values({organisationId:quote.organisationId,action:`invoice.${purpose}_issued`,resourceType:"invoice",resourceId:invoice.id,metadata:{quoteId:quote.id,amountMinor}});
+    const balance=await invoiceBalance(tx,invoice);
+    if(existing?.payment.succeededAt)return existing;
+    if(balance.outstandingMinor<=0)throw new Error("NO_BALANCE_DUE");
+    if(existing){
+      if(existing.payment.stripeCheckoutSessionId && existing.payment.amountMinor!==balance.outstandingMinor)throw new Error("CHECKOUT_AMOUNT_CHANGED");
+      if(existing.payment.amountMinor!==balance.outstandingMinor){const [updated]=await tx.update(clientPayments).set({amountMinor:balance.outstandingMinor,updatedAt:new Date()}).where(eq(clientPayments.id,existing.payment.id)).returning();return{invoice,payment:updated};}
+      return existing;
     }
-    const [payment]=await tx.insert(clientPayments).values({organisationId:quote.organisationId,invoiceId:invoice.id,quoteId:quote.id,purpose,currency:invoice.currency,amountMinor:invoice.totalMinor}).returning();
+    const [payment]=await tx.insert(clientPayments).values({organisationId:quote.organisationId,invoiceId:invoice.id,quoteId:quote.id,purpose,currency:invoice.currency,amountMinor:balance.outstandingMinor}).returning();
     return{invoice,payment};
   });
+}
+
+/** Issue the deposit/balance from its accepted pricing snapshot without reserving processor payment. */
+export async function ensureQuoteInvoice(tx: TenantTransaction, quote: typeof customerQuotes.$inferSelect, purpose: "deposit" | "balance") {
+  const amountMinor = purpose === "deposit" ? quote.depositMinor : Math.max(0, quote.totalMinor-quote.depositMinor);
+  if (amountMinor <= 0) throw new Error("NO_BALANCE_DUE");
+  const number = `${quote.reference}-${purpose === "deposit" ? "D" : "B"}`;
+  let [invoice]=await tx.select().from(invoices).where(and(eq(invoices.organisationId,quote.organisationId),eq(invoices.quoteId,quote.id),eq(invoices.number,number))).for("update").limit(1);
+  if(invoice?.status==="void")throw new Error("INVOICE_VOID");
+  if(!invoice){
+    // Allocate VAT proportionately from the immutable quote, preserving its rounding.
+    const vatMinor=purpose==="deposit"?Math.round(quote.vatMinor*amountMinor/quote.totalMinor):quote.vatMinor-Math.round(quote.vatMinor*quote.depositMinor/quote.totalMinor);
+    [invoice]=await tx.insert(invoices).values({organisationId:quote.organisationId,jobId:quote.jobId,quoteId:quote.id,number,status:"open",currency:quote.currency,subtotalMinor:amountMinor-vatMinor,vatMinor,totalMinor:amountMinor,dueAt:purpose==="deposit"?quote.expiresAt:new Date(Date.now()+14*86400000),issuedAt:new Date()}).returning();
+    await tx.insert(invoiceLineItems).values({organisationId:quote.organisationId,invoiceId:invoice.id,description:`${purpose} for ${String(quote.pricingSnapshot.service??"survey")}`,unitAmountMinor:invoice.subtotalMinor,vatBasisPoints:Number(quote.pricingSnapshot.vatBasisPoints??0)});
+    await tx.insert(auditEvents).values({organisationId:quote.organisationId,action:`invoice.${purpose}_issued`,resourceType:"invoice",resourceId:invoice.id,metadata:{quoteId:quote.id,amountMinor}});
+  }
+  return invoice;
 }
 
 export async function settleBalancePayment(input: { paymentId: string; checkoutSessionId: string; paymentIntentId: string | null }) {
@@ -162,8 +180,7 @@ export async function settleBalancePayment(input: { paymentId: string; checkoutS
     if(record.payment.succeededAt)return record.invoice.jobId;
     const status=verifiedPaymentStatus(record.payment.amountMinor,record.payment.refundedMinor);
     await tx.update(clientPayments).set({status,stripeCheckoutSessionId:input.checkoutSessionId,stripePaymentIntentId:input.paymentIntentId,succeededAt:new Date(),updatedAt:new Date()}).where(eq(clientPayments.id,record.payment.id));
-    const net=record.payment.amountMinor-record.payment.refundedMinor;
-    await tx.update(invoices).set({status:net>=record.invoice.totalMinor?"paid":net>0?"part_paid":"open",paidAt:net>=record.invoice.totalMinor?new Date():null,updatedAt:new Date()}).where(eq(invoices.id,record.invoice.id));
+    await refreshInvoiceBalance(tx,record.invoice);
     await tx.insert(settlementLedger).values({organisationId:record.payment.organisationId,paymentId:record.payment.id,entryType:"firm_liability",currency:record.payment.currency,amountMinor:record.payment.amountMinor,metadata:{jobId:record.invoice.jobId,purpose:"balance"}});
     await tx.insert(auditEvents).values({organisationId:record.payment.organisationId,action:"client_payment.balance_succeeded",resourceType:"client_payment",resourceId:record.payment.id,metadata:{invoiceId:record.invoice.id}});
     return record.invoice.jobId;
@@ -180,23 +197,28 @@ export async function convertPaidQuote(input: { paymentId: string; checkoutSessi
     if (!record || record.payment.purpose !== "deposit") throw new Error("Deposit payment was not found.");
     if (record.payment.succeededAt && record.quote.jobId) return record.quote.jobId;
     if (record.quote.jobId) throw new Error("Quote has already been converted.");
-    const quote = record.quote;
-    const [existingClient]=quote.clientId?await tx.select().from(clients).where(and(eq(clients.id,quote.clientId),eq(clients.organisationId,quote.organisationId))).limit(1):[];
-    const client=existingClient??(await tx.insert(clients).values({ organisationId: quote.organisationId, kind: "individual", displayName: [quote.firstName, quote.lastName].filter(Boolean).join(" ") || quote.email || quote.reference, email: quote.email, phone: quote.phone }).returning())[0];
-    const addressParts = (quote.propertyAddress ?? "Address pending").split(",").map((part) => part.trim());
-    const reportedAddress = propertyAddressSchema.safeParse(quote.answers.address).data;
-    const [existingProperty]=quote.propertyId?await tx.select().from(properties).where(and(eq(properties.id,quote.propertyId),eq(properties.organisationId,quote.organisationId),eq(properties.clientId,client.id))).limit(1):[];
-    const property=existingProperty??(await tx.insert(properties).values({ organisationId: quote.organisationId, clientId: client.id, line1: addressParts[0] || "Address pending", line2: reportedAddress && addressParts[0] === reportedAddress.line1 ? reportedAddress.line2 : undefined, city: quote.city || reportedAddress?.city || addressParts.at(-2) || "Unknown", postcode: quote.postcode || reportedAddress?.postcode || "UNKNOWN", country: reportedAddress?.country ?? "ENG", propertyType: typeof quote.answers.reportedPropertyType === "string" ? quote.answers.reportedPropertyType.slice(0, 100) : undefined, addressSource: "customer_quote" }).returning())[0];
-    const [job] = await tx.insert(jobs).values({ organisationId: quote.organisationId, clientId: client.id, propertyId: property.id, reference: quote.reference.replace("SVQ", "SVJ"), serviceName: String((quote.pricingSnapshot as Record<string, unknown>).service ?? "Survey"), stage: "instructed", fee: (quote.totalMinor / 100).toFixed(2), notes: `Customer quote ${quote.reference}; customer statements remain unverified.` }).returning();
-    await tx.update(customerQuotes).set({ status: "converted", clientId: client.id, propertyId: property.id, jobId: job.id, updatedAt: new Date(), version: quote.version + 1 }).where(eq(customerQuotes.id, quote.id));
-    const net=record.payment.amountMinor-record.payment.refundedMinor;
-    await tx.update(invoices).set({ jobId: job.id, status: net>=record.invoice.totalMinor?"paid":net>0?"part_paid":"open", paidAt: net>=record.invoice.totalMinor?new Date():null, updatedAt: new Date() }).where(eq(invoices.id, record.invoice.id));
+    const jobId = await instructPaidQuote(tx, record.quote, record.invoice.id, record.payment.id);
     await tx.update(clientPayments).set({ status: verifiedPaymentStatus(record.payment.amountMinor,record.payment.refundedMinor), stripeCheckoutSessionId: input.checkoutSessionId, stripePaymentIntentId: input.paymentIntentId, succeededAt: new Date(), updatedAt: new Date() }).where(eq(clientPayments.id, record.payment.id));
-    await tx.insert(settlementLedger).values({ organisationId: quote.organisationId, paymentId: record.payment.id, entryType: "firm_liability", currency: quote.currency, amountMinor: record.payment.amountMinor, metadata: { quoteId: quote.id, jobId: job.id } });
-    await tx.insert(quoteSnapshots).values({ organisationId: quote.organisationId, quoteId: quote.id, event: "converted", snapshot: { ...publicQuote({ ...quote, status: "converted", clientId: client.id, propertyId: property.id, jobId: job.id }), clientId: client.id, propertyId: property.id, jobId: job.id } });
-    await tx.insert(auditEvents).values({ organisationId: quote.organisationId, action: "quote.converted", resourceType: "job", resourceId: job.id, metadata: { quoteId: quote.id, paymentId: record.payment.id } });
-    return job.id;
+    await refreshInvoiceBalance(tx,record.invoice);
+    await tx.insert(settlementLedger).values({ organisationId: record.quote.organisationId, paymentId: record.payment.id, entryType: "firm_liability", currency: record.quote.currency, amountMinor: record.payment.amountMinor, metadata: { quoteId: record.quote.id, jobId } });
+    return jobId;
   });
+}
+
+/** Caller holds the quote and deposit invoice locks; receipt verification stays in its transaction. */
+export async function instructPaidQuote(tx: TenantTransaction, quote: typeof customerQuotes.$inferSelect, invoiceId: string, paymentId: string, actorUserId?: string) {
+  const [existingClient]=quote.clientId?await tx.select().from(clients).where(and(eq(clients.id,quote.clientId),eq(clients.organisationId,quote.organisationId))).limit(1):[];
+  const client=existingClient??(await tx.insert(clients).values({ organisationId: quote.organisationId, kind: "individual", displayName: [quote.firstName, quote.lastName].filter(Boolean).join(" ") || quote.email || quote.reference, email: quote.email, phone: quote.phone }).returning())[0];
+  const addressParts = (quote.propertyAddress ?? "Address pending").split(",").map((part) => part.trim());
+  const reportedAddress = propertyAddressSchema.safeParse(quote.answers.address).data;
+  const [existingProperty]=quote.propertyId?await tx.select().from(properties).where(and(eq(properties.id,quote.propertyId),eq(properties.organisationId,quote.organisationId),eq(properties.clientId,client.id))).limit(1):[];
+  const property=existingProperty??(await tx.insert(properties).values({ organisationId: quote.organisationId, clientId: client.id, line1: addressParts[0] || "Address pending", line2: reportedAddress && addressParts[0] === reportedAddress.line1 ? reportedAddress.line2 : undefined, city: quote.city || reportedAddress?.city || addressParts.at(-2) || "Unknown", postcode: quote.postcode || reportedAddress?.postcode || "UNKNOWN", country: reportedAddress?.country ?? "ENG", propertyType: typeof quote.answers.reportedPropertyType === "string" ? quote.answers.reportedPropertyType.slice(0, 100) : undefined, addressSource: "customer_quote" }).returning())[0];
+  const [job] = await tx.insert(jobs).values({ organisationId: quote.organisationId, clientId: client.id, propertyId: property.id, reference: quote.reference.replace("SVQ", "SVJ"), serviceName: String((quote.pricingSnapshot as Record<string, unknown>).service ?? "Survey"), stage: "instructed", fee: (quote.totalMinor / 100).toFixed(2), notes: `Customer quote ${quote.reference}; customer statements remain unverified.` }).returning();
+  await tx.update(customerQuotes).set({ status: "converted", clientId: client.id, propertyId: property.id, jobId: job.id, updatedAt: new Date(), version: quote.version + 1 }).where(eq(customerQuotes.id, quote.id));
+  await tx.update(invoices).set({ jobId: job.id, updatedAt: new Date() }).where(eq(invoices.id, invoiceId));
+  await tx.insert(quoteSnapshots).values({ organisationId: quote.organisationId, quoteId: quote.id, event: "converted", snapshot: { ...publicQuote({ ...quote, status: "converted", clientId: client.id, propertyId: property.id, jobId: job.id }), clientId: client.id, propertyId: property.id, jobId: job.id } });
+  await tx.insert(auditEvents).values({ organisationId: quote.organisationId, actorUserId, action: "quote.converted", resourceType: "job", resourceId: job.id, metadata: { quoteId: quote.id, paymentId: paymentId } });
+  return job.id;
 }
 
 export async function listFirmOperations(organisationId: string, viewer?: { role: OrganisationRole; userId: string | null }) {
@@ -215,7 +237,7 @@ export async function listFirmOperations(organisationId: string, viewer?: { role
       tx.select(staffQuoteColumns).from(customerQuotes).where(eq(customerQuotes.organisationId, organisationId)).orderBy(desc(customerQuotes.updatedAt)).limit(100),
       tx.select().from(appointments).where(and(eq(appointments.organisationId, organisationId), gt(appointments.endsAt, new Date(Date.now() - 31 * 86_400_000)))).orderBy(asc(appointments.startsAt)).limit(200),
       tx.select({ id: organisationDocuments.id, name: organisationDocuments.name, category: organisationDocuments.category, accessClass: organisationDocuments.accessClass, checksum: organisationDocuments.checksum, sizeBytes: organisationDocuments.sizeBytes, legalHold: organisationDocuments.legalHold, retentionUntil: organisationDocuments.retentionUntil, createdAt: organisationDocuments.createdAt }).from(organisationDocuments).where(and(eq(organisationDocuments.organisationId, organisationId), isNull(organisationDocuments.deletedAt), viewer ? documentAccess(viewer.role, viewer.userId) : undefined)).orderBy(desc(organisationDocuments.createdAt)).limit(200),
-      tx.execute(sql`with paid as (select invoice_id, sum(amount_minor-refunded_minor)::bigint net from client_payments where organisation_id=${organisationId} and status in ('succeeded','partially_refunded','refunded') group by invoice_id) select (select count(*)::int from customer_quotes where organisation_id=${organisationId}) quotes, (select count(*)::int from customer_quotes where organisation_id=${organisationId} and status='converted') converted, (select coalesce(sum(net),0)::bigint from paid) receipts, coalesce(sum(case when i.status not in ('void','draft') then greatest(0,i.total_minor-coalesce(p.net,0)) else 0 end),0)::bigint outstanding, count(*)::int invoices from invoices i left join paid p on p.invoice_id=i.id where i.organisation_id=${organisationId}`),
+      tx.execute(sql`with paid as (select invoice_id, sum(amount_minor-refunded_minor)::bigint net from client_payments where organisation_id=${organisationId} and status in ('succeeded','partially_refunded','refunded') group by invoice_id) select (select count(*)::int from customer_quotes where organisation_id=${organisationId}) quotes, (select count(*)::int from customer_quotes where organisation_id=${organisationId} and status='converted') converted, (select coalesce(sum(net),0)::bigint from paid) receipts, coalesce(sum(case when i.status not in ('void','draft') then greatest(0,i.total_minor-coalesce((select sum(c.amount_minor) from invoice_credits c where c.invoice_id=i.id and c.organisation_id=i.organisation_id),0)-coalesce(p.net,0)) else 0 end),0)::bigint outstanding, count(*)::int invoices from invoices i left join paid p on p.invoice_id=i.id where i.organisation_id=${organisationId}`),
     ]);
     // Paginate invoices before joining their complete payment history; a payment must never duplicate an invoice.
     const invoiceRows = await tx.select().from(invoices).where(eq(invoices.organisationId, organisationId)).orderBy(desc(invoices.createdAt)).limit(100);
@@ -223,13 +245,15 @@ export async function listFirmOperations(organisationId: string, viewer?: { role
       select invoice_id, sum(amount_minor-refunded_minor)::bigint net from client_payments
       where organisation_id=${organisationId} and status in ('succeeded','partially_refunded','refunded') group by invoice_id
     ) select i.currency, coalesce(sum(p.net),0)::bigint receipts,
-      coalesce(sum(case when i.status not in ('void','draft') then greatest(0,i.total_minor-coalesce(p.net,0)) else 0 end),0)::bigint outstanding,
+      coalesce(sum(case when i.status not in ('void','draft') then greatest(0,i.total_minor-coalesce((select sum(c.amount_minor) from invoice_credits c where c.invoice_id=i.id and c.organisation_id=i.organisation_id),0)-coalesce(p.net,0)) else 0 end),0)::bigint outstanding,
       count(*)::int invoices from invoices i left join paid p on p.invoice_id=i.id where i.organisation_id=${organisationId} group by i.currency order by i.currency`);
     const paymentRows = invoiceRows.length ? await tx.select().from(clientPayments).where(and(eq(clientPayments.organisationId, organisationId),inArray(clientPayments.invoiceId,invoiceRows.map(row=>row.id)))).orderBy(asc(clientPayments.createdAt)) : [];
+    const creditRows = invoiceRows.length ? await tx.select().from(invoiceCredits).where(and(eq(invoiceCredits.organisationId,organisationId),inArray(invoiceCredits.invoiceId,invoiceRows.map(row=>row.id)))) : [];
     const finance = invoiceRows.map(invoice => {
       const payments = paymentRows.filter(p => p.invoiceId === invoice.id);
       const paidMinor = payments.filter(p => ["succeeded","partially_refunded","refunded"].includes(p.status)).reduce((n,p)=>n+p.amountMinor-p.refundedMinor,0);
-      return { invoice, payment: payments.at(-1) ?? null, payments, paidMinor, outstandingMinor: ["void","draft"].includes(invoice.status)?0:Math.max(0,invoice.totalMinor-paidMinor) };
+      const creditedMinor = creditRows.filter(c=>c.invoiceId===invoice.id).reduce((sum,c)=>sum+c.amountMinor,0);
+      return { invoice, creditedMinor, adjustedTotalMinor:invoice.totalMinor-creditedMinor, payment: payments.at(-1) ?? null, payments, paidMinor, outstandingMinor: ["void","draft"].includes(invoice.status)?0:Math.max(0,invoice.totalMinor-creditedMinor-paidMinor) };
     });
     const row = totals.rows[0] as Record<string,unknown>;
     return { quotes: viewer?.role === "finance" ? [] : quotes, appointments: viewer?.role === "finance" ? [] : scheduled, finance, documents: viewer?.role === "finance" ? [] : documents, totals: { quotes:Number(row.quotes), converted:Number(row.converted), receipts:Number(row.receipts), outstanding:Number(row.outstanding), invoices:Number(row.invoices), currencies:currencyTotals.rows.map(row=>({currency:String(row.currency),receipts:Number(row.receipts),outstanding:Number(row.outstanding),invoices:Number(row.invoices)})) } };

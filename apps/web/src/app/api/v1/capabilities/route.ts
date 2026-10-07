@@ -2,7 +2,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { calendarConnections, createDatabase, organisationOperationalSettings, referenceDataSources, referenceDatasetSyncs, withTenant } from "@surveynt/db";
 import { apiContext } from "@/lib/access";
 import { ok,problem } from "@/lib/api";
-import { integrationReadiness } from "@/lib/capabilities";
+import { calendarCapabilityState,integrationReadiness } from "@/lib/capabilities";
 import { isDemoOrganisation } from "@/lib/stakeholder-demo";
 import { canRecord, canApprove } from "@/lib/professional-access";
 import { firmCapabilityVisible } from "@/lib/integration-access";
@@ -10,7 +10,7 @@ import { firmCapabilityVisible } from "@/lib/integration-access";
 export async function GET(request:Request){
   const context=await apiContext(request);
   if(!context)return problem(401,"unauthorised","Sign in to view integration readiness.");
-  const demo=!context.demo&&await isDemoOrganisation(context.organisationId);
+  const demo=context.demo||await isDemoOrganisation(context.organisationId);
   const permitted=(key:string)=>firmCapabilityVisible(context.role,key);
   const rows=integrationReadiness(demo).filter(row=>permitted(row.key)),canConfigure=["owner","administrator","manager"].includes(context.role);
   if(context.role!=="finance")rows.push(
@@ -23,7 +23,7 @@ export async function GET(request:Request){
       tx.select().from(organisationOperationalSettings).where(eq(organisationOperationalSettings.organisationId,context.organisationId)).limit(1),
       tx.select({key:referenceDataSources.key,enabled:referenceDataSources.enabled,verifiedAt:referenceDataSources.verifiedAt,coverage:referenceDataSources.coverage,lastFailureAt:referenceDataSources.lastFailureAt,lastSuccessAt:referenceDataSources.lastSuccessAt}).from(referenceDataSources).where(inArray(referenceDataSources.key,["hmlr_inspire","epc_england_wales"])),
       tx.select({sourceKey:referenceDatasetSyncs.sourceKey,layer:referenceDatasetSyncs.layer,version:referenceDatasetSyncs.datasetVersion,status:referenceDatasetSyncs.status,records:referenceDatasetSyncs.recordCount,activatedAt:referenceDatasetSyncs.activatedAt,startedAt:referenceDatasetSyncs.startedAt,validation:referenceDatasetSyncs.validation}).from(referenceDatasetSyncs).where(inArray(referenceDatasetSyncs.sourceKey,["hmlr_inspire","epc_england_wales"])).orderBy(desc(referenceDatasetSyncs.startedAt)).limit(100),
-      tx.select({provider:calendarConnections.provider,status:calendarConnections.status}).from(calendarConnections).where(and(eq(calendarConnections.organisationId,context.organisationId),eq(calendarConnections.userId,context.internalUserId!))),
+      tx.select({provider:calendarConnections.provider,status:calendarConnections.status,lastError:calendarConnections.lastError,webhookChannelId:calendarConnections.webhookChannelId,webhookExpiresAt:calendarConnections.webhookExpiresAt}).from(calendarConnections).where(and(eq(calendarConnections.organisationId,context.organisationId),eq(calendarConnections.userId,context.internalUserId!))),
     ]);
     const firm=settings[0];
     for(const row of rows){
@@ -31,8 +31,9 @@ export async function GET(request:Request){
       if(row.key==="payments"&&process.env.STRIPE_CLIENT_PAYMENTS_KEY)row.state=process.env.CLIENT_PAYMENTS_LAUNCH_APPROVED==="true"&&firm?.clientPaymentsEnabled&&process.env.STRIPE_WEBHOOK_SECRET?"Available":"Pending approval";
       if(row.key==="google"||row.key==="microsoft"){
         const configured=row.state==="Available"&&Boolean(process.env.CALENDAR_WEBHOOK_SECRET)&&Buffer.from(process.env.CALENDAR_TOKEN_ENCRYPTION_KEY??"","base64").length===32;
-        const connection=connections.find(item=>item.provider===row.key);
-        row.state=!configured?"Setup required":connection?.status==="active"?"Available":connection&&["error","revoked","expired"].includes(connection.status)?"Sync error":"Setup required";
+        const providerConnections=connections.filter(item=>item.provider===row.key),connection=providerConnections[0];
+        row.state=calendarCapabilityState(configured,providerConnections);
+        if(configured&&providerConnections.some(item=>item.status==="active")&&row.state==="Sync error")row.detail="A connected account has a calendar error, a missing notification channel, or an expired/unknown subscription deadline. Review connection and platform delivery health; manual reconciliation remains available.";
         if(configured)row.connectHref=`/api/v1/calendar/oauth/connect?provider=${row.key}`;
         row.action=connection?"Reconnect your calendar":"Connect your calendar";
       }

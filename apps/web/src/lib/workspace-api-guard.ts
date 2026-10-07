@@ -3,8 +3,10 @@ import { problem } from "./api";
 import { canApprove, canRecord, professionalApiGuard, type ProfessionalAccess } from "./professional-access";
 import { canAccessAssignedResource, type WorkspaceViewer } from "./workspace-scope";
 
-export async function workspaceApiGuard(request: Request, context: WorkspaceViewer & ProfessionalAccess & { demo?: boolean }) {
+export async function workspaceApiGuard(request: Request, context: WorkspaceViewer & ProfessionalAccess & { demo?: boolean; accessLevel?: "full" | "billing_only" | "read_only" | "blocked" }) {
   const path = new URL(request.url).pathname.replace(/^\/api\/v1\//, "");
+  if (context.accessLevel === "blocked") return problem(403, "workspace_suspended", "Workspace access is suspended. Contact your practice owner or Surveynt support.");
+  if (context.accessLevel === "billing_only" && !/^(billing|me|capabilities)(\/|$)/.test(path)) return problem(402, "billing_required", "Complete billing setup before opening workspace records.");
   const management = isManagementRole(context.role);
   if (/^(team|invitations)(\/|$)/.test(path) && !["owner", "administrator"].includes(context.role)) return problem(403, "forbidden", "Only owners and administrators can manage staff access.");
   if (/^(operations|service-catalogue|quotes|insights)(\/|$)/.test(path) && !management) return problem(403, "forbidden", "This area is restricted to practice management.");

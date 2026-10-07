@@ -18,5 +18,5 @@ export default async function Page({ params,searchParams }: PageProps<"/app/[org
   if((await searchParams).view==="quotes")return operationsPage("customers",params);
   const {organisationSlug}=await params; await requireWorkspacePageAccess(organisationSlug, "customers");
   const [clients,access]=await Promise.all([loadClients(organisationSlug),requireFirmAccess(organisationSlug)]);
-  return <main className="page"><PageHeader title="Customers" description="People and organisations, connected to their properties and survey work."/><ClientRegister clients={clients} canEdit={access.accessLevel==="full"&&canMutateOperations(access.userRole) && access.userRole !== "surveyor"}/></main>;
+  return <main className="page"><PageHeader title="Customers" description="People and organisations, connected to their properties and survey work."/><ClientRegister organisationSlug={organisationSlug} clients={clients} canEdit={access.accessLevel==="full"&&canMutateOperations(access.userRole) && access.userRole !== "surveyor"}/></main>;
 }

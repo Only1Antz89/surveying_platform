@@ -37,7 +37,7 @@ export async function PATCH(request: Request) {
     const {clientPaymentsEnabled, ...operational} = parsed.data;
     const permittedSettings = canConfigureClientPayments(context.role) ? {...operational,clientPaymentsEnabled} : operational;
     const [row] = await tx.insert(organisationOperationalSettings).values({ organisationId: context.organisationId, ...permittedSettings }).onConflictDoUpdate({ target: organisationOperationalSettings.organisationId, set: { ...permittedSettings, updatedAt: new Date() } }).returning();
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "operations.settings_updated", resourceType: "organisation", resourceId: context.organisationId, metadata: { publicQuotesEnabled: row.publicQuotesEnabled, clientPaymentsEnabled: row.clientPaymentsEnabled } });
+    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "operations.settings_updated", resourceType: "organisation", resourceId: context.organisationId, metadata: { publicQuotesEnabled: row.publicQuotesEnabled, clientPaymentsEnabled: row.clientPaymentsEnabled, notificationPreferences: row.notificationPreferences } });
     return row;
   });
   if(!saved)return problem(403,"forbidden","Only practice owners and administrators can configure client payments.");

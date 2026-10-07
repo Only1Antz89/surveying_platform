@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { and, eq } from "drizzle-orm";
-import { availabilityBlocks, calendarConflicts, calendarConnections, clientPayments, createDatabase, invoices, organisationDocuments, organisationMemberships, organisationOperationalSettings, organisations, settlementLedger, users, type Database } from "@surveynt/db";
+import { appointments, backgroundJobs, jobStageEvents, auditEvents, clients, jobs, properties, availabilityBlocks, calendarConflicts, calendarConnections, clientPayments, createDatabase, invoices, organisationDocuments, reportDeliveries, organisationMemberships, organisationOperationalSettings, organisations, settlementLedger, users, type Database } from "@surveynt/db";
 import { createTestDatabase, integrationEnabled, stopRelay, type TestDatabase } from "@surveynt/db/testing";
 import { syncSourceRegistry } from "@surveynt/property-data/importers";
 import Stripe from "stripe";
@@ -9,14 +9,20 @@ vi.mock("server-only", () => ({}));
 const state=vi.hoisted(()=>({context:{organisationId:"",internalUserId:"",userId:"user_api_owner",role:"owner",demo:false,accessLevel:"full"},remove:vi.fn(),get:vi.fn(),put:vi.fn(async()=>undefined)}));
 vi.mock("../src/lib/access",()=>({apiContext:async()=>state.context,canWriteWorkspace:()=>true,isClerkConfigured:()=>false}));
 vi.mock("../src/lib/storage",()=>({getObjectStorage:()=>({remove:state.remove,get:state.get,put:state.put}),maxUploadBytes:()=>10000}));
+import { processDocumentRemovalQueue } from "../src/lib/document-removal";
+import { POST as reviewRemoval } from "../src/app/api/v1/documents/[id]/removal-review/route";
+import { POST as requestRemoval, PATCH as cancelRemoval } from "../src/app/api/v1/documents/[id]/removal/route";
+import { PATCH as saveTemplates } from "../src/app/api/v1/operations/email-templates/route";
+import { PATCH as reviewRetention } from "../src/app/api/v1/documents/[id]/retention/route";
 import { GET as capabilities } from "../src/app/api/v1/capabilities/route";
 import { GET as demoCatalogue, POST as demoAction } from "../src/app/api/v1/demo/route";
-import { GET as download, DELETE as archive, PATCH as protection } from "../src/app/api/v1/documents/[id]/route";
+import { GET as download, DELETE as archive, PATCH as protection, POST as restore } from "../src/app/api/v1/documents/[id]/route";
 import { POST as createInvoice } from "../src/app/api/v1/finance/invoices/route";
 import { GET as invoiceDetail, POST as invoiceAction } from "../src/app/api/v1/finance/invoices/[id]/route";
+import { POST as manageAppointment } from "../src/app/api/v1/calendar/appointments/route";
 import { GET as availability } from "../src/app/api/v1/calendar/availability/route";
 import { POST as settlement } from "../src/app/api/v1/finance/settlements/route";
-import { POST as upload } from "../src/app/api/v1/documents/route";
+import { POST as upload, GET as documentList } from "../src/app/api/v1/documents/route";
 import { POST as stripeWebhook } from "../src/app/api/webhooks/stripe/route";
 
 describe.skipIf(!integrationEnabled)("polish API safety and readiness",()=>{
@@ -180,4 +186,283 @@ describe.skipIf(!integrationEnabled)("polish API safety and readiness",()=>{
     await db.update(organisationDocuments).set({legalHold:true}).where(eq(organisationDocuments.id,current.id));
     expect((await upload(replace(current.id,current.checksum))).status).toBe(409);expect(state.put).toHaveBeenCalledTimes(1);
   });
+  it("protects report delivery originals and rejects references after removal begins",async()=>{
+    Object.assign(state.context,{organisationId:orgId,role:"owner"});
+    const [client]=await db.insert(clients).values({organisationId:orgId,kind:"individual",displayName:"Report reference client"}).returning();
+    const [property]=await db.insert(properties).values({organisationId:orgId,clientId:client.id,line1:"3 Fictional Road",city:"Bristol",postcode:"BS1 1AA"}).returning();
+    const [job]=await db.insert(jobs).values({organisationId:orgId,clientId:client.id,propertyId:property.id,reference:"REFERENCE-JOB",serviceName:"Fictional survey"}).returning();
+    const id=crypto.randomUUID(),pendingId=crypto.randomUUID(),raceId=crypto.randomUUID();
+    const originals=await db.insert(organisationDocuments).values([id,pendingId,raceId].map(documentId=>({id:documentId,organisationId:orgId,name:"Archived report evidence",category:"practice",blobUrl:"private://reference",blobPathname:`organisations/${orgId}/documents/${documentId}/original`,checksum:"reference-checksum",contentType:"text/plain",sizeBytes:1,deletedAt:new Date(),retentionUntil:new Date(Date.now()-60000)}))).returning();
+    const delivery={organisationId:orgId,jobId:job.id,reportVersionId:crypto.randomUUID(),documentId:id,recipient:"fictional@example.test"};
+    await db.insert(reportDeliveries).values(delivery);
+    const review={expectedChecksum:originals[0].checksum,expectedUpdatedAt:originals[0].updatedAt.toISOString(),reason:"Fictional reviewed removal request",confirmed:true};
+    expect((await requestRemoval(request("/api/v1/documents/id/removal","POST",review),{params:Promise.resolve({id})})).status).toBe(409);
+    await expect(db.update(organisationDocuments).set({purgeStatus:"pending",purgeRequestedAt:new Date()}).where(eq(organisationDocuments.id,id))).rejects.toThrow();
+    await db.update(organisationDocuments).set({purgeStatus:"pending",purgeRequestedAt:new Date()}).where(eq(organisationDocuments.id,pendingId));
+    await expect(db.insert(reportDeliveries).values({...delivery,documentId:pendingId})).rejects.toThrow();
+    await expect(db.insert(reportDeliveries).values({...delivery,organisationId:demoId})).rejects.toThrow();
+    const racing=await Promise.allSettled([
+      db.insert(reportDeliveries).values({...delivery,documentId:raceId}),
+      db.update(organisationDocuments).set({purgeStatus:"pending",purgeRequestedAt:new Date()}).where(eq(organisationDocuments.id,raceId)),
+    ]);
+    expect(racing.filter(result=>result.status==="fulfilled")).toHaveLength(1);
+    expect(racing.filter(result=>result.status==="rejected")).toHaveLength(1);
+    const [raced]=await db.select().from(organisationDocuments).where(eq(organisationDocuments.id,raceId));
+    const references=await db.select().from(reportDeliveries).where(eq(reportDeliveries.documentId,raceId));
+    expect(references.length).toBe(raced.purgeStatus==="retained"?1:0);
+    expect(state.remove).not.toHaveBeenCalled();
+  });
+  it("preserves no-expiry retention and an unassigned job on replacement",async()=>{
+    Object.assign(state.context,{organisationId:orgId,role:"owner"});
+    const [original]=await db.insert(organisationDocuments).values({organisationId:orgId,name:"No expiry original",category:"compliance",accessClass:"restricted",blobUrl:"private://no-expiry",blobPathname:"no-expiry",checksum:"no-expiry-checksum",contentType:"text/plain",sizeBytes:1,retentionUntil:null,jobId:null}).returning();
+    const [client]=await db.insert(clients).values({organisationId:orgId,kind:"individual",displayName:"Replacement association client"}).returning();
+    const [property]=await db.insert(properties).values({organisationId:orgId,clientId:client.id,line1:"2 Fictional Road",city:"Bristol",postcode:"BS1 1AA"}).returning();
+    const [job]=await db.insert(jobs).values({organisationId:orgId,clientId:client.id,propertyId:property.id,reference:"REPLACEMENT-JOB",serviceName:"Fictional survey"}).returning();
+    const form=new FormData();form.set("jobId",job.id);form.set("replaceId",original.id);form.set("expectedChecksum",original.checksum);form.set("file",new File(["Fictional replacement"],"replacement.txt",{type:"text/plain"}));
+    const response=await upload(new Request("http://surveynt.test/api/v1/documents",{method:"POST",body:form}));expect(response.status).toBe(200);
+    const payload=await response.json();const [replacement]=await db.select().from(organisationDocuments).where(eq(organisationDocuments.id,payload.data.id));
+    expect(replacement).toMatchObject({retentionUntil:null,jobId:null,accessClass:"restricted",category:"compliance"});
+    const [archived]=await db.select().from(organisationDocuments).where(eq(organisationDocuments.id,original.id));expect(archived.retentionUntil).toBeNull();expect(archived.deletedAt).not.toBeNull();expect(state.remove).not.toHaveBeenCalled();
+  });
+  it("assigns upload access and rejects missing or foreign jobs before storage writes", async () => {
+    Object.assign(state.context, { organisationId: orgId, role: "owner" });
+    const [client] = await db.insert(clients).values({ organisationId: orgId, kind: "individual", displayName: "Fictional file client" }).returning();
+    const [property] = await db.insert(properties).values({ organisationId: orgId, clientId: client.id, line1: "1 Fictional Road", city: "Bristol", postcode: "BS1 1AA" }).returning();
+    const [job] = await db.insert(jobs).values({ organisationId: orgId, clientId: client.id, propertyId: property.id, reference: "DOCUMENT-JOB", serviceName: "Fictional survey" }).returning();
+    const submit = (accessClass: string, jobId?: string) => {
+      const form = new FormData();
+      form.set("file", new File(["Fictional job instructions"], "instructions.txt", { type: "text/plain" }));
+      form.set("accessClass", accessClass);
+      if (jobId) form.set("jobId", jobId);
+      return upload(new Request("http://surveynt.test/api/v1/documents", { method: "POST", body: form }));
+    };
+    const writes = state.put.mock.calls.length;
+    expect((await submit("unknown")).status).toBe(400);
+    expect((await submit("job")).status).toBe(400);
+    expect((await submit("job", crypto.randomUUID())).status).toBe(400);
+    state.context.organisationId = demoId;
+    expect((await submit("job", job.id)).status).toBe(400);
+    state.context.organisationId = orgId;
+    expect(state.put.mock.calls.length).toBe(writes);
+    const response = await submit("job", job.id);
+    expect(response.ok).toBe(true);
+    const body = await response.json();
+    const [document] = await db.select().from(organisationDocuments).where(eq(organisationDocuments.id, body.data.id));
+    expect(document).toMatchObject({ jobId: job.id, accessClass: "job" });
+    const restricted = await submit("restricted");
+    const [privateDocument] = await db.select().from(organisationDocuments).where(eq(organisationDocuments.id, (await restricted.json()).data.id));
+    expect(privateDocument.accessClass).toBe("restricted");
+  });
+  it("recovers archived originals with tenant, permission and checksum checks", async () => {
+    Object.assign(state.context, { organisationId: orgId, role: "owner" });
+    const retainedUntil = new Date(Date.now() + 86400000);
+    const [document] = await db.insert(organisationDocuments).values({ organisationId: orgId, name: "Archived fixture", category: "legal", accessClass: "restricted", blobUrl: "private://recovery", blobPathname: "recovery", checksum: "recovery-checksum", contentType: "text/plain", sizeBytes: 1, deletedAt: new Date(), retentionUntil: retainedUntil, legalHold: true }).returning();
+    const route = { params: Promise.resolve({ id: document.id }) };
+    const body = { action: "restore", expectedChecksum: document.checksum };
+    const list = await (await documentList(request("/api/v1/documents?archived=true"))).json();
+    expect(list.data.some((row: {id: string}) => row.id === document.id)).toBe(true);
+    state.context.role = "surveyor";
+    expect((await documentList(request("/api/v1/documents?archived=true"))).status).toBe(403);
+    expect((await restore(request("/api/v1/documents/id", "POST", body), route)).status).toBe(403);
+    state.context.role = "owner";
+    state.context.organisationId = demoId;
+    expect((await restore(request("/api/v1/documents/id", "POST", body), route)).status).toBe(404);
+    state.context.organisationId = orgId;
+    expect((await restore(request("/api/v1/documents/id", "POST", { ...body, expectedChecksum: "stale" }), route)).status).toBe(409);
+    const replies = await Promise.all([restore(request("/api/v1/documents/id", "POST", body), route), restore(request("/api/v1/documents/id", "POST", body), route)]);
+    expect(replies.map(reply => reply.status).sort()).toEqual([200, 404]);
+    const [recovered] = await db.select().from(organisationDocuments).where(eq(organisationDocuments.id, document.id));
+    expect(recovered).toMatchObject({ deletedAt: null, blobPathname: "recovery", checksum: document.checksum, legalHold: true, retentionUntil: retainedUntil });
+    expect(await db.select().from(auditEvents).where(and(eq(auditEvents.resourceId, document.id), eq(auditEvents.action, "document.restored")))).toHaveLength(1);
+    expect(state.remove).not.toHaveBeenCalled();
+  });
+
+  it("reviews archived retention with current protection, tenant and permission guards",async()=>{
+    Object.assign(state.context,{organisationId:orgId,role:"owner"});const retainedUntil=new Date(Date.now()+86400000);
+    const [document]=await db.insert(organisationDocuments).values({organisationId:orgId,name:"Archived retention fixture",category:"compliance",accessClass:"restricted",blobUrl:"private://retention",blobPathname:"retention",checksum:"retention-checksum",contentType:"text/plain",sizeBytes:1,deletedAt:new Date(),retentionUntil:retainedUntil,legalHold:true}).returning();
+    const route={params:Promise.resolve({id:document.id})};
+    const body={expectedChecksum:document.checksum,expectedUpdatedAt:document.updatedAt.toISOString(),expectedLegalHold:true,expectedRetentionUntil:retainedUntil.toISOString(),retentionUntil:null,legalHold:false,reason:"Fictional reviewed protection decision",confirmed:true};
+    const call=(values:unknown)=>reviewRetention(request(`/api/v1/documents/${document.id}/retention`,"PATCH",values),route);
+    state.context.role="surveyor";expect((await call(body)).status).toBe(403);state.context.role="owner";
+    state.context.organisationId=demoId;expect((await call(body)).status).toBe(404);state.context.organisationId=orgId;
+    expect((await call({...body,confirmed:false})).status).toBe(400);expect((await call({...body,expectedChecksum:"stale"})).status).toBe(409);expect((await call({...body,expectedLegalHold:false})).status).toBe(409);
+    const replies=await Promise.all([call(body),call(body)]);expect(replies.map(reply=>reply.status).sort()).toEqual([200,409]);
+    const [current]=await db.select().from(organisationDocuments).where(eq(organisationDocuments.id,document.id));expect(current).toMatchObject({legalHold:false,retentionUntil:null,blobPathname:"retention",checksum:document.checksum});expect(current.deletedAt).not.toBeNull();
+    const audit=await db.select().from(auditEvents).where(and(eq(auditEvents.resourceId,document.id),eq(auditEvents.action,"document.retention_reviewed")));expect(audit).toHaveLength(1);expect(audit[0].metadata).toMatchObject({reason:body.reason,previous:{legalHold:true},next:{legalHold:false}});expect(state.remove).not.toHaveBeenCalled();
+  });
+
+  it("returns a job to instructed only when its final planned appointment is cancelled", async () => {
+    Object.assign(state.context, { organisationId: orgId, role: "owner" });
+    const [client] = await db.insert(clients).values({ organisationId: orgId, kind: "individual", displayName: "Fictional appointment client" }).returning();
+    const [property] = await db.insert(properties).values({ organisationId: orgId, clientId: client.id, line1: "2 Fictional Road", city: "Bristol", postcode: "BS1 1AA" }).returning();
+    const [job] = await db.insert(jobs).values({ organisationId: orgId, clientId: client.id, propertyId: property.id, reference: "CANCEL-JOB", serviceName: "Fictional survey", stage: "scheduled", targetDate: "2026-10-12", assignedSurveyorId: ownerId }).returning();
+    const visits = await db.insert(appointments).values([12, 13].map(day => ({ organisationId: orgId, jobId: job.id, surveyorId: ownerId, status: "confirmed" as const, startsAt: new Date(`2026-10-${day}T09:00:00Z`), endsAt: new Date(`2026-10-${day}T10:00:00Z`) }))).returning();
+    const cancel = (visit: typeof visits[number]) => manageAppointment(request("/api/v1/calendar/appointments", "POST", { id: visit.id, version: visit.version, jobId: job.id, surveyorId: ownerId, startsAt: visit.startsAt.toISOString(), durationMinutes: 60, cancel: true }));
+    expect((await cancel(visits[0])).ok).toBe(true);
+    let [updated] = await db.select().from(jobs).where(eq(jobs.id, job.id));
+    expect(updated).toMatchObject({ stage: "scheduled", targetDate: "2026-10-13" });
+    expect((await cancel(visits[1])).ok).toBe(true);
+    [updated] = await db.select().from(jobs).where(eq(jobs.id, job.id));
+    expect(updated).toMatchObject({ stage: "instructed", targetDate: null, assignedSurveyorId: ownerId });
+    expect(await db.select().from(jobStageEvents).where(eq(jobStageEvents.jobId, job.id))).toHaveLength(1);
+    expect((await cancel(visits[1])).status).toBe(409);
+    const [completed] = await db.insert(appointments).values({ organisationId: orgId, jobId: job.id, surveyorId: ownerId, status: "completed", startsAt: new Date("2026-10-14T09:00:00Z"), endsAt: new Date("2026-10-14T10:00:00Z") }).returning();
+    expect((await cancel(completed)).status).toBe(409);
+  });
+
+  it("saves reviewed practice email templates with tenant, role, validation and concurrency guards",async()=>{
+    Object.assign(state.context,{organisationId:orgId,role:"owner",demo:false});
+    const template={customer_quote_issued:{subject:"Quote {{quoteReference}}",introduction:"Hello {{customerName}}"}};
+    const body={expected:{},templates:template,confirmed:true};
+    const save=(input:unknown)=>saveTemplates(request("/api/v1/operations/email-templates","PATCH",input));
+    state.context.role="surveyor";expect((await save(body)).status).toBe(403);state.context.role="owner";
+    expect((await save({...body,confirmed:false})).status).toBe(400);
+    expect((await save({...body,templates:{customer_quote_issued:{subject:"{{unknown}}",introduction:"Hello"}}})).status).toBe(400);
+    const responses=await Promise.all([save(body),save(body)]);expect(responses.map(response=>response.status).sort()).toEqual([200,409]);
+    const [saved]=await db.select().from(organisationOperationalSettings).where(eq(organisationOperationalSettings.organisationId,orgId));expect(saved.emailTemplates).toEqual(template);
+    state.context.organisationId=demoId;
+    expect((await save({...body,expected:template,templates:{}})).status).toBe(409);
+    expect((await db.select().from(organisationOperationalSettings).where(eq(organisationOperationalSettings.organisationId,orgId)))[0].emailTemplates).toEqual(template);
+    state.context.organisationId=orgId;
+    expect((await save({...body,expected:template,templates:{}})).status).toBe(200);
+    const audits=await db.select().from(auditEvents).where(and(eq(auditEvents.organisationId,orgId),eq(auditEvents.action,"notification.templates_updated")));expect(audits).toHaveLength(2);expect(audits[0].actorUserId).toBe(ownerId);
+  });
+
+  it("durably queues reviewed expired originals and prevents restore or protection races",async()=>{
+    Object.assign(state.context,{organisationId:orgId,role:"owner",demo:false});
+    const documentId=crypto.randomUUID();
+    const [document]=await db.insert(organisationDocuments).values({id:documentId,organisationId:orgId,name:"Expired original",category:"practice",blobUrl:"private://expired",blobPathname:`organisations/${orgId}/documents/${documentId}/original`,checksum:"review-checksum",contentType:"text/plain",sizeBytes:10,deletedAt:new Date(),retentionUntil:new Date(Date.now()-60000)}).returning();
+    const route={params:Promise.resolve({id:document.id})};
+    const body={expectedChecksum:document.checksum,expectedUpdatedAt:document.updatedAt.toISOString(),reason:"Reviewed expired practice original",confirmed:true};
+    const remove=(input:unknown)=>requestRemoval(request("/removal","POST",input),route);
+    state.context.role="surveyor";expect((await remove(body)).status).toBe(403);state.context.role="owner";
+    expect((await remove({...body,confirmed:false})).status).toBe(400);
+    expect((await remove({...body,expectedChecksum:"changed"})).status).toBe(409);
+    expect((await remove(body)).status).toBe(200);expect((await remove(body)).status).toBe(409);
+    expect((await restore(request("/restore","POST",{action:"restore",expectedChecksum:document.checksum}),route)).status).toBe(409);
+    expect((await db.select().from(organisationDocuments).where(eq(organisationDocuments.id,document.id)))[0].purgeStatus).toBe("pending");
+    expect(state.remove).not.toHaveBeenCalled();
+    expect(await db.select().from(auditEvents).where(and(eq(auditEvents.resourceId,document.id),eq(auditEvents.action,"document.removal_requested")))).toHaveLength(1);
+  });
+
+  it("deletes only after a committed claim and recovers a lost storage response without repeat deletion",async()=>{
+    const {createMemoryStorage}=await vi.importActual<typeof import("../src/lib/storage")>("../src/lib/storage");
+    const storage=createMemoryStorage();
+    const seed=async(label:string)=>{
+      const id=crypto.randomUUID(),key=`organisations/${orgId}/documents/${id}/original`;
+      void label;
+      const [document]=await db.insert(organisationDocuments).values({id,organisationId:orgId,name:"Removal worker original",category:"practice",blobUrl:`private://${key}`,blobPathname:key,checksum:"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",contentType:"text/plain",sizeBytes:3,deletedAt:new Date(),retentionUntil:new Date(Date.now()-60000),purgeStatus:"pending",purgeRequestedAt:new Date()}).returning();
+      const [job]=await db.insert(backgroundJobs).values({organisationId:orgId,queue:"document_removal",type:"remove_retained_original",payload:{documentId:document.id,checksum:document.checksum,blobPathname:key}}).returning();
+      await storage.put(key,new TextEncoder().encode("abc").buffer,"text/plain");return {document,job};
+    };
+    // The earlier request test also queued an absent original: it must be held for review.
+    const normal=await seed("worker-normal");
+    const actualRemove=storage.remove;const remove=vi.fn(async(key:string)=>{
+      const [current]=await db.select().from(organisationDocuments).where(eq(organisationDocuments.blobPathname,key));expect(current.purgeStatus).toBe("removing");await actualRemove(key);
+    });storage.remove=remove;
+    await Promise.all([processDocumentRemovalQueue(10,{db,storage}),processDocumentRemovalQueue(10,{db,storage})]);
+    expect(remove).toHaveBeenCalledTimes(1);expect((await db.select().from(organisationDocuments).where(eq(organisationDocuments.id,normal.document.id)))[0].purgeStatus).toBe("purged");
+    const lost=await seed("worker-lost");storage.remove=vi.fn(async(key:string)=>{await actualRemove(key);throw new Error("Lost deletion response");});
+    await processDocumentRemovalQueue(10,{db,storage});expect((await db.select().from(organisationDocuments).where(eq(organisationDocuments.id,lost.document.id)))[0].purgeStatus).toBe("removing");
+    await db.update(backgroundJobs).set({lockedUntil:new Date(Date.now()-600000)}).where(eq(backgroundJobs.id,lost.job.id));
+    await processDocumentRemovalQueue(10,{db,storage});expect(storage.remove).toHaveBeenCalledTimes(1);
+    expect((await db.select().from(organisationDocuments).where(eq(organisationDocuments.id,lost.document.id)))[0].purgeStatus).toBe("purged");
+    const altered=await seed("worker-altered");
+    storage.objects.set(altered.document.blobPathname,{body:new TextEncoder().encode("xyz"),contentType:"text/plain"});
+    const calls=vi.mocked(storage.remove).mock.calls.length;
+    await processDocumentRemovalQueue(10,{db,storage});
+    expect(vi.mocked(storage.remove).mock.calls.length).toBe(calls);
+    expect((await db.select().from(organisationDocuments).where(eq(organisationDocuments.id,altered.document.id)))[0].purgeStatus).toBe("verification_required");
+  });
+
+  it("cancels only a reviewed pending request and permits a fresh request",async()=>{
+    Object.assign(state.context,{organisationId:orgId,role:"owner",demo:false});
+    const id=crypto.randomUUID();
+    const [document]=await db.insert(organisationDocuments).values({id,organisationId:orgId,name:"Cancellation original",category:"practice",blobUrl:"private://cancel",blobPathname:`organisations/${orgId}/documents/${id}/original`,checksum:"cancel-checksum",contentType:"text/plain",sizeBytes:1,deletedAt:new Date(),retentionUntil:new Date(Date.now()-60000)}).returning();
+    const route={params:Promise.resolve({id})};
+    const body={expectedChecksum:document.checksum,expectedUpdatedAt:document.updatedAt.toISOString(),reason:"Reviewed cancellation before storage deletion",confirmed:true};
+    expect((await requestRemoval(request("/remove","POST",body),route)).status).toBe(200);
+    const [pending]=await db.select().from(organisationDocuments).where(eq(organisationDocuments.id,id));
+    const reviewed={...body,expectedUpdatedAt:pending.updatedAt.toISOString()};
+    expect((await cancelRemoval(request("/cancel","PATCH",body),route)).status).toBe(409);
+    const responses=await Promise.all([cancelRemoval(request("/cancel","PATCH",reviewed),route),cancelRemoval(request("/cancel","PATCH",reviewed),route)]);
+    expect(responses.map(response=>response.status).sort()).toEqual([200,409]);
+    const [retained]=await db.select().from(organisationDocuments).where(eq(organisationDocuments.id,id));expect(retained.purgeStatus).toBe("retained");
+    expect((await requestRemoval(request("/remove","POST",{...body,expectedUpdatedAt:retained.updatedAt.toISOString()}),route)).status).toBe(200);
+    await db.update(backgroundJobs).set({status:"sending"}).where(eq(backgroundJobs.deduplicationKey,`document-removal:${id}`));
+    expect((await cancelRemoval(request("/cancel","PATCH",reviewed),route)).status).toBe(409);
+    expect(await db.select().from(auditEvents).where(and(eq(auditEvents.resourceId,id),eq(auditEvents.action,"document.removal_cancelled")))).toHaveLength(1);
+  });
+
+  it("moves a newly protected original and its removal job into review together",async()=>{
+    const id=crypto.randomUUID();
+    await db.insert(organisationDocuments).values({id,organisationId:orgId,name:"Newly protected original",category:"practice",blobUrl:"private://protected",blobPathname:`organisations/${orgId}/documents/${id}/original`,checksum:"protected-checksum",contentType:"text/plain",sizeBytes:1,deletedAt:new Date(),retentionUntil:new Date(Date.now()-60000),legalHold:true,purgeStatus:"pending"});
+    const [job]=await db.insert(backgroundJobs).values({organisationId:orgId,queue:"document_removal",type:"remove_retained_original",payload:{documentId:id,checksum:"protected-checksum",blobPathname:`organisations/${orgId}/documents/${id}/original`}}).returning();
+    const remove=vi.fn(),get=vi.fn();
+    await processDocumentRemovalQueue(20,{db,storage:{name:"guard-test",get,remove,put:vi.fn()}});
+    expect((await db.select().from(backgroundJobs).where(eq(backgroundJobs.id,job.id)))[0].status).toBe("verification_required");
+    expect((await db.select().from(organisationDocuments).where(eq(organisationDocuments.id,id)))[0].purgeStatus).toBe("verification_required");
+    expect(remove).not.toHaveBeenCalled();
+    expect(await db.select().from(auditEvents).where(and(eq(auditEvents.resourceId,id),eq(auditEvents.action,"document.removal_verification_required")))).toHaveLength(1);
+  });
+
+  it("resolves reviewed storage incidents only with matching current evidence",async()=>{
+    Object.assign(state.context,{organisationId:orgId,role:"owner",demo:false});
+    const id=crypto.randomUUID(),key=`organisations/${orgId}/documents/${id}/original`;
+    const [document]=await db.insert(organisationDocuments).values({id,organisationId:orgId,name:"Reviewed absent original",category:"practice",blobUrl:`private://${key}`,blobPathname:key,checksum:"reviewed-checksum",contentType:"text/plain",sizeBytes:1,deletedAt:new Date(),purgeStatus:"verification_required"}).returning();
+    const [job]=await db.insert(backgroundJobs).values({organisationId:orgId,queue:"document_removal",type:"remove_retained_original",status:"verification_required",deduplicationKey:`document-removal:${id}`,attempts:1,leaseToken:crypto.randomUUID(),payload:{documentId:id,checksum:document.checksum,blobPathname:key}}).returning();
+    const body={outcome:"confirm_absent",expectedChecksum:document.checksum,expectedUpdatedAt:document.updatedAt.toISOString(),expectedAttempts:1,expectedLeaseToken:job.leaseToken,evidence:"Reviewed provider incident evidence; operations completed",providerOperationsSettled:true,confirmed:true};
+    const route={params:Promise.resolve({id})};
+    const review=(value:unknown)=>reviewRemoval(request("/review","POST",value),route);
+    state.get.mockReset().mockResolvedValue(null);
+    state.context.role="surveyor";expect((await review(body)).status).toBe(403);state.context.role="owner";
+    expect((await review({...body,providerOperationsSettled:false})).status).toBe(400);
+    expect((await review({...body,expectedAttempts:0})).status).toBe(409);
+    expect((await review({...body,outcome:"keep_original"})).status).toBe(409);
+    expect((await review(body)).status).toBe(200);expect((await review(body)).status).toBe(409);
+    expect((await db.select().from(organisationDocuments).where(eq(organisationDocuments.id,id)))[0].purgeStatus).toBe("purged");
+    expect(await db.select().from(auditEvents).where(and(eq(auditEvents.resourceId,id),eq(auditEvents.action,"document.removal_reviewed")))).toHaveLength(1);
+    expect(state.remove).not.toHaveBeenCalled();
+    const keptId=crypto.randomUUID(),keptKey=`organisations/${orgId}/documents/${keptId}/original`;
+    const [kept]=await db.insert(organisationDocuments).values({id:keptId,organisationId:orgId,name:"Verified retained original",category:"practice",blobUrl:`private://${keptKey}`,blobPathname:keptKey,checksum:"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",contentType:"text/plain",sizeBytes:3,deletedAt:new Date(),purgeStatus:"verification_required"}).returning();
+    const [keptJob]=await db.insert(backgroundJobs).values({organisationId:orgId,queue:"document_removal",type:"remove_retained_original",status:"verification_required",deduplicationKey:`document-removal:${keptId}`,attempts:2,leaseToken:crypto.randomUUID(),payload:{documentId:keptId,checksum:kept.checksum,blobPathname:keptKey}}).returning();
+    const keptBody={...body,expectedChecksum:kept.checksum,expectedUpdatedAt:kept.updatedAt.toISOString(),expectedAttempts:2,expectedLeaseToken:keptJob.leaseToken};
+    const keptRoute={params:Promise.resolve({id:keptId})};
+    const listed=await (await documentList(request("/api/v1/documents?archived=true"))).json();
+    expect(listed.data.find((row:{id:string})=>row.id===keptId).removalReview.attempts).toBe(2);
+    state.context.organisationId=demoId;expect((await reviewRemoval(request("/review","POST",keptBody),keptRoute)).status).toBe(404);state.context.organisationId=orgId;
+    state.get.mockImplementation(async()=>({stream:new Blob(["abc"]).stream(),contentType:"text/plain"}));
+    expect((await reviewRemoval(request("/review","POST",keptBody),keptRoute)).status).toBe(409);
+    expect((await reviewRemoval(request("/review","POST",{...keptBody,outcome:"keep_original"}),keptRoute)).status).toBe(200);
+    expect((await db.select().from(organisationDocuments).where(eq(organisationDocuments.id,keptId)))[0].purgeStatus).toBe("retained");
+    expect((await db.select().from(backgroundJobs).where(eq(backgroundJobs.id,keptJob.id)))[0]).toMatchObject({status:"cancelled",deduplicationKey:null});
+    expect(state.remove).not.toHaveBeenCalled();
+  });
+
+  it("enforces removal identity and transition protection in the database",async()=>{
+    const id=crypto.randomUUID();
+    await db.insert(organisationDocuments).values({id,organisationId:orgId,name:"Immutable pending original",category:"practice",blobUrl:"private://guard",blobPathname:`organisations/${orgId}/documents/${id}/original`,checksum:"guard-checksum",contentType:"text/plain",sizeBytes:1,deletedAt:new Date(),purgeStatus:"pending"});
+    for(const values of [{deletedAt:null},{checksum:"replacement"},{blobPathname:"another-object"},{legalHold:true},{purgeStatus:"purged",purgedAt:new Date()}]) {
+      await expect(db.update(organisationDocuments).set(values).where(eq(organisationDocuments.id,id))).rejects.toThrow();
+    }
+    await expect(db.delete(organisationDocuments).where(eq(organisationDocuments.id,id))).rejects.toThrow();
+    await db.update(organisationDocuments).set({purgeStatus:"removing"}).where(eq(organisationDocuments.id,id));
+    await db.update(organisationDocuments).set({purgeStatus:"purged",purgedAt:new Date()}).where(eq(organisationDocuments.id,id));
+    await expect(db.update(organisationDocuments).set({purgeStatus:"retained",purgedAt:null}).where(eq(organisationDocuments.id,id))).rejects.toThrow();
+    await expect(db.update(organisationDocuments).set({purgedAt:new Date(Date.now()+60000)}).where(eq(organisationDocuments.id,id))).rejects.toThrow();
+    expect((await db.select().from(organisationDocuments).where(eq(organisationDocuments.id,id)))[0].purgeStatus).toBe("purged");
+  });
+
+  it("quarantines unsupported removal jobs and reports held originals",async()=>{
+    const id=crypto.randomUUID(),key=`organisations/${orgId}/documents/${id}/original`;
+    await db.insert(organisationDocuments).values({id,organisationId:orgId,name:"Unsupported removal",category:"practice",blobUrl:`private://${key}`,blobPathname:key,checksum:"unsupported-checksum",contentType:"text/plain",sizeBytes:1,deletedAt:new Date(),retentionUntil:new Date(Date.now()-60000),purgeStatus:"pending"});
+    const [job]=await db.insert(backgroundJobs).values({organisationId:orgId,queue:"document_removal",type:"historical_unsupported",deduplicationKey:`document-removal:${id}`,payload:{documentId:id,checksum:"unsupported-checksum",blobPathname:key}}).returning();
+    const remove=vi.fn(),get=vi.fn();
+    const result=await processDocumentRemovalQueue(20,{db,storage:{name:"unsupported-guard",get,remove,put:vi.fn()}});
+    expect(result.review).toBeGreaterThanOrEqual(1);
+    expect((await db.select().from(backgroundJobs).where(eq(backgroundJobs.id,job.id)))[0].status).toBe("verification_required");
+    expect((await db.select().from(organisationDocuments).where(eq(organisationDocuments.id,id)))[0].purgeStatus).toBe("verification_required");
+    expect(remove).not.toHaveBeenCalled();
+  });
+
 });

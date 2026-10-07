@@ -295,6 +295,97 @@
       "when": 1791238732263,
       "tag": "0041_personal_professional_details",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1791296283106,
+      "tag": "0042_manual_payment_reviews",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1791297387120,
+      "tag": "0043_invoice_credits",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1791299700000,
+      "tag": "0044_manual_deposit_reviews",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1791304800000,
+      "tag": "0045_email_delivery_leases",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1791326400000,
+      "tag": "0046_practice_email_templates",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1791330000000,
+      "tag": "0047_document_removal_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1791333600000,
+      "tag": "0048_document_removal_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1791337200000,
+      "tag": "0049_account_profile_revision",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1791340800000,
+      "tag": "0050_personal_account_audit",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1791344400000,
+      "tag": "0051_account_profile_image",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1791348000000,
+      "tag": "0052_document_report_references",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1791351600000,
+      "tag": "0053_calendar_webhook_resource",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1791355200000,
+      "tag": "0054_calendar_webhook_attempt",
+      "breakpoints": true
     }
   ]
 }

@@ -10,6 +10,6 @@ export function problem(status: number, code: string, message: string, details?:
 }
 
 export async function parseBody<T>(request: Request, schema: ZodType<T>) {
-  const value: unknown = await request.json();
+  const value: unknown = await request.json().catch(() => undefined);
   return schema.safeParse(value);
 }

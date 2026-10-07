@@ -18,6 +18,6 @@ export default async function TeamPage({ params }: { params: Promise<{ organisat
     <PageHeader title="Team" description="Control practice access, professional roles and current workload." />
     <TeamManager members={members} canManage={canManageTeam(access.userRole) && access.accessLevel === "full"} actorRole={access.userRole} />
     {access.userRole === "owner" && access.accessLevel === "full" ? <ProfessionalPermissions members={members} /> : null}
-    {access.userRole === "owner" ? <SupportApprovalPanel initialRequests={supportRequests} /> : null}
+    {access.userRole === "owner" ? <SupportApprovalPanel organisationSlug={organisationSlug} initialRequests={supportRequests} /> : null}
   </main>;
 }

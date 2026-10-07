@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { emailTemplatesSchema, fillQuoteTemplate, quoteTemplateDefaults, type EmailTemplates } from "./email-template-settings";
 
 export const emailJobTypes = [
   "trial_started_notice",
@@ -35,7 +36,7 @@ function frame(title: string, intro: string, details: string[], action?: { label
   return `<!doctype html><html><body style="margin:0;background:#f7f9fc;font-family:Arial,sans-serif;color:#0f1b2d"><div style="display:none;max-height:0;overflow:hidden">${safeIntro}</div><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f7f9fc;padding:32px 16px"><tr><td align="center"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#fff;border:1px solid #e5e7eb;border-radius:8px"><tr><td style="padding:18px 24px;background:#0f1b2d;color:#fff;font-weight:700;letter-spacing:.04em">Surveynt</td></tr><tr><td style="padding:28px 24px"><h1 style="margin:0 0 12px;font-size:22px;line-height:1.3">${safeTitle}</h1><p style="margin:0 0 20px;color:#475569;font-size:15px;line-height:1.6">${safeIntro}</p>${detailHtml}${actionHtml}</td></tr><tr><td style="padding:16px 24px;border-top:1px solid #e5e7eb;color:#64748b;font-size:12px">This is an operational email from Surveynt.</td></tr></table></td></tr></table></body></html>`;
 }
 
-export function renderEmail(type: EmailJobType, rawPayload: unknown): EmailMessage {
+export function renderEmail(type: EmailJobType, rawPayload: unknown, templates?: EmailTemplates): EmailMessage {
   const payload = payloadSchemas[type].parse(rawPayload) as z.infer<(typeof payloadSchemas)[EmailJobType]>;
   if (type === "trial_started_notice") {
     const value = payloadSchemas.trial_started_notice.parse(payload);
@@ -67,8 +68,9 @@ export function renderEmail(type: EmailJobType, rawPayload: unknown): EmailMessa
   }
   if (type === "customer_quote_issued") {
     const value = payloadSchemas.customer_quote_issued.parse(payload);
-    const title = `Your survey quote · ${value.quoteReference}`;
-    const intro = `Hello ${value.customerName}, ${value.organisationName} has prepared your survey quote.`;
+    const template = emailTemplatesSchema.parse(templates ?? {}).customer_quote_issued ?? quoteTemplateDefaults;
+    const title = fillQuoteTemplate(template.subject,value).replace(/[\r\n]/g," ");
+    const intro = fillQuoteTemplate(template.introduction,value);
     const details = [`Total including VAT: ${value.total}`, `Quote valid until: ${formatDate(value.expiresAt)}`, "Use the secure link to review the quote, provide the property address and pay the deposit."];
     return { to: value.recipients, subject: title, text: `${title}\n\n${intro}\n\n${details.join("\n")}\n\nReview quote: ${value.quoteUrl}`, html: frame(title, intro, details, { label: "Review quote", url: value.quoteUrl }) };
   }
@@ -83,17 +85,26 @@ export function emailDeliveryConfigured() {
   return Boolean(process.env.SMTP2GO_API_KEY && process.env.SMTP2GO_SENDER);
 }
 
-export async function sendEmail(message: EmailMessage, fetcher: typeof fetch = fetch) {
-  if (!process.env.SMTP2GO_API_KEY || !process.env.SMTP2GO_SENDER) throw new Error("SMTP2GO email delivery is not configured.");
-  const response = await fetcher("https://api.smtp2go.com/v3/email/send", {
-    method: "POST",
-    headers: { "content-type": "application/json", accept: "application/json", "X-Smtp2go-Api-Key": process.env.SMTP2GO_API_KEY },
-    body: JSON.stringify({ sender: process.env.SMTP2GO_SENDER, to: message.to, subject: message.subject, text_body: message.text, html_body: message.html }),
-  });
+export class EmailDeliveryError extends Error {
+  constructor(message: string, readonly rejected: boolean) { super(message); }
+}
+
+export async function sendEmail(message: EmailMessage, fetcher: typeof fetch = fetch, correlation?: { jobId: string; attemptId: string }) {
+  if (!process.env.SMTP2GO_API_KEY || !process.env.SMTP2GO_SENDER) throw new EmailDeliveryError("SMTP2GO email delivery is not configured.",true);
+  let response: Response;
+  try {
+    response = await fetcher("https://api.smtp2go.com/v3/email/send", {
+      method: "POST", signal: AbortSignal.timeout(15000),
+      headers: { "content-type": "application/json", accept: "application/json", "X-Smtp2go-Api-Key": process.env.SMTP2GO_API_KEY },
+      body: JSON.stringify({ sender: process.env.SMTP2GO_SENDER, to: message.to, subject: message.subject, text_body: message.text, html_body: message.html,
+        ...(correlation ? { custom_headers: [{header:"X-Surveynt-Job-Id",value:correlation.jobId},{header:"X-Surveynt-Attempt-Id",value:correlation.attemptId}] } : {}),
+      }),
+    });
+  } catch { throw new EmailDeliveryError("SMTP2GO acceptance is unknown after a connection failure or timeout.",false); }
   const payload: unknown = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(`SMTP2GO rejected the email with status ${response.status}.`);
-  const result = z.object({ data: z.object({ succeeded: z.number(), failed: z.number(), email_id: z.string().optional(), failures: z.array(z.unknown()).optional() }) }).safeParse(payload);
-  if (!result.success || result.data.data.succeeded < 1 || result.data.data.failed > 0) throw new Error("SMTP2GO did not confirm email delivery acceptance.");
+  const result = z.object({ data: z.object({ succeeded: z.number().int().nonnegative(), failed: z.number().int().nonnegative(), email_id: z.string().optional() }) }).safeParse(payload);
+  if (result.success && result.data.data.succeeded === 0 && result.data.data.failed > 0) throw new EmailDeliveryError("SMTP2GO did not confirm email delivery acceptance.",true);
+  if (!response.ok || !result.success || result.data.data.succeeded < 1 || result.data.data.failed > 0) throw new EmailDeliveryError("SMTP2GO acceptance is unknown or partial; review provider evidence before resending.",false);
   return { providerMessageId: result.data.data.email_id ?? null };
 }
 

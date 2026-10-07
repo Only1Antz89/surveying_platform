@@ -12,3 +12,9 @@ export function quoteMoney(baseAmountMinor: number, vatBasisPoints: number, depo
   const surchargeMinor = surcharges.reduce((sum, value) => sum + value.amountMinor, 0), subtotalMinor = baseAmountMinor + surchargeMinor, vatMinor = Math.round(subtotalMinor * vatBasisPoints / 10_000), totalMinor = subtotalMinor + vatMinor;
   return { surchargeMinor, subtotalMinor, vatMinor, totalMinor, depositMinor: Math.round(totalMinor * depositBasisPoints / 10_000) };
 }
+
+/** Each recommended service must opt in; another service's rules cannot enable it. */
+export function selectRecommendedService<T extends {service:{name:string};pricing:{recommendationRules:Record<string,unknown>}}>(catalogue:T[],answers:Record<string,unknown>){
+  const recommendation=recommendCliftonService(answers);
+  return catalogue.find(item=>item.pricing.recommendationRules.source==="clifton_adviser_v1"&&item.service.name===recommendation.match);
+}
