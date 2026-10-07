@@ -26,6 +26,21 @@ export function CustomerRecords({
     { id: string; version: number; approvedAt: string; content: ComposedReport }[]
   >([]);
   const [error, setError] = useState("");
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [received, setReceived] = useState<string[]>([]);
+  async function confirmReceipt(reportVersionId: string) {
+    setConfirming(reportVersionId); setError("");
+    try {
+      const response = await fetch(`/api/v1/public/quotes/${id}/reports`, {
+        method: "POST", headers: { "content-type": "application/json", "x-quote-token": token },
+        body: JSON.stringify({ reportVersionId, confirmed: true }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error?.message ?? "Receipt confirmation failed.");
+      setReceived(previous => [...previous, reportVersionId]);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Receipt confirmation failed. Try again."); }
+    finally { setConfirming(null); }
+  }
 
   useEffect(() => {
     let active = true;
@@ -119,6 +134,7 @@ export function CustomerRecords({
               </div>
             </summary>
             <div className="details-panel">
+              {received.includes(r.id) ? <p role="status">Report receipt confirmed.</p> : <button type="button" className="button button-secondary" disabled={confirming !== null} onClick={() => void confirmReceipt(r.id)}>{confirming === r.id ? "Confirming…" : "Confirm report received"}</button>}
               <div className="survey-workspace">
                 <article className="report-preview">
                   <header>

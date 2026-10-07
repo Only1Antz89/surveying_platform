@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { createTestDatabase, integrationEnabled, stopRelay, type TestDatabase } from "@surveynt/db/testing";
-import { clientPayments, invoices, jobs, organisations, organisationMemberships, users, withTenant, createDatabase } from "@surveynt/db";
+import { clientPayments, customerQuotes, invoices, jobs, jobStageEvents, organisations, organisationDocuments, organisationOperationalSettings, organisationMemberships, reportDeliveries, users, withTenant, createDatabase } from "@surveynt/db";
+import { readSurveyFileRetention } from "../src/lib/survey-file-retention-register";
+import { jobRetentionHolds } from "@surveynt/db";
 import { isFieldRequired, listFields, residentialTemplateV1, type FieldDefinition, type FieldValue, type SyncOperation } from "@surveynt/assistant";
 import { syncSourceRegistry } from "@surveynt/property-data/importers";
 import { seedStakeholderDemo } from "../src/lib/stakeholder-demo";
@@ -11,7 +13,7 @@ import { composeSurveyReport, approveReportVersion } from "../src/lib/reports";
 import { enforceStageGate } from "../src/lib/completion";
 import { POST as checkout } from "../src/app/api/v1/public/quotes/[id]/checkout/route";
 import { GET as slots, POST as book } from "../src/app/api/v1/public/quotes/[id]/appointments/route";
-import { GET as reports } from "../src/app/api/v1/public/quotes/[id]/reports/route";
+import { GET as reports, POST as confirmReportReceipt } from "../src/app/api/v1/public/quotes/[id]/reports/route";
 
 function sample(field: FieldDefinition): FieldValue {
   switch(field.type){
@@ -64,11 +66,47 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     await approveReportVersion(context,capture.survey.id,draft.id,{confirm:true,note:"Explicit fictional stakeholder review in isolated test database."});
     await withTenant(createDatabase(),context.organisationId,async tx=>{expect(await enforceStageGate(tx,context,{jobId,targetStage:"issued",overrides:[]})).toMatchObject({kind:"passed"});await tx.update(jobs).set({stage:"issued"}).where(eq(jobs.id,jobId));});
     const issued=(await (await reports(request("/reports"),route)).json()).data;expect(issued).toHaveLength(1);expect(issued[0].content).toBeTruthy();expect(issued[0]).not.toHaveProperty("trace");
+    const acknowledgements=await Promise.all([1,2].map(()=>confirmReportReceipt(request("/reports",{reportVersionId:issued[0].id,confirmed:true}),route)));
+    expect(acknowledgements.every(response=>response.ok)).toBe(true);
+    expect((await acknowledgements[0].json()).data.id).toBe((await acknowledgements[1].json()).data.id);
+    const deliveryRows=await database.connect(database.adminUrl).select().from(reportDeliveries).where(eq(reportDeliveries.jobId,jobId));
+    expect(deliveryRows).toHaveLength(1);expect(deliveryRows[0]).toMatchObject({status:"delivered",deliveryMethod:"customer_acknowledgement",reportVersionId:issued[0].id});
+    expect(deliveryRows[0].deliveredAt).toBeInstanceOf(Date);
+    expect((await confirmReportReceipt(request("/reports",{reportVersionId:issued[0].id,confirmed:true},"wrong-token"),route)).status).toBe(404);
+    expect((await confirmReportReceipt(request("/reports",{reportVersionId:crypto.randomUUID(),confirmed:true}),route)).status).toBe(409);
     expect((await reports(request("/reports",undefined,"wrong-token"),route)).status).toBe(404);
     expect((await checkout(request("/checkout",{purpose:"balance"}),route)).ok).toBe(true);
     expect((await readPublicQuote(id,created.token))?.view.balanceMinor).toBe(0);
     const db=database.connect(database.adminUrl);const payments=await db.select().from(clientPayments).where(eq(clientPayments.quoteId,id));expect(payments).toHaveLength(2);expect(payments.every(payment=>payment.status==="succeeded")).toBe(true);
     const bills=await db.select().from(invoices).where(eq(invoices.quoteId,id));expect(bills).toHaveLength(2);expect(bills.reduce((sum,bill)=>sum+bill.totalMinor,0)).toBe(found.row.totalMinor);expect(bills.reduce((sum,bill)=>sum+bill.vatMinor,0)).toBe(found.row.vatMinor);
+    await db.update(jobs).set({stage:"archived"}).where(eq(jobs.id,jobId));
+    await db.delete(jobStageEvents).where(eq(jobStageEvents.jobId,jobId));
+    await db.insert(jobStageEvents).values({organisationId:context.organisationId,jobId,fromStage:"paid",toStage:"archived",createdAt:new Date("2000-02-01T00:00:00Z")});
+    await db.update(organisationOperationalSettings).set({surveyFileRetentionPolicy:{version:"survey-file-1-year-v2",revision:1,enabled:true,approvedAt:new Date().toISOString(),approvedByUserId:context.internalUserId!,reason:"Disposable test practice retention approval"}}).where(eq(organisationOperationalSettings.organisationId,context.organisationId));
+    const register=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,jobId));
+    expect(register?.assessment.reason).toBe("retention_active");
+    await db.update(reportDeliveries).set({deliveredAt:new Date("2000-03-01T00:00:00Z")}).where(eq(reportDeliveries.jobId,jobId));
+    const expired=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,jobId));
+    expect(expired?.assessment.reason).toBe("manager_review_required");
+    expect(expired?.assessment.retentionUntil?.toISOString()).toBe("2001-03-01T00:00:00.000Z");
+    expect(expired?.assessment.reviewVersion).not.toBe(register?.assessment.reviewVersion);
+    expect(expired?.removalAuthorised).toBe(false);
+    const [jobHold]=await db.insert(jobRetentionHolds).values({organisationId:context.organisationId,jobId,kind:"complaint",reason:"Unresolved customer complaint requires file retention.",reviewedByUserId:context.internalUserId!}).returning();
+    const complaint=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,jobId));
+    expect(complaint?.assessment.reason).toBe("protected");expect(complaint?.assessment.reviewVersion).not.toBe(expired?.assessment.reviewVersion);
+    await db.update(jobRetentionHolds).set({kind:null,revision:2,reason:"Complaint resolved and manager authorised clearance."}).where(eq(jobRetentionHolds.id,jobHold.id));
+    const clearedFile=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,jobId));
+    expect(clearedFile?.assessment.reason).toBe("manager_review_required");expect(clearedFile?.assessment.reviewVersion).not.toBe(expired?.assessment.reviewVersion);
+    await db.insert(organisationDocuments).values({organisationId:context.organisationId,jobId,name:"Held original",category:"legal",blobUrl:"https://example.test/held",blobPathname:"held",checksum:"held",contentType:"text/plain",sizeBytes:4,legalHold:true});
+    const held=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,jobId));
+    expect(held?.assessment.reason).toBe("protected");expect(held?.assessment.reviewVersion).not.toBe(expired?.assessment.reviewVersion);
+    expect((await confirmReportReceipt(request("/reports",{reportVersionId:issued[0].id,confirmed:true}),route)).status).toBe(409);
+    await db.update(organisations).set({status:"suspended"}).where(eq(organisations.id,context.organisationId));
+    expect((await confirmReportReceipt(request("/reports",{reportVersionId:issued[0].id,confirmed:true}),route)).status).toBe(404);
+    await db.update(organisations).set({status:"active"}).where(eq(organisations.id,context.organisationId));
+    await db.update(customerQuotes).set({tokenRevokedAt:new Date()}).where(eq(customerQuotes.id,id));
+    expect((await confirmReportReceipt(request("/reports",{reportVersionId:issued[0].id,confirmed:true}),route)).status).toBe(404);
+    expect(await db.select().from(reportDeliveries).where(eq(reportDeliveries.jobId,jobId))).toHaveLength(1);
     expect(noExternal).not.toHaveBeenCalled();vi.unstubAllGlobals();
   },120000);
   it("allows only one concurrent customer claim for the same surveyor slot",async()=>{

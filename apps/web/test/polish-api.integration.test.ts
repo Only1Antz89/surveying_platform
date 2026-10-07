@@ -14,6 +14,9 @@ import { POST as reviewRemoval } from "../src/app/api/v1/documents/[id]/removal-
 import { POST as requestRemoval, PATCH as cancelRemoval } from "../src/app/api/v1/documents/[id]/removal/route";
 import { PATCH as saveTemplates } from "../src/app/api/v1/operations/email-templates/route";
 import { PATCH as reviewRetention } from "../src/app/api/v1/documents/[id]/retention/route";
+import { PATCH as reviewRetentionPolicy } from "../src/app/api/v1/operations/retention-policy/route";
+import { PATCH as reviewJobHold } from "../src/app/api/v1/jobs/[id]/retention/route";
+import { jobRetentionHolds, withTenant } from "@surveynt/db";
 import { GET as capabilities } from "../src/app/api/v1/capabilities/route";
 import { GET as demoCatalogue, POST as demoAction } from "../src/app/api/v1/demo/route";
 import { GET as download, DELETE as archive, PATCH as protection, POST as restore } from "../src/app/api/v1/documents/[id]/route";
@@ -37,6 +40,43 @@ describe.skipIf(!integrationEnabled)("polish API safety and readiness",()=>{
     Object.assign(state.context,{organisationId:orgId,internalUserId:ownerId});
   },120000);
   afterAll(async()=>{vi.unstubAllEnvs();vi.unstubAllGlobals();await database?.drop();await stopRelay();});
+  it("audits job holds with tenant binding, concurrent guards and reviewed clearance",async()=>{
+    Object.assign(state.context,{organisationId:orgId,internalUserId:ownerId,role:"owner",demo:false});
+    const [client]=await db.insert(clients).values({organisationId:orgId,kind:"individual",displayName:"Hold fixture"}).returning();
+    const [property]=await db.insert(properties).values({organisationId:orgId,clientId:client.id,line1:"1 Hold Street",city:"Bristol",postcode:"BS1 1AA",country:"ENG"}).returning();
+    const [job]=await db.insert(jobs).values({organisationId:orgId,clientId:client.id,propertyId:property.id,reference:"HOLD-1",serviceName:"Survey"}).returning();
+    const route={params:Promise.resolve({id:job.id})};
+    const body={expectedRevision:0,kind:"claim",reason:"Open professional claim requires retention of the complete file.",confirmed:true};
+    const outcomes=await Promise.all([1,2].map(()=>reviewJobHold(request("/retention","PATCH",body),route)));
+    expect(outcomes.map(response=>response.status).sort()).toEqual([200,409]);
+    const [hold]=await db.select().from(jobRetentionHolds).where(eq(jobRetentionHolds.jobId,job.id));expect(hold).toMatchObject({kind:"claim",revision:1,reviewedByUserId:ownerId});
+    state.context.organisationId=demoId;expect((await reviewJobHold(request("/retention","PATCH",{...body,expectedRevision:1}),route)).status).toBe(404);state.context.organisationId=orgId;
+    state.context.role="surveyor";expect((await reviewJobHold(request("/retention","PATCH",{...body,expectedRevision:1}),route)).status).toBe(403);state.context.role="owner";
+    expect((await reviewJobHold(request("/retention","PATCH",{...body,expectedRevision:1,kind:null,reason:"Claim concluded and clearance authority reviewed by manager."}),route)).status).toBe(200);
+    const [cleared]=await db.select().from(jobRetentionHolds).where(eq(jobRetentionHolds.jobId,job.id));expect(cleared).toMatchObject({kind:null,revision:2});
+    const audits=await db.select().from(auditEvents).where(and(eq(auditEvents.resourceId,job.id),eq(auditEvents.action,"job.retention_hold_cleared")));expect(audits).toHaveLength(1);
+    await expect(db.insert(jobRetentionHolds).values({organisationId:demoId,jobId:job.id,reason:body.reason,kind:"legal",reviewedByUserId:ownerId})).rejects.toThrow();
+    expect(await withTenant(createDatabase(),demoId,tx=>tx.select().from(jobRetentionHolds).where(eq(jobRetentionHolds.jobId,job.id)))).toEqual([]);
+  });
+  it("records one concurrent practice policy approval and rejects stale or unauthorised reviews",async()=>{
+    Object.assign(state.context,{organisationId:orgId,internalUserId:ownerId,role:"owner",demo:false});
+    const body={expectedRevision:0,policyVersion:"survey-file-1-year-v2",enabled:true,reason:"Practice manager reviewed the one-year survey file policy.",confirmed:true};
+    const responses=await Promise.all([1,2].map(()=>reviewRetentionPolicy(request("/api/v1/operations/retention-policy","PATCH",body))));
+    expect(responses.map(response=>response.status).sort()).toEqual([200,409]);
+    const [settings]=await db.select().from(organisationOperationalSettings).where(eq(organisationOperationalSettings.organisationId,orgId));
+    expect(settings.surveyFileRetentionPolicy).toMatchObject({revision:1,version:body.policyVersion,enabled:true,approvedByUserId:ownerId});
+    expect(settings.documentRetentionDays).toBe(2555);
+    const audits=await db.select().from(auditEvents).where(and(eq(auditEvents.organisationId,orgId),eq(auditEvents.action,"firm.survey_retention_policy_reviewed")));
+    expect(audits).toHaveLength(1);expect(audits[0].metadata).toMatchObject({years:1,automaticDeletion:false});
+    state.context.role="surveyor";expect((await reviewRetentionPolicy(request("/api/v1/operations/retention-policy","PATCH",{...body,expectedRevision:1}))).status).toBe(403);
+    state.context.role="administrator";expect((await reviewRetentionPolicy(request("/api/v1/operations/retention-policy","PATCH",{...body,expectedRevision:1}))).status).toBe(403);
+    state.context.role="owner";state.context.demo=true;
+    expect((await (await reviewRetentionPolicy(request("/api/v1/operations/retention-policy","PATCH",body))).json()).data.persisted).toBe(false);
+    state.context.demo=false;
+    expect((await reviewRetentionPolicy(request("/api/v1/operations/retention-policy","PATCH",{...body,expectedRevision:1,enabled:false}))).status).toBe(200);
+    const [disabled]=await db.select().from(organisationOperationalSettings).where(eq(organisationOperationalSettings.organisationId,orgId));
+    expect(disabled.surveyFileRetentionPolicy).toMatchObject({revision:2,enabled:false});
+  });
   it("requires firm quote enablement and payment approval, without exposing configured secrets",async()=>{
     Object.assign(state.context,{organisationId:orgId,role:"owner"});
     vi.stubEnv("QUOTE_TOKEN_SECRET","private_test_quote_secret");vi.stubEnv("STRIPE_CLIENT_PAYMENTS_KEY","private_test_client_key");vi.stubEnv("CLIENT_PAYMENTS_LAUNCH_APPROVED","false");

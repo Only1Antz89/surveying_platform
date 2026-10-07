@@ -9,6 +9,7 @@ import { CapabilityPanel } from "@/components/capability-panel";
 import { ServiceCatalogue } from "@/components/service-catalogue";
 import { EvidenceReleaseSettings } from "@/components/evidence-release-settings";
 import { ReportIdentitySettings } from "@/components/report-identity-settings";
+import { SurveyRetentionSettings } from "@/components/survey-retention-settings";
 
 import { canConfigureClientPayments } from "@/lib/integration-access";
 export const metadata = { title: "Operations settings" }; export const dynamic = "force-dynamic";
@@ -17,5 +18,5 @@ export default async function Page({ params }: PageProps<"/app/[organisationSlug
   const saved = access.userId === "demo_user" ? null : await withTenant(createDatabase(), access.organisationId, (tx) => tx.select().from(organisationOperationalSettings).where(eq(organisationOperationalSettings.organisationId, access.organisationId)).limit(1).then((rows) => rows[0]));
   const initial = saved ?? { timezone: "Europe/London", officeAddress: null, workingDays: ["monday", "tuesday", "wednesday", "thursday", "friday"], workingHours: {}, holidayDates: [], customerBranding: {}, notificationPreferences: {}, bookingHorizonDays: 90, travelBufferMinutes: 30, mileageRatePence: 45, documentRetentionDays: 2555, publicQuotesEnabled: false, clientPaymentsEnabled: false };
   const canEdit=access.accessLevel === "full" && isManagementRole(access.userRole);
-  return <main className="page"><PageHeader title="Operations settings" description="Control availability, routing, retention, public quotes and client payments." /><OperationsSettingsForm initial={initial} canEdit={canEdit} canConfigurePayments={canConfigureClientPayments(access.userRole)}/><ReportIdentitySettings canEdit={canEdit}/><EvidenceReleaseSettings initial={saved?.surveyEvidenceEnabled ?? false} canEdit={canEdit && access.userRole === "owner" && access.isDemo}/><ServiceCatalogue canEdit={canEdit}/>{canConfigureClientPayments(access.userRole)?<CapabilityPanel scope="payments"/>:null}</main>;
+  return <main className="page"><PageHeader title="Operations settings" description="Control availability, routing, retention, public quotes and client payments." /><OperationsSettingsForm initial={initial} canEdit={canEdit} canConfigurePayments={canConfigureClientPayments(access.userRole)}/><ReportIdentitySettings canEdit={canEdit}/><SurveyRetentionSettings initial={saved?.surveyFileRetentionPolicy ?? null} canEdit={canEdit}/><EvidenceReleaseSettings initial={saved?.surveyEvidenceEnabled ?? false} canEdit={canEdit && access.userRole === "owner" && access.isDemo}/><ServiceCatalogue canEdit={canEdit}/>{canConfigureClientPayments(access.userRole)?<CapabilityPanel scope="payments"/>:null}</main>;
 }

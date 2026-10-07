@@ -367,6 +367,21 @@ export const jobStageEvents = pgTable("job_stage_events", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index("job_stage_events_job_idx").on(table.jobId), index("job_stage_events_org_idx").on(table.organisationId)]);
 
+export const jobRetentionHolds = pgTable("job_retention_holds", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  jobId: uuid("job_id").notNull(),
+  kind: text("kind"),
+  reason: text("reason").notNull(),
+  revision: integer("revision").notNull().default(1),
+  reviewedByUserId: uuid("reviewed_by_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  ...timestamps,
+}, table => [uniqueIndex("job_retention_holds_org_job_uidx").on(table.organisationId, table.jobId),
+  foreignKey({ name: "job_retention_holds_job_fk", columns: [table.organisationId, table.jobId], foreignColumns: [jobs.organisationId, jobs.id] }).onDelete("restrict"),
+  check("job_retention_holds_kind_chk", sql`kind is null or kind in ('complaint','claim','legal')`),
+  check("job_retention_holds_reason_chk", sql`length(btrim(reason)) between 10 and 2000`),
+  check("job_retention_holds_revision_chk", sql`revision > 0`)]);
+
 export const jobAssignments = pgTable("job_assignments", {
   id: uuid("id").primaryKey().defaultRandom(),
   organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
@@ -403,6 +418,7 @@ export const organisationOperationalSettings = pgTable("organisation_operational
   travelBufferMinutes: integer("travel_buffer_minutes").notNull().default(30),
   mileageRatePence: integer("mileage_rate_pence").notNull().default(45),
   documentRetentionDays: integer("document_retention_days").notNull().default(2555),
+  surveyFileRetentionPolicy: jsonb("survey_file_retention_policy").$type<{ version: string; revision: number; enabled: boolean; approvedAt: string; approvedByUserId: string; reason: string }>(),
   publicQuotesEnabled: boolean("public_quotes_enabled").notNull().default(false),
   clientPaymentsEnabled: boolean("client_payments_enabled").notNull().default(false),
   surveyEvidenceEnabled: boolean("survey_evidence_enabled").notNull().default(false),
