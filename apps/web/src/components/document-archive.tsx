@@ -5,6 +5,13 @@ import { useRouter } from "next/navigation";
 
 type ArchivedDocument = { removalReview:{attempts:number;leaseToken:string|null}|null; purgeStatus:string; jobId:string|null; reportVersionId:string|null; purgedAt:string|null; id: string; name: string; checksum: string; archivedAt: string; updatedAt:string; retentionUntil: string | null; legalHold: boolean };
 
+function localDate(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export function DocumentArchive() {
   const router = useRouter();
   const [rows, setRows] = useState<ArchivedDocument[] | null>(null);
@@ -66,6 +73,180 @@ export function DocumentArchive() {
       setRows(current=>current?.map(row=>row.id===reviewing.id?{...row,...payload.data}:row)??null);setReviewing(null);setMessage("Retention review recorded. The original remains stored.");router.refresh();
     }catch(error){setMessage(error instanceof Error?error.message:"Retention review failed.");}finally{setBusy(false);}
   }
-  const localDate=(value:string|null)=>{if(!value)return "";const date=new Date(value);return new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16);};
-  return <details className="panel-body"><summary>Archived documents and retention</summary><p>Archived originals remain stored. Expiry of a retention date does not automatically delete a file.</p><button className="button button-secondary" disabled={busy} onClick={() => void load()}>{busy ? "Loading…" : "Review archive"}</button>{rows ? rows.length ? <div className="data-table-wrap"><table className="data-table"><thead><tr><th>Document</th><th>Archived</th><th>Protection</th><th>Recovery</th></tr></thead><tbody>{rows.map(row => <tr key={row.id}><td>{row.name}</td><td>{new Date(row.archivedAt).toLocaleDateString("en-GB")}</td><td>{row.legalHold ? "Legal hold" : row.retentionUntil ? `Retain until ${new Date(row.retentionUntil).toLocaleDateString("en-GB")}` : "No retention date"}</td><td><p>{row.purgeStatus==="purged"?"Original permanently removed":row.purgeStatus==="verification_required"?"Storage verification required":row.purgeStatus==="removing"?"Removal started":row.purgeStatus==="pending"?"Removal pending":"Original retained"}</p>{row.purgeStatus==="retained"?<><button className="button button-quiet" disabled={busy} onClick={()=>setReviewing(row)}>Review retention</button><button className="button button-secondary" disabled={busy} onClick={() => void restore(row)}>Restore original</button>{!row.legalHold&&row.retentionUntil&&new Date(row.retentionUntil)<=new Date()&&!row.jobId&&!row.reportVersionId?<button className="button button-quiet" disabled={busy} onClick={()=>void removal(row)}>Request permanent removal</button>:null}</>:row.purgeStatus==="pending"?<button className="button button-secondary" disabled={busy} onClick={()=>void removal(row,true)}>Cancel removal</button>:row.purgeStatus==="verification_required"&&row.removalReview?<><button className="button button-secondary" disabled={busy} onClick={()=>void resolveRemoval(row,"keep_original")}>Verify and keep original</button><button className="button button-quiet" disabled={busy} onClick={()=>void resolveRemoval(row,"confirm_absent")}>Confirm original absent</button></>:null}</td></tr>)}</tbody></table></div> : <p>No archived documents.</p> : null}{reviewing?<form action={saveReview} key={reviewing.id}><h3>Review retention: {reviewing.name}</h3><label className="field"><span>Retain until (device timezone; blank means no expiry)</span><input name="retentionUntil" type="datetime-local" defaultValue={localDate(reviewing.retentionUntil)}/></label><label><input name="legalHold" type="checkbox" defaultChecked={reviewing.legalHold}/> Legal hold</label><label className="field"><span>Reason for this review</span><textarea name="reason" minLength={10} maxLength={2000} required/></label><label><input name="confirmed" type="checkbox" required/> I reviewed this document and confirm these protection changes.</label><div className="action-row"><button className="button button-primary" disabled={busy}>Record review</button><button type="button" className="button button-quiet" disabled={busy} onClick={()=>setReviewing(null)}>Cancel</button></div></form>:null}<p role="status">{message}</p></details>;
+  const isSuccess = message.includes("restored") || message.includes("recorded") || message.includes("retained") || message.includes("requested");
+
+  return (
+    <details className="panel-body accordion-card" style={{ margin: "16px 20px" }}>
+      <summary className="accordion-summary">
+        <span>Archived documents and retention</span>
+      </summary>
+      <div style={{ paddingTop: "14px" }}>
+        <div className="flex items-center justify-between gap-4" style={{ marginBottom: "14px" }}>
+          <p className="cell-sub" style={{ margin: 0, lineHeight: 1.5 }}>
+            Archived originals remain stored. Expiry of a retention date does not automatically delete a file.
+          </p>
+          <button className="button button-secondary" disabled={busy} onClick={() => void load()}>
+            {busy ? "Loading…" : "Review archive"}
+          </button>
+        </div>
+
+        {rows ? (
+          rows.length ? (
+            <div className="data-table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Document</th>
+                    <th>Archived</th>
+                    <th>Protection</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => (
+                    <tr key={row.id}>
+                      <td>
+                        <strong>{row.name}</strong>
+                      </td>
+                      <td>{new Date(row.archivedAt).toLocaleDateString("en-GB")}</td>
+                      <td>
+                        {row.legalHold ? (
+                          <span className="status status-red">Legal hold</span>
+                        ) : row.retentionUntil ? (
+                          `Retain until ${new Date(row.retentionUntil).toLocaleDateString("en-GB")}`
+                        ) : (
+                          "No retention date"
+                        )}
+                      </td>
+                      <td>
+                        {row.purgeStatus === "purged" ? (
+                          <span className="status status-slate">Purged</span>
+                        ) : row.purgeStatus === "verification_required" ? (
+                          <span className="status status-red">Verification required</span>
+                        ) : row.purgeStatus === "removing" ? (
+                          <span className="status status-amber">Removing</span>
+                        ) : row.purgeStatus === "pending" ? (
+                          <span className="status status-amber">Pending removal</span>
+                        ) : (
+                          <span className="status status-blue">Retained</span>
+                        )}
+                      </td>
+                      <td>
+                        <div className="row-actions">
+                          {row.purgeStatus === "retained" ? (
+                            <>
+                              <button className="button button-quiet" disabled={busy} onClick={() => setReviewing(row)}>
+                                Review retention
+                              </button>
+                              <button className="button button-secondary" disabled={busy} onClick={() => void restore(row)}>
+                                Restore original
+                              </button>
+                              {!row.legalHold &&
+                              row.retentionUntil &&
+                              new Date(row.retentionUntil) <= new Date() &&
+                              !row.jobId &&
+                              !row.reportVersionId ? (
+                                <button className="button button-quiet danger" disabled={busy} onClick={() => void removal(row)}>
+                                  Request permanent removal
+                                </button>
+                              ) : null}
+                            </>
+                          ) : row.purgeStatus === "pending" ? (
+                            <button className="button button-secondary" disabled={busy} onClick={() => void removal(row, true)}>
+                              Cancel removal
+                            </button>
+                          ) : row.purgeStatus === "verification_required" && row.removalReview ? (
+                            <>
+                              <button
+                                className="button button-secondary"
+                                disabled={busy}
+                                onClick={() => void resolveRemoval(row, "keep_original")}
+                              >
+                                Verify & keep original
+                              </button>
+                              <button
+                                className="button button-quiet"
+                                disabled={busy}
+                                onClick={() => void resolveRemoval(row, "confirm_absent")}
+                              >
+                                Confirm original absent
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="cell-sub" style={{ margin: "14px 0" }}>No archived documents found in this workspace.</p>
+          )
+        ) : null}
+
+        {reviewing ? (
+          <div
+            style={{
+              marginTop: "20px",
+              padding: "18px",
+              border: "1px solid var(--border)",
+              borderRadius: "10px",
+              background: "var(--surface-2)",
+            }}
+          >
+            <form action={saveReview} key={reviewing.id}>
+              <h3 style={{ margin: "0 0 14px", fontSize: "1rem" }}>Review retention: {reviewing.name}</h3>
+              <div className="form-grid">
+                <label className="field">
+                  <span>Retain until (device timezone; blank means no expiry)</span>
+                  <input
+                    name="retentionUntil"
+                    type="datetime-local"
+                    defaultValue={localDate(reviewing.retentionUntil)}
+                  />
+                </label>
+                <div className="field flex items-center">
+                  <label className="checkbox-row" style={{ marginTop: "24px" }}>
+                    <input name="legalHold" type="checkbox" defaultChecked={reviewing.legalHold} />
+                    <span>Apply legal hold</span>
+                  </label>
+                </div>
+                <label className="field full">
+                  <span>Reason for this review</span>
+                  <textarea name="reason" minLength={10} maxLength={2000} rows={3} required placeholder="Audit reason..." />
+                </label>
+                <div className="field full">
+                  <label className="checkbox-row">
+                    <input name="confirmed" type="checkbox" required />
+                    <span>I reviewed this document and confirm these protection changes.</span>
+                  </label>
+                </div>
+              </div>
+              <div className="action-row" style={{ marginTop: "14px" }}>
+                <button className="button button-primary" disabled={busy}>
+                  Record review
+                </button>
+                <button
+                  type="button"
+                  className="button button-quiet"
+                  disabled={busy}
+                  onClick={() => setReviewing(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        ) : null}
+
+        {message ? (
+          <p className={isSuccess ? "form-success" : "form-error"} role="status" style={{ marginTop: "12px" }}>
+            <span>{message}</span>
+          </p>
+        ) : null}
+      </div>
+    </details>
+  );
 }
