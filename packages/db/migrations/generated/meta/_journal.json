@@ -407,6 +407,13 @@
       "when": 1791366000000,
       "tag": "0057_survey_file_removal_queue",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1791369600000,
+      "tag": "0058_survey_file_job_fence",
+      "breakpoints": true
     }
   ]
 }

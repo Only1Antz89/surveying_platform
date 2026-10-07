@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { and, eq } from "drizzle-orm";
-import { auditEvents, createDatabase, jobs, jobRetentionHolds, organisationMemberships, withTenant } from "@surveynt/db";
+import { and, desc, eq } from "drizzle-orm";
+import { auditEvents, createDatabase, jobs, jobRetentionHolds, organisationMemberships, surveyFileRemovals, withTenant } from "@surveynt/db";
 import { isManagementRole } from "@surveynt/domain";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { workspaceApiGuard } from "@/lib/workspace-api-guard";
@@ -36,7 +36,12 @@ export async function GET(request: Request, route: RouteContext<"/api/v1/jobs/[i
   if (!isManagementRole(context.role)) return problem(403, "forbidden", "Practice management access is required.");
   if (context.demo) return ok(null, { persisted: false });
   const { id } = await route.params; if (!z.uuid().safeParse(id).success) return problem(404, "not_found", "Job not found.");
-  const register = await withTenant(createDatabase(), context.organisationId, tx => readSurveyFileRetention(tx, context.organisationId, id));
+  const register = await withTenant(createDatabase(), context.organisationId, async tx => {
+    const file = await readSurveyFileRetention(tx, context.organisationId, id);
+    if (!file) return null;
+    const rows = await tx.select({ id: surveyFileRemovals.id, status: surveyFileRemovals.status, manifestVersion: surveyFileRemovals.manifestVersion, createdAt: surveyFileRemovals.createdAt, completedAt: surveyFileRemovals.completedAt }).from(surveyFileRemovals).where(and(eq(surveyFileRemovals.organisationId, context.organisationId), eq(surveyFileRemovals.jobId, id))).orderBy(desc(surveyFileRemovals.createdAt), desc(surveyFileRemovals.id)).limit(21);
+    return { ...file, removals: rows.slice(0, 20), removalHistoryHasMore: rows.length > 20 };
+  });
   return register ? ok(register) : problem(404, "not_found", "Job not found.");
 }
 export async function POST(request: Request, route: RouteContext<"/api/v1/jobs/[id]/retention">) {
