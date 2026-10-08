@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
-const state = vi.hoisted(() => ({ context: { organisationId: "11111111-1111-4111-8111-111111111111", internalUserId: "manager", role: "owner", demo: false }, writable: true, start: vi.fn(), reportDispose: vi.fn(), proposalDispose: vi.fn(), taskDispose: vi.fn(), resume: vi.fn(), storage: {}, observe: vi.fn(), observationReview: vi.fn(), mediaDispose: vi.fn(), dispose: vi.fn(), request: vi.fn(), cancel: vi.fn(), database: vi.fn() }));
+const state = vi.hoisted(() => ({ context: { organisationId: "11111111-1111-4111-8111-111111111111", internalUserId: "manager", role: "owner", demo: false }, writable: true, observationDispose: vi.fn(), valueDispose: vi.fn(), start: vi.fn(), reportDispose: vi.fn(), proposalDispose: vi.fn(), taskDispose: vi.fn(), resume: vi.fn(), storage: {}, observe: vi.fn(), observationReview: vi.fn(), mediaDispose: vi.fn(), dispose: vi.fn(), request: vi.fn(), cancel: vi.fn(), database: vi.fn() }));
 vi.mock("@/lib/access", () => ({ apiContext: async () => state.context, canWriteWorkspace: () => state.writable }));
 vi.mock("@/lib/workspace-api-guard", () => ({ workspaceApiGuard: async () => null }));
 vi.mock("@/lib/survey-file-removal-request", () => ({ requestReviewedSurveyFileRemoval: state.request, cancelReviewedSurveyFileRemoval: state.cancel }));
@@ -14,6 +14,8 @@ vi.mock("@/lib/survey-file-adviser-task-disposition", () => ({ disposeAdviserTas
 vi.mock("@/lib/survey-file-field-proposal-disposition", () => ({ disposeFieldProposal: state.proposalDispose }));
 vi.mock("@/lib/survey-file-report-content-disposition", () => ({ disposeReportContent: state.reportDispose }));
 vi.mock("@/lib/survey-file-removal-start-runner", () => ({ processReviewedQueuedOriginals: state.start }));
+vi.mock("@/lib/survey-file-recorded-value-disposition", () => ({ disposeRecordedFieldValue: state.valueDispose }));
+vi.mock("@/lib/survey-file-observation-disposition", () => ({ disposeObservationContent: state.observationDispose }));
 import { POST } from "./route";
 const id = "22222222-2222-4222-8222-222222222222";
 const route = { params: Promise.resolve({ id }) };
@@ -143,4 +145,28 @@ it("starts only the confirmed manifest and keeps preview execution nonpersistent
   vi.clearAllMocks();state.context.demo=true;
   expect((await (await POST(request(body),route)).json()).data.persisted).toBe(false);
   expect(state.start).not.toHaveBeenCalled();
+});
+
+it("binds recorded-answer cleanup to a confirmed manifest and rejects client paths", async () => {
+  const body={action:"dispose_value",id,valueId:id,manifestVersion:"b".repeat(64),reason:decision.reason,confirmed:true};
+  state.valueDispose.mockResolvedValue({disposed:true,duplicate:false});
+  expect((await POST(request(body),route)).status).toBe(200);
+  expect(state.valueDispose).toHaveBeenCalledWith(expect.anything(),state.context.organisationId,id,"manager",id,{id,manifestVersion:body.manifestVersion,reason:body.reason,confirmed:true});
+  expect((await POST(request({...body,storagePath:"untrusted"}),route)).status).toBe(400);
+  expect((await POST(request({...body,confirmed:false}),route)).status).toBe(400);
+  vi.clearAllMocks();state.context.demo=true;
+  expect((await (await POST(request(body),route)).json()).data.persisted).toBe(false);
+  expect(state.valueDispose).not.toHaveBeenCalled();
+});
+
+it("binds observation cleanup to the completed manifest without trusting client storage paths", async () => {
+  const body={action:"dispose_observation",id,observationId:id,manifestVersion:"b".repeat(64),reason:decision.reason,confirmed:true};
+  state.observationDispose.mockResolvedValue({disposed:true,duplicate:false});
+  expect((await POST(request(body),route)).status).toBe(200);
+  expect(state.observationDispose).toHaveBeenCalledWith(expect.anything(),state.context.organisationId,id,"manager",id,{id,manifestVersion:body.manifestVersion,reason:body.reason,confirmed:true});
+  expect((await POST(request({...body,storagePath:"untrusted"}),route)).status).toBe(400);
+  expect((await POST(request({...body,confirmed:false}),route)).status).toBe(400);
+  vi.clearAllMocks();state.context.demo=true;
+  expect((await (await POST(request(body),route)).json()).data.persisted).toBe(false);
+  expect(state.observationDispose).not.toHaveBeenCalled();
 });

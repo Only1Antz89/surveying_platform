@@ -4,7 +4,7 @@ import { useId, useState } from "react";
 import { valueStateLabels, valueStates, type FieldDefinition, type FieldValue, type FormTemplate, type ValueState } from "@surveynt/assistant";
 import { FieldEvidence } from "./field-evidence";
 
-export type FieldDisplay = { value: FieldValue | null; pending: boolean; origin: string | null };
+export type FieldDisplay = { value: FieldValue | null; pending: boolean; contentRemoved?: boolean; origin: string | null };
 
 function initialText(value: FieldValue | null) {
   if (!value || value.state !== "provided") return "";
@@ -37,6 +37,11 @@ export function SurveyField({ field, path, template, display, disabled, lockedRe
     setState(current?.state ?? "provided");
     setText(initialText(current));
   }
+
+  if (display.contentRemoved) return <div className="survey-field" data-path={path}>
+    <div className="survey-field-label"><span>{field.label}</span></div>
+    <p className="form-help" role="status">Answer content removed after retention review. Identity and provenance history remain.</p>
+  </div>;
 
   const locked = disabled || Boolean(lockedReason);
   const commit = (raw: string | boolean) => {

@@ -247,6 +247,7 @@ async function applyOperation(tx: TenantTransaction, context: SurveyContext, sur
       const validation = validateFieldValue(resolved.field, operation.value);
       if (!validation.ok) return reject(operationId, validation.message);
       const [current] = await tx.select().from(surveyFieldValues).where(and(eq(surveyFieldValues.surveyId, survey.id), eq(surveyFieldValues.fieldPath, resolved.path), isNull(surveyFieldValues.supersededAt))).limit(1);
+      if (current?.value.retentionRemoved === true) return reject(operationId, "This answer was removed after retention review. Record further work under a new instruction.");
       if ((current?.id ?? null) !== operation.baseValueId) return conflict(operationId, "This field changed since you last saw it. Compare the values before saving.", current ? { id: current.id, value: current.value, origin: current.origin, createdAt: current.createdAt.toISOString() } : null);
       if (current && canonicalJson(current.value) === canonicalJson(validation.value)) return { id: current.id, fieldPath: current.fieldPath, value: current.value, unchanged: true };
       if (current) await tx.update(surveyFieldValues).set({ supersededAt: new Date() }).where(eq(surveyFieldValues.id, current.id));
@@ -270,6 +271,7 @@ async function applyOperation(tx: TenantTransaction, context: SurveyContext, sur
     case "withdraw_observation": {
       const [existing] = await tx.select().from(observations).where(and(eq(observations.id, operation.observationId), eq(observations.surveyId, survey.id), eq(observations.organisationId, context.organisationId))).limit(1);
       if (!existing || existing.status !== "recorded") return reject(operationId, "That observation is no longer current.");
+      if (existing.structured.retentionRemoved === true) return reject(operationId, "This observation content was removed after retention review. Record further work under a new instruction.");
       if (existing.version !== operation.baseVersion) return conflict(operationId, "This observation was changed by someone else.", { id: existing.id, text: existing.text, version: existing.version });
       if (operation.type === "withdraw_observation") {
         await tx.update(observations).set({ status: "withdrawn", version: existing.version + 1, updatedAt: new Date(), structured: { ...existing.structured, withdrawalReason: operation.reason } }).where(eq(observations.id, existing.id));

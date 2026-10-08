@@ -6,7 +6,7 @@ import { inspectionStatusLabels, inspectionStatuses, nextActionLabels, nextActio
 import { SurveyField, type FieldDisplay } from "./survey-field";
 
 export type ElementView = { serverId: string | null; version: number | null; inspectionStatus: InspectionStatus | null; limitationReason: string | null; pending: boolean };
-export type ObservationView = { key: string; text: string; kind: string; pending: boolean; measurement?: { value: number; unit: string } | null; locationLabel?: string | null; defect?: { nextAction: string } | null; evidenceCount?: number };
+export type ObservationView = { key: string; text: string; kind: string; pending: boolean; contentRemoved?: boolean; measurement?: { value: number; unit: string } | null; locationLabel?: string | null; defect?: { nextAction: string } | null; evidenceCount?: number };
 export type PhotoView = { key: string; src: string | null; pending: boolean; label: string; quality?: string[] };
 export type EarlierPhotoView = { mediaId: string; jobReference: string; surveyDate: string; locationLabel: string | null };
 
@@ -103,7 +103,7 @@ export function SurveyElementCard({ section, element, template, view, fieldDispl
         </div>
         <div className="form-actions"><button type="button" className="button button-secondary" onClick={() => setAdding(false)}>Cancel</button><button className="button button-primary">Save observation</button></div>
       </form> : null}
-      {observations.length ? <ul className="observation-list">{observations.map((observation) => <li key={observation.key}>
+      {observations.length ? <ul className="observation-list">{observations.map((observation) => observation.contentRemoved ? <li key={observation.key}><p role="status">Observation content removed after retention review. Identity and provenance history remain.</p></li> : <li key={observation.key}>
         <span className={`status ${observation.defect ? "status-amber" : "status-slate"}`}>{observation.defect ? `Defect: ${nextActionLabels[observation.defect.nextAction as NextAction] ?? "next action not recorded"}` : observationKindLabels[observation.kind] ?? observation.kind}</span>
         <p>{observation.locationLabel ? <b>{observation.locationLabel}: </b> : null}{observation.text}{observation.measurement ? ` (${observation.measurement.value} ${observation.measurement.unit})` : ""}</p>
         {observation.pending ? <small>Saved on this device</small> : null}

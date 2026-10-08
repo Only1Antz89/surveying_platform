@@ -470,6 +470,27 @@
       "when": 1791398400000,
       "tag": "0066_report_content_disposition",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1791402000000,
+      "tag": "0067_recorded_content_reference_fence",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1791405600000,
+      "tag": "0068_recorded_field_value_disposition",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1791409200000,
+      "tag": "0069_observation_content_disposition",
+      "breakpoints": true
     }
   ]
 }
