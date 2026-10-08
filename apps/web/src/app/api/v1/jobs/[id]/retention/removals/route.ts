@@ -15,9 +15,12 @@ import { observeInterruptedSurveyFileOriginal } from "@/lib/survey-file-removal-
 import { processReviewedRemainingOriginals } from "@/lib/survey-file-removal-resume-runner";
 import { getObjectStorage } from "@/lib/storage";
 
+import { disposeAdviserTask } from "@/lib/survey-file-adviser-task-disposition";
+
 const common = { reason: z.string().trim().min(10).max(2000), confirmed: z.literal(true) };
 const input = z.discriminatedUnion("action", [
   z.object({ ...common, action: z.literal("request"), requestId: z.uuid(), reviewVersion: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
+  z.object({ ...common, action: z.literal("dispose_task"), id: z.uuid(), manifestVersion: z.string().regex(/^[a-f0-9]{64}$/), taskId: z.uuid() }).strict(),
   z.object({ ...common, action: z.literal("dispose_media_analysis"), id: z.uuid(), manifestVersion: z.string().regex(/^[a-f0-9]{64}$/), analysisId: z.uuid() }).strict(),
   z.object({ ...common, action: z.literal("dispose_analysis"), id: z.uuid(), manifestVersion: z.string().regex(/^[a-f0-9]{64}$/), documentId: z.uuid() }).strict(),
   z.object({ ...common, action: z.literal("resume"), id: z.uuid(), manifestVersion: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
@@ -57,6 +60,7 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
         return requestReviewedSurveyFileRemoval(tx, context.organisationId, id, context.internalUserId!, value);
       }
       const value = { id: decision.id, manifestVersion: decision.manifestVersion, reason: decision.reason, confirmed: decision.confirmed };
+      if (decision.action === "dispose_task") return disposeAdviserTask(tx, context.organisationId, id, context.internalUserId!, decision.taskId, value);
       if (decision.action === "dispose_analysis") return disposeQuestionnaireAnalysis(tx, context.organisationId, id, context.internalUserId!, decision.documentId, value);
       if (decision.action === "dispose_media_analysis") return disposeMediaAnalysis(tx, context.organisationId, id, context.internalUserId!, decision.analysisId, value);
       return cancelReviewedSurveyFileRemoval(tx, context.organisationId, id, context.internalUserId!, value);

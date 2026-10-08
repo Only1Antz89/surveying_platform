@@ -512,6 +512,7 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(assistantTasks).set({detail:"Restored text"}).where(eq(assistantTasks.id,removalTask.id)))).rejects.toThrow();
     await expect(withTenant(createDatabase(),foreignOrg.id,tx=>disposeAdviserTask(tx,foreignOrg.id,removalJob.id,context.internalUserId!,removalTask.id,cleanupDecision))).rejects.toThrow("permission");
     const disposedRegister=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,removalJob.id));
+    expect(disposedRegister!.adviserTasks.find(task=>task.id===removalTask.id)?.contentDisposed).toBe(true);
     expect(disposedRegister!.mediaAnalyses.find(analysis=>analysis.id===removalAnalysis.id)?.analysisDisposed).toBe(true);
     expect(disposedRegister!.questionnaireDocuments.find(document=>document.id===removalOriginal.id)?.analysisDisposed).toBe(true);
     expect(dispositionEvents[0].metadata).toEqual({jobId:removalJob.id,removalId:removalIntent.id,originalChecksum:removalOriginal.checksum,analysisFingerprint:createHash("sha256").update(JSON.stringify(removalOriginal.analysis)).digest("hex"),policyVersion:"survey-file-1-year-v2",reason:cleanupDecision.reason,confirmed:true});
