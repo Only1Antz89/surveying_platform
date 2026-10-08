@@ -37,3 +37,10 @@ describe("AI governance gate", () => {
     expect(await blocked.propose({ task: "field_proposals", template: {} as never, fieldPaths: [], evidence: [] })).toEqual({ status: "unavailable", reason: "No AI consent is recorded for this job." });
   });
 });
+
+describe("conversational governance",()=>{
+ const chat=(use:"case_chat"|"business_chat"):AiGateInput=>({...allowed(),register:[{...allowed().register[0],uses:[use]}],settings:{aiFeaturesEnabled:true,permittedUses:[use],disclosureVersion:2},riskAssessments:[{use,status:"approved",reviewDue:"2027-01-01"}],consent:null});
+ it("requires explicit case consent even with an approved conversation model",()=>expect(evaluateAiGate(chat("case_chat"),"case_chat").reasons.map(r=>r.code)).toContain("no_consent"));
+ it("permits business conversations without inventing a client consent record",()=>expect(evaluateAiGate(chat("business_chat"),"business_chat").allowed).toBe(true));
+ it("still blocks unapproved business models and overdue risk review",()=>expect(evaluateAiGate({...chat("business_chat"),register:[]},"business_chat").allowed).toBe(false));
+});

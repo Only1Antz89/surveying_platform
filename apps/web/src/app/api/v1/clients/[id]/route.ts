@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { clientApiContext, clientAuditActor, clientDatabase } from "@/lib/client-api-context";
 import { demoStore, recordDemoAudit } from "@/lib/demo-store";
 import { workspaceApiGuard } from "@/lib/workspace-api-guard";
@@ -73,7 +74,7 @@ export async function PATCH(request: Request, route: RouteContext<"/api/v1/clien
       updatedAt: new Date(),
     }).where(and(eq(clients.id, id), eq(clients.organisationId, context.organisationId), eq(clients.version, current.version))).returning();
     if (!updated) return { kind: "conflict" as const };
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, ...clientAuditActor(context), action: parsed.data.archived ? "client.archived" : "client.updated", resourceType: "client", resourceId: id, metadata: { fromVersion: current.version, toVersion: updated.version } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, ...clientAuditActor(context), action: parsed.data.archived ? "client.archived" : "client.updated", resourceType: "client", resourceId: id, metadata: { fromVersion: current.version, toVersion: updated.version } }));
     return { kind: "updated" as const, client: updated };
   });
   if (result.kind === "missing") return problem(404, "client_not_found", "The client could not be found.");

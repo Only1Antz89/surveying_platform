@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { clerkClient } from "@clerk/nextjs/server";
 import { z } from "zod";
@@ -62,7 +63,7 @@ export async function PATCH(request: Request) {
       services.push(created);
     }
     await tx.insert(onboardingSteps).values({ organisationId: context.organisationId, key: "services", completedAt: services.length ? new Date() : null, completedByUserId: context.internalUserId }).onConflictDoUpdate({ target: [onboardingSteps.organisationId, onboardingSteps.key], set: { completedAt: services.length ? new Date() : null, completedByUserId: services.length ? context.internalUserId : null, updatedAt: new Date() } });
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "organisation.settings_updated", resourceType: "organisation", resourceId: context.organisationId, metadata: { serviceCount: services.length } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "organisation.settings_updated", resourceType: "organisation", resourceId: context.organisationId, metadata: { serviceCount: services.length } }));
     return { ...parsed.data, services };
   });
   return ok(saved);

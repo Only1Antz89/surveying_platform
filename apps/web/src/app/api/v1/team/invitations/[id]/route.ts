@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { clerkClient } from "@clerk/nextjs/server";
 import { and, eq, isNull, sql } from "drizzle-orm";
@@ -34,7 +35,7 @@ export async function DELETE(request: Request, route: RouteContext<"/api/v1/team
   await db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
     await tx.update(invitations).set({ revokedAt: new Date(), updatedAt: new Date() }).where(and(eq(invitations.id, id), eq(invitations.organisationId, context.organisationId)));
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "invitation.revoked", resourceType: "invitation", resourceId: id, metadata: { email: invitation.email } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "invitation.revoked", resourceType: "invitation", resourceId: id, metadata: { email: invitation.email } }));
   });
   return ok({ id, revoked: true });
 }
@@ -61,7 +62,7 @@ export async function POST(request: Request, route: RouteContext<"/api/v1/team/i
     await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
     await tx.update(invitations).set({ revokedAt: new Date(), updatedAt: new Date() }).where(and(eq(invitations.id, id), eq(invitations.organisationId, context.organisationId)));
     const [record] = await tx.insert(invitations).values({ organisationId: context.organisationId, clerkInvitationId: replacement.id, email: invitation.email, role: invitation.role, expiresAt: new Date(replacement.expiresAt) }).returning();
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "invitation.resent", resourceType: "invitation", resourceId: record.id, metadata: { email: invitation.email, previousInvitationId: id } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "invitation.resent", resourceType: "invitation", resourceId: record.id, metadata: { email: invitation.email, previousInvitationId: id } }));
     return [record];
   });
   return ok(created);

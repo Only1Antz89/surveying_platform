@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { useCallback, useEffect, useState } from "react";
 import { FileCheck2, FileText, RefreshCw } from "lucide-react";
@@ -30,7 +31,7 @@ export function ReportPanel({ surveyId, canEdit, canJudge, online, demo, onChang
   const [note, setNote] = useState("");
   const [message, setMessage] = useState<{ tone: "success" | "error"; text: string; items?: { id: string; title: string }[] } | null>(null);
 
-  const fetchState = useCallback(() => fetch(`/api/v1/surveys/${surveyId}/report`, { cache: "no-store" }).then((response) => response.ok ? response.json() as Promise<{ data: ReportState }> : null), [surveyId]);
+  const fetchState = useCallback(() => workspaceFetch(`/api/v1/surveys/${surveyId}/report`, { cache: "no-store" }).then((response) => response.ok ? response.json() as Promise<{ data: ReportState }> : null), [surveyId]);
   const apply = (payload: { data: ReportState } | null) => {
     if (!payload) return;
     setState(payload.data);
@@ -49,7 +50,7 @@ export function ReportPanel({ surveyId, canEdit, canJudge, online, demo, onChang
 
   async function compose() {
     setBusy(true); setMessage(null); setConfirmed(false);
-    const response = await fetch(`/api/v1/surveys/${surveyId}/report`, { method: "POST" });
+    const response = await workspaceFetch(`/api/v1/surveys/${surveyId}/report`, { method: "POST" });
     const payload = await response.json().catch(() => null);
     setBusy(false);
     if (!response.ok) return setMessage({ tone: "error", text: payload?.error?.message ?? "The report could not be composed." });
@@ -60,7 +61,7 @@ export function ReportPanel({ surveyId, canEdit, canJudge, online, demo, onChang
 
   async function signOff(version: VersionSummary) {
     setBusy(true); setMessage(null);
-    const response = await fetch(`/api/v1/surveys/${surveyId}/report/${version.id}/approve`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ confirm: true, statement: REPORT_SIGN_OFF_STATEMENT, note: note.trim() || null }) });
+    const response = await workspaceFetch(`/api/v1/surveys/${surveyId}/report/${version.id}/approve`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ confirm: true, statement: REPORT_SIGN_OFF_STATEMENT, note: note.trim() || null }) });
     const payload = await response.json().catch(() => null);
     setBusy(false);
     if (!response.ok) return setMessage({ tone: "error", text: payload?.error?.message ?? "The report could not be signed off.", items: Array.isArray(payload?.error?.details) ? payload.error.details : undefined });
@@ -73,7 +74,7 @@ export function ReportPanel({ surveyId, canEdit, canJudge, online, demo, onChang
     const reason = window.prompt("Why does the survey need to change after sign-off?");
     if (!reason || reason.trim().length < 10) return;
     setBusy(true);
-    const response = await fetch(`/api/v1/surveys/${surveyId}/reopen`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reason }) });
+    const response = await workspaceFetch(`/api/v1/surveys/${surveyId}/reopen`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reason }) });
     const payload = await response.json().catch(() => null);
     setBusy(false);
     setMessage(response.ok ? { tone: "success", text: "Reopened. Compose and sign off a new version when the changes are done." } : { tone: "error", text: payload?.error?.message ?? "The survey could not be reopened." });

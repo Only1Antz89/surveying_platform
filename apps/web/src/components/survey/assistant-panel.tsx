@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { useId, useState } from "react";
 import { AlertTriangle, Check, Lightbulb, PencilLine, RefreshCw, X } from "lucide-react";
@@ -31,7 +32,7 @@ export function AssistantPanel({ surveyId, pack, sectionKey, fieldPath, hideSugg
 
   async function review(proposalId: string, body: Record<string, unknown>) {
     setBusy(proposalId); setMessage(null);
-    const response = await fetch(`/api/v1/surveys/${surveyId}/proposals/${proposalId}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const response = await workspaceFetch(`/api/v1/surveys/${surveyId}/proposals/${proposalId}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const payload = await response.json().catch(() => null);
     setBusy(null);
     if (!response.ok) setMessage(payload?.error?.message ?? "The suggestion could not be reviewed.");
@@ -42,7 +43,7 @@ export function AssistantPanel({ surveyId, pack, sectionKey, fieldPath, hideSugg
 
   async function refresh() {
     setBusy("refresh"); setMessage(null);
-    const response = await fetch(`/api/v1/surveys/${surveyId}/proposals`, { method: "POST" });
+    const response = await workspaceFetch(`/api/v1/surveys/${surveyId}/proposals`, { method: "POST" });
     const payload = await response.json().catch(() => null);
     setBusy(null);
     if (!response.ok) setMessage(payload?.error?.message ?? "Suggestions could not be refreshed.");
@@ -54,7 +55,7 @@ export function AssistantPanel({ surveyId, pack, sectionKey, fieldPath, hideSugg
     const note = window.prompt(status === "resolved" ? "How was this resolved?" : "Why is this being dismissed?");
     if (note === null) return;
     setBusy(taskId);
-    await fetch(`/api/v1/surveys/${surveyId}/tasks/${taskId}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status, note: note.trim() || null }) });
+    await workspaceFetch(`/api/v1/surveys/${surveyId}/tasks/${taskId}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status, note: note.trim() || null }) });
     setBusy(null);
     await onChanged();
   }

@@ -1,11 +1,12 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 import {CalendarMissingChannelReview,type MissingCalendarChannel} from "./calendar-missing-channel-review";
 import type {CalendarQueueHealth} from "@/lib/calendar-queue-health";
 import {CalendarReviewDetails} from "./calendar-review-details";
 import { EmailDeliveryReview } from "./email-delivery-review";
 
 import { type FormEvent, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/workspace-link";
 import { AlertTriangle, CheckCircle2, Pencil, Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { StatusDot } from "@surveynt/ui";
@@ -27,7 +28,7 @@ export function IncidentManager({ incidents, tenants, technicalFailures, calenda
   const [error, setError] = useState<string | null>(null);
 
   async function send(url: string, method: "POST" | "PATCH", body: unknown) {
-    const response = await fetch(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const response = await workspaceFetch(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload?.error?.message ?? "The incident change could not be completed.");
     router.refresh();

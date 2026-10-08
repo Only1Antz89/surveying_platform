@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { hasProfessionalPermission } from "@surveynt/domain";
 import { currentProfessionalPermission } from "./professional-membership";
 import { and, desc, eq, inArray, max } from "drizzle-orm";
@@ -41,7 +42,7 @@ export async function currentReportInput(tx: TenantTransaction, context: Pick<Su
 
 /** Composes a new, immutable draft version from approved material only. */
 export async function composeSurveyReport(context: SurveyContext, surveyId: string) {
-  if (!hasProfessionalPermission(context.role, "record_survey", context.canRecordSurvey)) throw new ReportError(403, "professional_recording_required", "Professional survey recording permission is required.");
+  if (!hasProfessionalPermission(context.actorRole??context.role, "record_survey", context.canRecordSurvey)) throw new ReportError(403, "professional_recording_required", "Professional survey recording permission is required.");
   return withTenant(createDatabase(), context.organisationId, async (tx) => {
     if (!await currentProfessionalPermission(tx, context, "record_survey")) throw new ReportError(403, "professional_recording_required", "Your professional recording permission has changed.");
     const current = await currentReportInput(tx, context, surveyId);
@@ -60,7 +61,7 @@ export async function composeSurveyReport(context: SurveyContext, surveyId: stri
       templateKey: current.pack.survey.templateKey, templateVersion: current.pack.survey.templateVersion, templateFingerprint: survey.templateFingerprint, ruleSetVersion: completion?.ruleSetVersion ?? null,
       inputFingerprint: current.fingerprint, content, trace: trace as unknown as Record<string, unknown>, contentSha256: await sha256(canonicalJson(content)), createdByUserId: context.internalUserId,
     }).returning();
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "report.version_composed", resourceType: "report_version", resourceId: created.id, metadata: { surveyId, versionNumber: created.versionNumber, clauses: trace.clauses.length, observations: trace.observations.length } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "report.version_composed", resourceType: "report_version", resourceId: created.id, metadata: { surveyId, versionNumber: created.versionNumber, clauses: trace.clauses.length, observations: trace.observations.length } }));
     return { id: created.id, versionNumber: created.versionNumber, content: report, omissions: report.omissions };
   });
 }
@@ -90,7 +91,7 @@ export async function loadSurveyReports(context: Pick<SurveyContext, "organisati
  * resolved or covered by a recorded override. Capture then closes.
  */
 export async function approveReportVersion(context: SurveyContext, surveyId: string, versionId: string, input: { confirm: boolean; note?: string | null }) {
-  if (!hasProfessionalPermission(context.role, "approve_reports", context.canApproveReports)) throw new ReportError(403, "forbidden", "Explicit professional report approval permission is required.");
+  if (!hasProfessionalPermission(context.actorRole??context.role, "approve_reports", context.canApproveReports)) throw new ReportError(403, "forbidden", "Explicit professional report approval permission is required.");
   if (!input.confirm) throw new ReportError(400, "confirmation_required", "Confirm that you have reviewed the full report.");
   return withTenant(createDatabase(), context.organisationId, async (tx) => {
     if (!await currentProfessionalPermission(tx, context, "approve_reports")) throw new ReportError(403, "professional_approval_required", "Your professional report approval permission has changed.");
@@ -113,14 +114,14 @@ export async function approveReportVersion(context: SurveyContext, surveyId: str
       contentSha256: latest.contentSha256, completion: { ruleSetVersion: completion.ruleSetVersion, hardGateFailures: completion.hardGateFailures, overriddenItems: completion.items.filter((item) => overridden.has(item.id) && item.status === "fail").map((item) => item.id) },
     }).returning();
     await tx.update(surveys).set({ status: "approved", version: current.pack.survey.version + 1, updatedAt: new Date() }).where(and(eq(surveys.id, surveyId), eq(surveys.organisationId, context.organisationId)));
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "report.signed_off", resourceType: "report_version", resourceId: versionId, metadata: { surveyId, versionNumber: latest.versionNumber, contentSha256: latest.contentSha256 } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "report.signed_off", resourceType: "report_version", resourceId: versionId, metadata: { surveyId, versionNumber: latest.versionNumber, contentSha256: latest.contentSha256 } }));
     return { approvalId: approval.id, versionNumber: latest.versionNumber };
   });
 }
 
 /** Reopens an approved survey for changes; a new version must then be composed and signed off. */
 export async function reopenSurvey(context: SurveyContext, surveyId: string, reason: string) {
-  if (!hasProfessionalPermission(context.role, "approve_reports", context.canApproveReports)) throw new ReportError(403, "forbidden", "Only surveyors, administrators and owners can reopen a survey.");
+  if (!hasProfessionalPermission(context.actorRole??context.role, "approve_reports", context.canApproveReports)) throw new ReportError(403, "forbidden", "Only surveyors, administrators and owners can reopen a survey.");
   return withTenant(createDatabase(), context.organisationId, async (tx) => {
     if (!await currentProfessionalPermission(tx, context, "approve_reports")) throw new ReportError(403, "professional_approval_required", "Your professional approval permission has changed.");
     const [survey] = await tx.select().from(surveys).where(and(eq(surveys.id, surveyId), eq(surveys.organisationId, context.organisationId))).limit(1);
@@ -129,7 +130,7 @@ export async function reopenSurvey(context: SurveyContext, surveyId: string, rea
     const [job] = await tx.select({ stage: jobs.stage }).from(jobs).where(and(eq(jobs.id, survey.jobId), eq(jobs.organisationId, context.organisationId))).limit(1);
     if (job && ["issued", "paid", "archived"].includes(job.stage)) throw new ReportError(409, "already_issued", "The report has been issued. Record corrections as a new instruction.");
     await tx.update(surveys).set({ status: "in_progress", version: survey.version + 1, updatedAt: new Date() }).where(eq(surveys.id, surveyId));
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "survey.reopened", resourceType: "survey", resourceId: surveyId, metadata: { reason } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "survey.reopened", resourceType: "survey", resourceId: surveyId, metadata: { reason } }));
     return { status: "in_progress" as const };
   });
 }

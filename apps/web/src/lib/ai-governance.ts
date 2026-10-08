@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { aiUses, evaluateAiGate, getGovernedModel, type AiGateResult, type AiUse } from "@surveynt/assistant";
@@ -12,7 +13,7 @@ export class GovernanceError extends Error {
 
 const today = () => new Date().toISOString().slice(0, 10);
 const audit = (tx: TenantTransaction, context: GovernanceContext, action: string, resourceType: string, resourceId: string, metadata: Record<string, unknown> = {}) =>
-  tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action, resourceType, resourceId, metadata });
+  tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action, resourceType, resourceId, metadata }));
 
 /** Evaluates the governance gate for one use on one job, inside the caller's tenant transaction. */
 export async function loadAiGate(tx: TenantTransaction, organisationId: string, jobId: string, use: AiUse, env = process.env): Promise<AiGateResult> {
@@ -24,7 +25,7 @@ export async function loadAiGate(tx: TenantTransaction, organisationId: string, 
     tx.select({ severity: aiIncidents.severity, status: aiIncidents.status }).from(aiIncidents).where(and(eq(aiIncidents.organisationId, organisationId), inArray(aiIncidents.status, ["open", "investigating"]))),
   ]);
   return evaluateAiGate({
-    providerKey: env.AI_PROVIDER ?? "none", register,
+    providerKey: env.AI_PROVIDER ?? "none", register:env.AI_MODEL_ID?register.filter(r=>r.modelId===env.AI_MODEL_ID):register,
     settings: settings ? { aiFeaturesEnabled: settings.aiFeaturesEnabled, permittedUses: settings.permittedUses, disclosureVersion: settings.disclosureVersion } : null,
     riskAssessments: assessments, consent: consent ? { status: consent.status, uses: consent.uses, disclosureVersion: consent.disclosureVersion } : null,
     openIncidents: incidents, today: today(),

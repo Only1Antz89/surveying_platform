@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { useEffect, useState } from "react";
 import { AlertCircle, Download } from "lucide-react";
@@ -16,7 +17,7 @@ export function PracticeInsightsView() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch(`/api/v1/insights?${new URLSearchParams(range)}`, {
+    workspaceFetch(`/api/v1/insights?${new URLSearchParams(range)}`, {
       signal: controller.signal,
       cache: "no-store",
     })

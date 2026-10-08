@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { useEffect, useState } from "react";
 import { AlertCircle, FileText, Receipt } from "lucide-react";
@@ -31,7 +32,7 @@ export function CustomerRecords({
   async function confirmReceipt(reportVersionId: string) {
     setConfirming(reportVersionId); setError("");
     try {
-      const response = await fetch(`/api/v1/public/quotes/${id}/reports`, {
+      const response = await workspaceFetch(`/api/v1/public/quotes/${id}/reports`, {
         method: "POST", headers: { "content-type": "application/json", "x-quote-token": token },
         body: JSON.stringify({ reportVersionId, confirmed: true }),
       });
@@ -44,7 +45,7 @@ export function CustomerRecords({
 
   useEffect(() => {
     let active = true;
-    fetch(`/api/v1/public/quotes/${id}/reports`, {
+    workspaceFetch(`/api/v1/public/quotes/${id}/reports`, {
       headers: { "x-quote-token": token },
       cache: "no-store",
     })

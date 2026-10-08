@@ -1,3 +1,4 @@
+vi.mock("@/lib/tracking",()=>({purgeExpiredLocations:async()=>({removed:0})}));
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const sweep = vi.hoisted(() => ({ run: vi.fn() }));
 vi.mock("@/lib/email", () => ({ emailDeliveryConfigured: () => false }));

@@ -1,5 +1,7 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
+import {useUnsavedChanges} from "./unsaved-changes";
 import { useEffect, useState } from "react";
 import { AlertCircle, CheckCircle2 } from "lucide-react";
 
@@ -19,13 +21,14 @@ export function ReportIdentitySettings({
   canEdit?: boolean;
 }) {
   const [value, setValue] = useState<Identity>({});
+  const [saved,setSaved]=useState("{}");useUnsavedChanges(JSON.stringify(value)!==saved);
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
     let current = true;
-    fetch(personal ? "/api/v1/me" : "/api/v1/operations/settings", { cache: "no-store" })
+    workspaceFetch(personal ? "/api/v1/me" : "/api/v1/operations/settings", { cache: "no-store" })
       .then(async (response) => {
         const payload = await response.json();
         if (!response.ok)
@@ -42,7 +45,7 @@ export function ReportIdentitySettings({
               };
             } catch {}
           }
-          setValue(identity);
+          setValue(identity);setSaved(JSON.stringify(identity));
           setReady(true);
         }
       })
@@ -58,7 +61,7 @@ export function ReportIdentitySettings({
     setBusy(true);
     setMessage("");
     try {
-      const response = await fetch(
+      const response = await workspaceFetch(
         personal ? "/api/v1/me" : "/api/v1/operations/report-identity",
         {
           method: "PATCH",
@@ -75,6 +78,7 @@ export function ReportIdentitySettings({
       );
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "The identity could not save.");
+      if(payload.meta?.persisted!==false)setSaved(JSON.stringify(value));
       if (personal && payload.meta?.persisted === false)
         localStorage.setItem("surveynt:preview-report-identity", JSON.stringify(value));
       setMessage(

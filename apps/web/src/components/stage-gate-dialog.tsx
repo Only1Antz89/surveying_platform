@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import Link from "@/components/workspace-link";
 import { AlertTriangle, ClipboardList, X } from "lucide-react";
 import { OTHER_OVERRIDE, type CompletionOverride } from "@surveynt/assistant";
 

@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, CheckCircle2, FileText } from "lucide-react";
@@ -23,7 +24,7 @@ export function CreditNoteForm({ invoiceId, currency, remainingMinor, remainingV
       };
       const body = JSON.stringify(fields);
       if (attempt.current?.body !== body) attempt.current = { body, id: crypto.randomUUID() };
-      const response = await fetch(`/api/v1/finance/invoices/${invoiceId}/credits`, {
+      const response = await workspaceFetch(`/api/v1/finance/invoices/${invoiceId}/credits`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ ...fields, requestId: attempt.current.id }),

@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CloudOff, History, RefreshCw, Trash2 } from "lucide-react";
@@ -46,7 +47,7 @@ export function SurveyWorkspace({ surveyId, canEdit: initialCanEdit, canJudge: i
 
   const fetchPack = useCallback(async () => {
     try {
-      const response = await fetch(`/api/v1/surveys/${surveyId}`, { cache: "no-store" });
+      const response = await workspaceFetch(`/api/v1/surveys/${surveyId}`, { cache: "no-store" });
       const payload = await response.json();
       if ([401, 403, 404].includes(response.status)) {
         await offlineStore.clearSurvey(surveyId);
@@ -95,7 +96,7 @@ export function SurveyWorkspace({ surveyId, canEdit: initialCanEdit, canJudge: i
         body.append("file", new File([upload.blob], upload.name, { type: upload.type }));
         body.append("metadata", JSON.stringify({ clientGeneratedId: upload.clientId, capturedAt: upload.capturedAt, captureContext: upload.context }));
         try {
-          const response = await fetch(`/api/v1/surveys/${surveyId}/media`, { method: "POST", body });
+          const response = await workspaceFetch(`/api/v1/surveys/${surveyId}/media`, { method: "POST", body });
           if (response.ok) await offlineStore.removeUpload(upload.clientId);
           else {
             const payload = await response.json().catch(() => null);
@@ -110,7 +111,7 @@ export function SurveyWorkspace({ surveyId, canEdit: initialCanEdit, canJudge: i
       const ready = (await offlineStore.outbox(surveyId)).filter((entry) => entry.status === "pending" && !(entry.operation.type === "link_evidence" && entry.operation.evidence.type === "media" && waitingMedia.has(entry.operation.evidence.id)));
       for (let index = 0; index < ready.length; index += 50) {
         const batch = ready.slice(index, index + 50);
-        const response = await fetch(`/api/v1/surveys/${surveyId}/sync`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ operations: batch.map((entry) => entry.operation) }) });
+        const response = await workspaceFetch(`/api/v1/surveys/${surveyId}/sync`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ operations: batch.map((entry) => entry.operation) }) });
         if (!response.ok) { const payload = await response.json().catch(() => null); if (response.status === 403) setRecordingRevoked(true); setNotice(payload?.error?.message ?? "Changes could not be synced yet. They are safe on this device."); break; }
         const payload = await response.json();
         if (payload.meta?.demo) setNotice("Demo workspace: changes are not saved to a server.");
@@ -261,7 +262,7 @@ export function SurveyWorkspace({ surveyId, canEdit: initialCanEdit, canJudge: i
           onObservation={(input) => void queue({ type: "add_observation", operationId: newOperationId(), element: { sectionKey: activeSection.key, elementKey: element.key, locationLabel: input.locationLabel ?? "" }, kind: input.kind, text: input.text, measurement: input.measurement, defect: input.defect, observedAt: new Date().toISOString() })}
           onLoadEarlier={demo ? undefined : async () => {
             if (!navigator.onLine) return null;
-            const response = await fetch(`/api/v1/surveys/${surveyId}/photo-history?section=${activeSection.key}&element=${element.key}`, { cache: "no-store" });
+            const response = await workspaceFetch(`/api/v1/surveys/${surveyId}/photo-history?section=${activeSection.key}&element=${element.key}`, { cache: "no-store" });
             return response.ok ? ((await response.json()).data as EarlierPhotoView[]) : null;
           }}
           onLinkPhoto={(observationKey, pending, photoKey) => void queue({ type: "link_evidence", operationId: newOperationId(), target: pending ? { type: "observation", observationOperationId: observationKey } : { type: "observation", observationId: observationKey }, evidence: { type: "media", id: photoKey } })}

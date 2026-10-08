@@ -1,8 +1,9 @@
+import {workspaceModes,type WorkspaceMode} from "./workspace-mode";
 import { z } from "zod";
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 
 export type CalendarProvider = "google" | "microsoft";
-type State = { provider: CalendarProvider; organisationId: string; userId: string; verifier: string; expires: number };
+type State = { provider: CalendarProvider; organisationId: string; userId: string; verifier: string; expires: number; workspaceMode?:WorkspaceMode };
 
 export function calendarEncryptionKeyVersion(){
   const value=process.env.CALENDAR_TOKEN_ENCRYPTION_KEY_VERSION??"1";
@@ -69,7 +70,7 @@ export async function registerCalendarWebhook(provider: CalendarProvider, connec
   }
   const expirationDateTime = new Date(Date.now() + 2.5 * 86_400_000).toISOString(); const response = await fetch("https://graph.microsoft.com/v1.0/subscriptions", { method: "POST", redirect:"error", signal:AbortSignal.timeout(15000), headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" }, body: JSON.stringify({ changeType: "created,updated,deleted", notificationUrl, resource: "me/events", expirationDateTime, clientState: calendarWebhookToken(connectionId,registrationAttemptId) }) }); const body = await response.json() as { id?: string; expirationDateTime?: string }; if (!response.ok || !body.id) throw new Error("Microsoft Calendar webhook registration failed."); return { channelId: body.id, resourceId:null, expiresAt: typeof body.expirationDateTime==="string"&&Number.isFinite(new Date(body.expirationDateTime).getTime()) ? new Date(body.expirationDateTime) : null };
 }
-export function createCalendarAuthorization(provider: CalendarProvider, identity: { organisationId: string; userId: string }, origin: string) {
+export function createCalendarAuthorization(provider: CalendarProvider, identity: { organisationId: string; userId: string;workspaceMode?:WorkspaceMode }, origin: string) {
   const providerConfig = config(provider); if (!providerConfig.clientId || !providerConfig.clientSecret) throw new Error("CALENDAR_PROVIDER_NOT_CONFIGURED");
   const verifier = randomBytes(48).toString("base64url"); const challenge = createHash("sha256").update(verifier).digest("base64url");
   const state = encryptCalendarSecret({ provider, ...identity, verifier, expires: Date.now() + 10 * 60_000 } satisfies State);
@@ -79,8 +80,7 @@ export function createCalendarAuthorization(provider: CalendarProvider, identity
 }
 
 export async function exchangeCalendarCode(stateValue:string,code:string,origin:string,identity:{organisationId:string;userId:string}) {
-  const state=z.object({provider:z.enum(["google","microsoft"]),organisationId:z.string().min(1),userId:z.string().min(1),verifier:z.string().min(43).max(128),expires:z.number().int().finite()}).parse(decryptCalendarSecret<unknown>(stateValue));
-  if(state.expires<=Date.now())throw new Error("CALENDAR_OAUTH_EXPIRED");
+  const state=readCalendarState(stateValue);
   if(state.organisationId!==identity.organisationId||state.userId!==identity.userId)throw new Error("CALENDAR_OAUTH_IDENTITY_MISMATCH");
   const providerConfig = config(state.provider); if (!providerConfig.clientId || !providerConfig.clientSecret) throw new Error("CALENDAR_PROVIDER_NOT_CONFIGURED");
   const response = await fetch(providerConfig.token, { method: "POST", redirect:"error", signal:AbortSignal.timeout(15000), headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ client_id: providerConfig.clientId, client_secret: providerConfig.clientSecret, redirect_uri: calendarRedirectUri(origin), grant_type: "authorization_code", code, code_verifier: state.verifier }) });
@@ -91,3 +91,5 @@ export async function exchangeCalendarCode(stateValue:string,code:string,origin:
   const storedTokens = { ...tokens, access_token: tokens.access_token, obtained_at: Date.now() } as Record<string, unknown> & { access_token: string; obtained_at: number };
   return { state, tokens: storedTokens, providerAccountId: String(profile.id ?? profile.sub), accountEmail: String(profile.email ?? profile.mail ?? profile.userPrincipalName ?? "") };
 }
+
+export function readCalendarState(stateValue:string){const state=z.object({provider:z.enum(["google","microsoft"]),organisationId:z.string().min(1),userId:z.string().min(1),verifier:z.string().min(43).max(128),expires:z.number().int().finite(),workspaceMode:z.enum(workspaceModes).optional()}).parse(decryptCalendarSecret<unknown>(stateValue));if(state.expires<=Date.now())throw new Error("CALENDAR_OAUTH_EXPIRED");return state;}

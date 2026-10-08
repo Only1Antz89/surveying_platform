@@ -1,3 +1,4 @@
+vi.mock("next/headers",()=>({headers:async()=>new Headers()}));
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { rm } from "node:fs/promises";
 import { demoStore, createDemoStore } from "./demo-store";

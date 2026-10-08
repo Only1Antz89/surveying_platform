@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 import { useState } from "react";
 import { DocumentUploader } from "./document-uploader";
 import { useRouter } from "next/navigation";
@@ -11,7 +12,7 @@ export function DocumentControls({ id, category, accessClass, checksum, retentio
     setBusy(true); setMessage("");
     try {
       const date = String(form.get("retentionUntil") ?? "");
-      const response = await fetch(`/api/v1/documents/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ category: form.get("category"), accessClass: form.get("accessClass"), retentionUntil: date ? new Date(`${date}T12:00:00Z`).toISOString() : null, legalHold: form.get("legalHold") === "on" }) });
+      const response = await workspaceFetch(`/api/v1/documents/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ category: form.get("category"), accessClass: form.get("accessClass"), retentionUntil: date ? new Date(`${date}T12:00:00Z`).toISOString() : null, legalHold: form.get("legalHold") === "on" }) });
       const payload = await response.json();
       setMessage(response.ok ? "Protection updated." : payload.error?.message ?? "Changes could not be saved.");
       if (response.ok) router.refresh();
@@ -21,7 +22,7 @@ export function DocumentControls({ id, category, accessClass, checksum, retentio
   async function archive() {
     if (!confirm("Archive this document? Documents under legal hold cannot be archived.")) return;
     setBusy(true);
-    try { const response = await fetch(`/api/v1/documents/${id}`, { method: "DELETE" }); if (response.ok) { setMessage("Document archived."); router.refresh(); } else { const payload = await response.json(); setMessage(payload.error?.message ?? "Archive failed."); } }
+    try { const response = await workspaceFetch(`/api/v1/documents/${id}`, { method: "DELETE" }); if (response.ok) { setMessage("Document archived."); router.refresh(); } else { const payload = await response.json(); setMessage(payload.error?.message ?? "Archive failed."); } }
     catch { setMessage("Connection lost. The document has not been archived."); }
     finally { setBusy(false); }
   }

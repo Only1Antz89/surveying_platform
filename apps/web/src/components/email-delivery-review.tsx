@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, CheckCircle2, Mail } from "lucide-react";
@@ -12,7 +13,7 @@ export function EmailDeliveryReview({ jobId, attempts, leaseToken }: { jobId: st
     setBusy(true);
     setMessage("");
     try {
-      const response = await fetch(`/api/platform/background-jobs/${jobId}/review`, {
+      const response = await workspaceFetch(`/api/platform/background-jobs/${jobId}/review`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

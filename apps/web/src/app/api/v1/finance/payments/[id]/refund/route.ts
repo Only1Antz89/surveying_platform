@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import Stripe from "stripe";
 import { z } from "zod";
@@ -16,6 +17,6 @@ export async function POST(request: Request, route: RouteContext<"/api/v1/financ
   if (accessDenial) return accessDenial;
   const [payment] = context.demo ? [] : await withTenant(createDatabase(), context.organisationId, (tx) => tx.select().from(clientPayments).where(and(eq(clientPayments.id, id), eq(clientPayments.organisationId, context.organisationId))).limit(1)); if (!payment?.stripePaymentIntentId || payment.status === "pending" || payment.status === "failed") return problem(409, "not_refundable", "This payment cannot be refunded."); const remaining = payment.amountMinor - payment.refundedMinor; const amount = parsed.data.amountMinor ?? remaining; if (amount > remaining) return problem(400, "amount_too_high", "The refund exceeds the remaining paid amount.");
   const stripe = new Stripe(process.env.STRIPE_CLIENT_PAYMENTS_KEY); const refund = await stripe.refunds.create({ payment_intent: payment.stripePaymentIntentId, amount, reason: parsed.data.reason, metadata: { surveyntPaymentId: payment.id, surveyntOrganisationId: context.organisationId } }, { idempotencyKey: `client-refund-${payment.id}-${payment.refundedMinor}-${amount}` });
-  await withTenant(createDatabase(), context.organisationId, (tx) => tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "client_payment.refund_requested", resourceType: "client_payment", resourceId: payment.id, metadata: { stripeRefundId: refund.id, amountMinor: amount, reason: parsed.data.reason } }));
+  await withTenant(createDatabase(), context.organisationId, (tx) => tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "client_payment.refund_requested", resourceType: "client_payment", resourceId: payment.id, metadata: { stripeRefundId: refund.id, amountMinor: amount, reason: parsed.data.reason } })));
   return ok({ refundId: refund.id, status: refund.status, amountMinor: amount }, { pendingWebhookConfirmation: true });
 }

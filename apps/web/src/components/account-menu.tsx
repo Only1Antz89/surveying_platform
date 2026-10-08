@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import Link from "@/components/workspace-link";
 import { OrganizationSwitcher, SignOutButton } from "@clerk/nextjs";
 import { useEffect, useRef } from "react";
 export function AccountMenu({ href, name }: { href: string; name: string }) {

@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { useState } from "react";
 import { CheckCircle2, RotateCcw } from "lucide-react";
@@ -8,7 +9,7 @@ export function QueueActionButton({ endpoint, label }: { endpoint: string; label
   async function run() {
     setState("saving");
     try {
-      const response = await fetch(endpoint, { method: "POST" });
+      const response = await workspaceFetch(endpoint, { method: "POST" });
       if (!response.ok) { setState("error"); return; }
       const payload = await response.json().catch(() => null);
       setState(payload?.meta?.verificationRequired ? "review" : "done");

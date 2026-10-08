@@ -1,3 +1,4 @@
+import {purgeExpiredLocations} from "@/lib/tracking";
 import { emailDeliveryConfigured } from "@/lib/email";
 import { enqueueDailyNotifications, processEmailQueue } from "@/lib/email-queue";
 import { processIntelligenceQueue } from "@/lib/intelligence";
@@ -13,6 +14,7 @@ export async function GET(request: Request) {
   const authorization = request.headers.get("authorization");
   if (!process.env.CRON_SECRET || authorization !== `Bearer ${process.env.CRON_SECRET}`) return Response.json({ error: "Unauthorised scheduled run." }, { status: 401 });
   if (!process.env.DATABASE_ADMIN_URL) return Response.json({ error: "Scheduled notification storage is not configured." }, { status: 503 });
+  const tracking=await purgeExpiredLocations().catch(()=>({removed:0}));
   const scheduled = await enqueueDailyNotifications();
   const delivery = emailDeliveryConfigured()
     ? await processEmailQueue(30)
@@ -24,5 +26,5 @@ export async function GET(request: Request) {
   const calendars = await processCalendarQueue(10).catch(() => ({ claimed: 0, results: [] }));
   // Retries learning withdrawals and survey-file removals; extraction runs only while the programme is active.
   const learning = await runLearningSweep(5).catch(() => ({ withdrawals: 0, firms: 0, created: 0, error: "Learning sweep failed." }));
-  return Response.json({ ok: true, scheduled, delivery, intelligence: { claimed: intelligence.claimed }, media: { analysed: media.analysed }, sources: { probed: sources.probed, releaseChecksDue: sources.stale.length }, calendars: { ...calendarScheduled, claimed: calendars.claimed }, learning: { withdrawals: learning.withdrawals, filesErased: "removedFiles" in learning ? learning.removedFiles?.files ?? 0 : 0, created: learning.created } });
+  return Response.json({ ok: true, tracking, scheduled, delivery, intelligence: { claimed: intelligence.claimed }, media: { analysed: media.analysed }, sources: { probed: sources.probed, releaseChecksDue: sources.stale.length }, calendars: { ...calendarScheduled, claimed: calendars.claimed }, learning: { withdrawals: learning.withdrawals, filesErased: "removedFiles" in learning ? learning.removedFiles?.files ?? 0 : 0, created: learning.created } });
 }

@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, Calendar, CheckCircle2 } from "lucide-react";
@@ -14,7 +15,7 @@ export function CalendarMissingChannelReview({ row }: { row: MissingCalendarChan
     setBusy(true);
     setMessage("");
     try {
-      const response = await fetch(`/api/platform/calendar-connections/${row.id}/provision`, {
+      const response = await workspaceFetch(`/api/platform/calendar-connections/${row.id}/provision`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

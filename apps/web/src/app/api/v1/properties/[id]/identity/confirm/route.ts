@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { professionalApiGuard } from "@/lib/professional-access";
 import { and, eq, sql } from "drizzle-orm";
@@ -51,7 +52,7 @@ export async function POST(request: Request, route: RouteContext<"/api/v1/proper
       updatedAt: new Date(),
     }).where(and(eq(properties.id, id), eq(properties.organisationId, context.organisationId), eq(properties.version, current.version))).returning();
     if (!updated) return { kind: "conflict" as const };
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "property.identity_confirmed", resourceType: "property", resourceId: id, metadata: { ...parsed.data.evidence, uprn: parsed.data.uprn, resolutionMethod: parsed.data.resolutionMethod, fromVersion: current.version, toVersion: updated.version } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "property.identity_confirmed", resourceType: "property", resourceId: id, metadata: { ...parsed.data.evidence, uprn: parsed.data.uprn, resolutionMethod: parsed.data.resolutionMethod, fromVersion: current.version, toVersion: updated.version } }));
     return { kind: "updated" as const, property: updated };
   });
   if (result.kind === "missing") return problem(404, "property_not_found", "The property could not be found.");

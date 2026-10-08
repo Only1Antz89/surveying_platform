@@ -1,12 +1,15 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 import { alterationSurcharges } from "@/lib/service-pricing-input";
+import {useUnsavedChanges} from "./unsaved-changes";
 import { useEffect, useState } from "react";
 import { StatusDot } from "@surveynt/ui";
 
 type Entry = { service: { id: string; name: string; active: boolean }; pricing: { version: number; currency: string; baseAmountMinor: number; vatBasisPoints: number; depositBasisPoints: number; durationMinutes: number; validityDays: number; surcharges: Record<string,{label:string;amountMinor:number}>; recommendationRules: Record<string,unknown> } | null };
 export function ServiceCatalogue({ canEdit }: { canEdit: boolean }) {
   const [entries, setEntries] = useState<Entry[]>([]), [selected, setSelected] = useState<Entry | null | undefined>(undefined), [message, setMessage] = useState(""), [busy, setBusy] = useState(false);
-  useEffect(() => { let active = true; fetch("/api/v1/service-catalogue").then(async response => { const payload = await response.json(); if (!response.ok) throw new Error(payload.error?.message ?? "Catalogue could not be loaded."); if (active) setEntries(payload.data); }).catch(error => { if(active)setMessage(error.message); }); return () => { active = false; }; }, []);
+  const [dirty,setDirty]=useState(false);useUnsavedChanges(dirty);
+  useEffect(() => { let active = true; workspaceFetch("/api/v1/service-catalogue").then(async response => { const payload = await response.json(); if (!response.ok) throw new Error(payload.error?.message ?? "Catalogue could not be loaded."); if (active) setEntries(payload.data); }).catch(error => { if(active)setMessage(error.message); }); return () => { active = false; }; }, []);
   async function save(form: FormData) {
     setBusy(true); setMessage("");
     try {
@@ -20,11 +23,11 @@ export function ServiceCatalogue({ canEdit }: { canEdit: boolean }) {
       const recommendationRules={...(selected?.pricing?.recommendationRules??{})};
       if(form.get("recommendation-source")==="clifton_adviser_v1")recommendationRules.source="clifton_adviser_v1";else delete recommendationRules.source;
       const body = { ...(selected ? { expectedVersion: selected.pricing?.version ?? 0 } : {}), name: form.get("name"), baseAmountMinor: Math.round(Number(form.get("fee")) * 100), vatBasisPoints: Math.round(Number(form.get("vat")) * 100), depositBasisPoints: Math.round(Number(form.get("deposit")) * 100), durationMinutes: Number(form.get("duration")), validityDays: Number(form.get("validity")), active: form.get("active") === "on", surcharges, recommendationRules };
-      const response = await fetch(`/api/v1/service-catalogue${selected ? `/${selected.service.id}` : ""}`, { method: selected ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const response = await workspaceFetch(`/api/v1/service-catalogue${selected ? `/${selected.service.id}` : ""}`, { method: selected ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       const payload = await response.json(); if (!response.ok) throw new Error(payload.error?.message ?? "Pricing could not be saved.");
       if (payload.meta?.persisted === false) throw new Error("Preview only: this pricing version was not saved.");
-      const updated = await fetch("/api/v1/service-catalogue", { cache: "no-store" }); if (!updated.ok) throw new Error("Saved, but the catalogue could not be refreshed. Reload this page.");
-      setEntries((await updated.json()).data); setSelected(undefined); setMessage("Pricing saved as a new version. Existing accepted quotes are unchanged.");
+      const updated = await workspaceFetch("/api/v1/service-catalogue", { cache: "no-store" }); if (!updated.ok) throw new Error("Saved, but the catalogue could not be refreshed. Reload this page.");
+      setEntries((await updated.json()).data); setSelected(undefined);setDirty(false); setMessage("Pricing saved as a new version. Existing accepted quotes are unchanged.");
     } catch(error) { setMessage((error as Error).message); } finally { setBusy(false); }
   }
   const isSuccess = message.includes("saved");
@@ -106,7 +109,7 @@ export function ServiceCatalogue({ canEdit }: { canEdit: boolean }) {
               background: "var(--surface-2)",
             }}
           >
-            <form action={save} key={selected?.service.id ?? "new"}>
+            <form onChange={()=>setDirty(true)} action={save} key={selected?.service.id ?? "new"}>
               <h3 style={{ margin: "0 0 16px", fontSize: "1.05rem" }}>
                 {selected ? "New pricing version" : "New service"}
               </h3>

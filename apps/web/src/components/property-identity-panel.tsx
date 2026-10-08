@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { FormEvent, useState } from "react";
 import { AlertTriangle, Fingerprint, LocateFixed, X } from "lucide-react";
@@ -44,7 +45,7 @@ export function PropertyIdentityPanel({ propertyId, address, initialIdentity, in
 
   async function send(body: Record<string, unknown>) {
     setBusy(true); setError(null); setNotice(null);
-    const response = await fetch(`/api/v1/properties/${propertyId}/identity`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, version }) });
+    const response = await workspaceFetch(`/api/v1/properties/${propertyId}/identity`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, version }) });
     const payload = await response.json(); setBusy(false);
     if (!response.ok) { setError(payload?.error?.message ?? "The identity change could not be saved."); return false; }
     if (payload.meta?.demo) { setNotice("Demo workspace: the change was not saved."); return true; }
@@ -56,7 +57,7 @@ export function PropertyIdentityPanel({ propertyId, address, initialIdentity, in
 
   async function choose(next: AddressSelection) {
     setSelection(next); setResolution(null); setSelectedUprn(""); setError(null);
-    const response = await fetch("/api/v1/address/resolve", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lookupId: next.lookupId, index: next.candidate.index }) });
+    const response = await workspaceFetch("/api/v1/address/resolve", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lookupId: next.lookupId, index: next.candidate.index }) });
     const payload = await response.json();
     if (!response.ok) return setError(payload?.error?.message ?? "That result could not be resolved.");
     setResolution(payload.data.uprn as UprnResolution);

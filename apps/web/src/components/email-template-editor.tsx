@@ -1,4 +1,6 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
+import {useUnsavedChanges} from "./unsaved-changes";
 import { useState } from "react";
 import { emailTemplatesSchema, fillQuoteTemplate, quoteTemplateDefaults, type EmailTemplates } from "@/lib/email-template-settings";
 import { AlertCircle, CheckCircle2, Mail, RotateCcw, Save } from "lucide-react";
@@ -11,6 +13,7 @@ export function EmailTemplateEditor({ initial, canEdit }: { initial: EmailTempla
   const [message, setMessage] = useState("");
   const example = { customerName: "Alex Customer", organisationName: "Example Surveyors", quoteReference: "QUO-123", total: "£450.00" };
 
+  useUnsavedChanges(JSON.stringify(value)!==JSON.stringify(saved.customer_quote_issued??quoteTemplateDefaults));
   async function save(reset = false) {
     const templates = reset ? {} : { customer_quote_issued: value };
     const valid = emailTemplatesSchema.safeParse(templates);
@@ -21,7 +24,7 @@ export function EmailTemplateEditor({ initial, canEdit }: { initial: EmailTempla
     setBusy(true);
     setMessage("");
     try {
-      const response = await fetch("/api/v1/operations/email-templates", {
+      const response = await workspaceFetch("/api/v1/operations/email-templates", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ expected: saved, templates: valid.data, confirmed }),

@@ -1,12 +1,15 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { type FormEvent, useState } from "react";
+import {useUnsavedChanges} from "./unsaved-changes";
 import { Plus, Save, Trash2 } from "lucide-react";
 import type { OrganisationSettings } from "@/lib/data";
 
 const regions = ["United Kingdom", "London", "South East England", "South West England", "Midlands", "North of England", "Wales", "Scotland", "Northern Ireland"];
 
 export function PracticeSettingsForm({ initial, canEdit }: { initial: OrganisationSettings; canEdit: boolean }) {
+  const [dirty,setDirty]=useState(false);useUnsavedChanges(dirty);
   const [services, setServices] = useState(initial.services);
   const [accentColour, setAccentColour] = useState(initial.accentColour);
   const [saving, setSaving] = useState(false);
@@ -19,7 +22,7 @@ export function PracticeSettingsForm({ initial, canEdit }: { initial: Organisati
     setMessage(null);
     setError(null);
     const form = new FormData(event.currentTarget);
-    const response = await fetch("/api/v1/organisation", {
+    const response = await workspaceFetch("/api/v1/organisation", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -38,10 +41,10 @@ export function PracticeSettingsForm({ initial, canEdit }: { initial: Organisati
       return;
     }
     setServices(payload.data.services.map((service: { id: string; name: string; defaultFee: string | null }) => ({ id: service.id, name: service.name, defaultFee: service.defaultFee ?? "" })));
-    setMessage("Practice settings saved.");
+    setDirty(false);setMessage("Practice settings saved.");
   }
 
-  return <section className="panel"><form onSubmit={save}>
+  return <section className="panel"><form onSubmit={save} onChange={()=>setDirty(true)}>
     <div className="form-section"><h2>Practice identity</h2><p>Used throughout your workspace and future client communications.</p><div className="form-grid">
       <div className="field"><label htmlFor="practice-name">Registered workspace name</label><input id="practice-name" name="name" className="input" defaultValue={initial.name} required minLength={2} maxLength={160} disabled={!canEdit} /></div>
       <div className="field"><label htmlFor="trading-name">Trading name</label><input id="trading-name" name="tradingName" className="input" defaultValue={initial.tradingName} required minLength={2} maxLength={160} disabled={!canEdit} /></div>

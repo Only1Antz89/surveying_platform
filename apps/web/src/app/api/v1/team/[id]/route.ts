@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { clerkClient } from "@clerk/nextjs/server";
 import { and, count, eq, sql } from "drizzle-orm";
@@ -48,7 +49,7 @@ export async function PATCH(request: Request, route: RouteContext<"/api/v1/team/
   await db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
     await tx.update(organisationMemberships).set({ role: parsed.data.role, canRecordSurvey: false, canApproveReports: false, updatedAt: new Date() }).where(and(eq(organisationMemberships.id, id), eq(organisationMemberships.organisationId, context.organisationId)));
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "membership.role_changed", resourceType: "membership", resourceId: id, metadata: { email: target.membership.email, previousRole: target.membership.role, role: parsed.data.role } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "membership.role_changed", resourceType: "membership", resourceId: id, metadata: { email: target.membership.email, previousRole: target.membership.role, role: parsed.data.role } }));
   });
   return ok({ id, role: parsed.data.role });
 }
@@ -74,7 +75,7 @@ export async function DELETE(request: Request, route: RouteContext<"/api/v1/team
   await db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
     await tx.update(organisationMemberships).set({ active: false, updatedAt: new Date() }).where(and(eq(organisationMemberships.id, id), eq(organisationMemberships.organisationId, context.organisationId)));
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "membership.removed", resourceType: "membership", resourceId: id, metadata: { email: target.membership.email, role: target.membership.role } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "membership.removed", resourceType: "membership", resourceId: id, metadata: { email: target.membership.email, role: target.membership.role } }));
   });
   return ok({ id, removed: true });
 }

@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 import { useState } from "react";
 import { AlertCircle, Clock, History, RotateCw } from "lucide-react";
 
@@ -34,7 +35,7 @@ export function AccountHistory() {
     setBusy(true);
     setMessage("");
     try {
-      const response = await fetch("/api/v1/me/history", { cache: "no-store" });
+      const response = await workspaceFetch("/api/v1/me/history", { cache: "no-store" });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "History could not be loaded.");
       setRows(payload.data);

@@ -1462,7 +1462,7 @@ export const scottishEpcCertificates = referenceSchema.table("scottish_epc_certi
 // risk assessment, and the job has current consent. Nothing here is enabled
 // by default; the register starts empty.
 
-const aiUseCheck = (column: string) => sql.raw(`${column} <@ array['field_proposals', 'photo_observation', 'document_extraction', 'report_prose']::text[]`);
+const aiUseCheck = (column: string) => sql.raw(`${column} <@ array['field_proposals', 'photo_observation', 'document_extraction', 'report_prose', 'case_chat', 'business_chat', 'platform_chat']::text[]`);
 
 export const aiModelRegister = pgTable("ai_model_register", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -1535,7 +1535,7 @@ export const aiRiskAssessments = pgTable("ai_risk_assessments", {
 }, (table) => [
   index("ai_risk_assessments_org_use_idx").on(table.organisationId, table.use, table.status),
   check("ai_risk_assessments_status_chk", sql`status in ('draft', 'approved', 'superseded')`),
-  check("ai_risk_assessments_use_chk", sql`use in ('field_proposals', 'photo_observation', 'document_extraction', 'report_prose')`),
+  check("ai_risk_assessments_use_chk", sql`use in ('field_proposals', 'photo_observation', 'document_extraction', 'report_prose', 'case_chat', 'business_chat', 'platform_chat')`),
   check("ai_risk_assessments_approval_chk", sql`status = 'draft' or (approved_by_user_id is not null and approved_at is not null)`),
 ]);
 
@@ -1821,3 +1821,63 @@ export const learningEvaluationRuns = learningRestricted.table("evaluation_runs"
   createdByStaffId: uuid("created_by_staff_id").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index("learning_evaluation_runs_release_idx").on(table.releaseId, table.createdAt)]);
+
+/** Practice-owned operating sites and explicitly declared professional capabilities. */
+export const businessLocations = pgTable("business_locations", {
+ id: uuid("id").primaryKey().defaultRandom(), organisationId: uuid("organisation_id").notNull().references(()=>organisations.id),
+ name: text("name").notNull(), address: text("address").notNull(), latitude: doublePrecision("latitude"), longitude: doublePrecision("longitude"),
+ active: boolean("active").notNull().default(true), version: integer("version").notNull().default(1), ...timestamps,
+}, t=>[unique("business_locations_org_id_uidx").on(t.organisationId,t.id),check("business_locations_coordinates",sql`(${t.latitude} is null and ${t.longitude} is null) or (${t.latitude} between -90 and 90 and ${t.longitude} between -180 and 180)`)]);
+export const staffCapabilities = pgTable("staff_capabilities", {
+ id: uuid("id").primaryKey().defaultRandom(), organisationId: uuid("organisation_id").notNull().references(()=>organisations.id),
+ userId: uuid("user_id").notNull().references(()=>users.id), primaryLocationId: uuid("primary_location_id"),
+ serviceIds: jsonb("service_ids").$type<string[]>().notNull().default([]), locationIds: jsonb("location_ids").$type<string[]>().notNull().default([]),
+ coverageRadiusKm: doublePrecision("coverage_radius_km"), membershipGrade: text("membership_grade"), registrationStatus: text("registration_status").notNull().default("unset"),
+ reviewedByUserId: uuid("reviewed_by_user_id").references(()=>users.id), reviewedAt: timestamp("reviewed_at",{withTimezone:true}),
+ contactPhone: text("contact_phone"), capacityJobs: integer("capacity_jobs"), portraitUrl: text("portrait_url"), version: integer("version").notNull().default(1), ...timestamps,
+},t=>[uniqueIndex("staff_capabilities_org_user_uidx").on(t.organisationId,t.userId),foreignKey({columns:[t.organisationId,t.primaryLocationId],foreignColumns:[businessLocations.organisationId,businessLocations.id]}),check("staff_capabilities_radius",sql`${t.coverageRadiusKm} is null or ${t.coverageRadiusKm} > 0 and ${t.coverageRadiusKm} <= 500`),check("staff_capabilities_registration",sql`${t.registrationStatus} in ('unset','declared','reviewed')`)]);
+export const platformConnections = pgTable("platform_connections", {
+ id: uuid("id").primaryKey().defaultRandom(), name:text("name").notNull(), kind:text("kind").notNull(), endpoint:text("endpoint").notNull(),
+ credentialEnv:text("credential_env"), modelId:text("model_id"), providerKey:text("provider_key"), evaluationOnly:boolean("evaluation_only").notNull().default(true), enabled:boolean("enabled").notNull().default(false),
+ lastCheckedAt:timestamp("last_checked_at",{withTimezone:true}), checkStatus:text("check_status").notNull().default("unchecked"), ...timestamps,
+},t=>[check("platform_connections_kind",sql`${t.kind} in ('routing','weather','traffic','ai')`)]);
+export const tenantConnections = pgTable("tenant_connections", {
+ organisationId:uuid("organisation_id").notNull().references(()=>organisations.id), connectionId:uuid("connection_id").notNull().references(()=>platformConnections.id),
+ enabled:boolean("enabled").notNull().default(false), monthlyMessageLimit:integer("monthly_message_limit").notNull().default(1000), modelId:text("model_id"), ...timestamps,
+},t=>[primaryKey({columns:[t.organisationId,t.connectionId]}),check("tenant_connections_limit",sql`${t.monthlyMessageLimit} between 0 and 1000000`)]);
+export const surveyantConversations = pgTable("surveyant_conversations", {
+ id:uuid("id").primaryKey().defaultRandom(), organisationId:uuid("organisation_id").notNull().references(()=>organisations.id), jobId:uuid("job_id"),
+ userId:uuid("user_id").references(()=>users.id), quoteId:uuid("quote_id"), scope:text("scope").notNull(), workspaceAudience:text("workspace_audience").notNull().default("manager"), ...timestamps,
+},t=>[unique("surveyant_conversations_org_id_uidx").on(t.organisationId,t.id),foreignKey({columns:[t.organisationId,t.jobId],foreignColumns:[jobs.organisationId,jobs.id]}),check("surveyant_conversations_scope",sql`${t.scope} in ('case','business')`),check("surveyant_conversations_audience",sql`${t.workspaceAudience} in ('administration','manager','surveyor')`)]);
+export const surveyantMessages = pgTable("surveyant_messages", {
+ id:uuid("id").primaryKey().defaultRandom(), organisationId:uuid("organisation_id").notNull(), conversationId:uuid("conversation_id").notNull(),
+ role:text("role").notNull(), content:text("content").notNull(), citations:jsonb("citations").$type<{id:string;label:string;href:string}[]>().notNull().default([]),
+ modelId:text("model_id"), createdAt:timestamp("created_at",{withTimezone:true}).notNull().defaultNow(),
+},t=>[foreignKey({columns:[t.organisationId,t.conversationId],foreignColumns:[surveyantConversations.organisationId,surveyantConversations.id]}),check("surveyant_messages_role",sql`${t.role} in ('user','assistant')`)]);
+export const trackingSessions = pgTable("tracking_sessions", {
+ id:uuid("id").primaryKey().defaultRandom(), organisationId:uuid("organisation_id").notNull().references(()=>organisations.id), userId:uuid("user_id").notNull().references(()=>users.id),
+ tokenHash:text("token_hash").notNull(), expiresAt:timestamp("expires_at",{withTimezone:true}).notNull(), stoppedAt:timestamp("stopped_at",{withTimezone:true}),
+ createdAt:timestamp("created_at",{withTimezone:true}).notNull().defaultNow(),
+},t=>[unique("tracking_sessions_org_id_uidx").on(t.organisationId,t.id),index("tracking_sessions_user_idx").on(t.organisationId,t.userId)]);
+export const latestStaffLocations = pgTable("latest_staff_locations", {
+ organisationId:uuid("organisation_id").notNull(), userId:uuid("user_id").notNull().references(()=>users.id), sessionId:uuid("session_id").notNull(),
+ latitude:doublePrecision("latitude").notNull(), longitude:doublePrecision("longitude").notNull(), accuracyMetres:doublePrecision("accuracy_metres").notNull(),
+ observedAt:timestamp("observed_at",{withTimezone:true}).notNull(), receivedAt:timestamp("received_at",{withTimezone:true}).notNull().defaultNow(),
+},t=>[primaryKey({columns:[t.organisationId,t.userId]}),foreignKey({columns:[t.organisationId,t.sessionId],foreignColumns:[trackingSessions.organisationId,trackingSessions.id]}),check("latest_staff_locations_coordinates",sql`${t.latitude} between -90 and 90 and ${t.longitude} between -180 and 180 and ${t.accuracyMetres} >= 0`)]);
+
+export const clientCasePublications=pgTable("client_case_publications",{
+ organisationId:uuid("organisation_id").notNull(),jobId:uuid("job_id").notNull(),
+ propertyInformation:jsonb("property_information").$type<{label:string;value:string;source:string;retrievedAt:string|null}[]>().notNull().default([]),
+ evidence:jsonb("evidence").$type<{title:string;summary:string;source:string}[]>().notNull().default([]),
+ releasedByUserId:uuid("released_by_user_id").notNull().references(()=>users.id),releasedAt:timestamp("released_at",{withTimezone:true}).notNull().defaultNow(),version:integer("version").notNull().default(1),
+},t=>[primaryKey({columns:[t.organisationId,t.jobId]}),foreignKey({columns:[t.organisationId,t.jobId],foreignColumns:[jobs.organisationId,jobs.id]})]);
+export const platformAssistantThreads=pgTable("platform_assistant_threads",{
+ id:uuid("id").primaryKey().defaultRandom(),staffId:uuid("staff_id").notNull().references(()=>platformStaff.id),supportSessionId:uuid("support_session_id").references(()=>supportSessions.id),
+ messages:jsonb("messages").$type<{role:string;content:string;citations:{id:string;label:string;href:string}[]}[]>().notNull().default([]),...timestamps,
+});
+
+/** Surveyor-confirmed movement states are independent of professional report stages. */
+export const jobSiteStatuses=pgTable("job_site_statuses",{
+ organisationId:uuid("organisation_id").notNull(),jobId:uuid("job_id").notNull(),userId:uuid("user_id").notNull().references(()=>users.id),
+ status:text("status").notNull(),confirmedAt:timestamp("confirmed_at",{withTimezone:true}).notNull().defaultNow(),
+},t=>[primaryKey({columns:[t.organisationId,t.jobId]}),foreignKey({columns:[t.organisationId,t.jobId],foreignColumns:[jobs.organisationId,jobs.id]}),check("job_site_statuses_status",sql`${t.status} in ('en_route','on_site','left_site')`)]);

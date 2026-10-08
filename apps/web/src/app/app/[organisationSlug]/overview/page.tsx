@@ -1,5 +1,6 @@
+import {PracticeAdministration} from "@/components/practice-administration";
 import { requireWorkspacePageAccess } from "@/lib/workspace-page-access";
-import Link from "next/link";
+import Link from "@/components/workspace-link";
 import Image from "next/image";
 import { DemoLauncher } from "@/components/demo-launcher";
 import { BriefcaseBusiness, CalendarDays, CirclePoundSterling, Users } from "lucide-react";
@@ -9,7 +10,7 @@ import { PageHeader } from "@/components/page-header";
 import { loadOverview } from "@/lib/data";
 import { requireFirmAccess } from "@/lib/access";
 import { MyWork } from "@/components/my-work";
-import { redirect } from "next/navigation";
+import {redirectWorkspace as redirect} from "@/lib/workspace-redirect";
 
 export const metadata = { title: "Overview" };
 
@@ -18,7 +19,8 @@ const currency = new Intl.NumberFormat("en-GB", { style: "currency", currency: "
 export default async function OverviewPage({ params }: { params: Promise<{ organisationSlug: string }> }) {
   const { organisationSlug } = await params; await requireWorkspacePageAccess(organisationSlug, "overview");
   const access = await requireFirmAccess(organisationSlug);
-  if (access.userRole === "finance") redirect(`/app/${organisationSlug}/finance`);
+  if (access.userRole === "finance") await redirect(`/app/${organisationSlug}/finance`);
+  if(access.workspaceMode==="administration")return <PracticeAdministration slug={organisationSlug}/>;
   if (access.userRole === "surveyor") return <MyWork slug={organisationSlug} />;
   const [context, overview] = await Promise.all([
     requireFirmAccess(organisationSlug),

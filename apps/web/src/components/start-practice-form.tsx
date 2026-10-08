@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { type FormEvent, useState } from "react";
 import { useOrganizationList } from "@clerk/nextjs";
@@ -26,7 +27,7 @@ function ClerkStartPracticeForm() {
     setError(null);
     const form = new FormData(event.currentTarget);
     try {
-      const response = await fetch("/api/onboarding/start", {
+      const response = await workspaceFetch("/api/onboarding/start", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ firmName: form.get("firmName"), practiceType: form.get("practiceType"), teamSize: form.get("teamSize"), region: form.get("region") }),

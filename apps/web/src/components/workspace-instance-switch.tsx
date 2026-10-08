@@ -1,0 +1,11 @@
+"use client";
+import {workspaceFetch} from "@/lib/workspace-request";
+import {useState,useTransition} from "react";
+import {useRouter} from "next/navigation";
+import {availableWorkspaces,rememberedWorkspaceHref,workspaceLabels,type WorkspaceMode} from "@/lib/workspace-mode";
+import {usePendingWorkspaceSaves,useWorkspace} from "./workspace-provider";
+import {confirmDiscardChanges} from "./unsaved-changes";
+export function WorkspaceInstanceSwitch(){const context=useWorkspace(),saving=usePendingWorkspaceSaves();const [pending,startTransition]=useTransition(),[confirming,setConfirming]=useState(false),[error,setError]=useState("");const router=useRouter();if(!context)return null;const modes=availableWorkspaces(context.actorRole);if(!modes.length)return null;
+ async function change(mode:WorkspaceMode){if(!context||mode===context.workspaceMode||saving||pending||confirming)return;setError("");setConfirming(true);try{if(!await confirmDiscardChanges())return;const key=`surveynt:instance:${context.userId}:${context.organisationId}:${mode}`;let remembered:string|null=null;try{remembered=sessionStorage.getItem(key);}catch{}const next=rememberedWorkspaceHref(remembered,{...context,workspaceMode:mode});const response=await workspaceFetch(`/api/v1/workspaces/${mode}/workspace-navigation?href=${encodeURIComponent(next)}`,{cache:"no-store",headers:{"x-demo-organisation-slug":context.slug}});const payload=await response.json();if(!response.ok)throw new Error(payload.error?.message??"Workspace unavailable.");startTransition(()=>router.push(payload.data.href));}catch(error){setError(error instanceof Error?error.message:"Could not switch workspace. Try again.");}finally{setConfirming(false);}}
+ return <div className="instance-switch"><label htmlFor="workspace-instance">Current workspace</label><select id="workspace-instance" aria-label="Workspace instance" value={context.workspaceMode} disabled={modes.length===1||Boolean(saving)||pending||confirming} onChange={e=>void change(e.target.value as WorkspaceMode)}>{modes.map(mode=><option key={mode} value={mode}>{workspaceLabels[mode]}</option>)}</select><small role="status">{saving?"Finish saving before switching.":pending?"Switching workspace…":confirming?"Checking workspace access…":"Same account · this tab only"}</small>{error?<span className="form-error" role="alert">{error}</span>:null}</div>;
+}

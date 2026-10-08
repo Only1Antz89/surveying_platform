@@ -1,9 +1,9 @@
 import { hasProfessionalPermission, type OrganisationRole } from "@surveynt/domain";
 import { problem } from "./api";
 
-export type ProfessionalAccess = { role: OrganisationRole; canRecordSurvey?: boolean; canApproveReports?: boolean };
-export const canRecord = (context: ProfessionalAccess) => hasProfessionalPermission(context.role, "record_survey", context.canRecordSurvey);
-export const canApprove = (context: ProfessionalAccess) => hasProfessionalPermission(context.role, "approve_reports", context.canApproveReports);
+export type ProfessionalAccess = { role: OrganisationRole; actorRole?:OrganisationRole; canRecordSurvey?: boolean; canApproveReports?: boolean };
+export const canRecord = (context: ProfessionalAccess) => hasProfessionalPermission(context.actorRole??context.role, "record_survey", context.canRecordSurvey);
+export const canApprove = (context: ProfessionalAccess) => hasProfessionalPermission(context.actorRole??context.role, "approve_reports", context.canApproveReports);
 
 /** Applied before demo shortcuts as well as live mutations. Roles alone never grant management judgement rights. */
 export function professionalApiGuard(request: Request, context: ProfessionalAccess) {

@@ -1,6 +1,6 @@
 import {CalendarReviewDetails} from "./calendar-review-details";
 import { EmailDeliveryReview } from "./email-delivery-review";
-import Link from "next/link";
+import Link from "@/components/workspace-link";
 import { CheckCircle2, type LucideIcon } from "lucide-react";
 import { StatusDot } from "@surveynt/ui";
 import type { PlatformQueueRow } from "@/lib/data";

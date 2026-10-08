@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { ownsDocumentOriginal } from "@/lib/document-original-verification";
 import { z } from "zod";
 import { and,eq } from "drizzle-orm";
@@ -24,7 +25,7 @@ export async function POST(request:Request,route:RouteContext<"/api/v1/documents
     const now=new Date();
     await tx.update(organisationDocuments).set({purgeStatus:"pending",purgeRequestedAt:now,updatedAt:now}).where(eq(organisationDocuments.id,id));
     const [job]=await tx.insert(backgroundJobs).values({organisationId:context.organisationId,queue:"document_removal",type:"remove_retained_original",deduplicationKey:`document-removal:${id}`,payload:{documentId:id,checksum:document.checksum,blobPathname:document.blobPathname}}).returning();
-    await tx.insert(auditEvents).values({organisationId:context.organisationId,actorUserId:context.internalUserId,action:"document.removal_requested",resourceType:"organisation_document",resourceId:id,metadata:{reason:parsed.data.reason,confirmed:true,checksum:document.checksum,retentionUntil:document.retentionUntil,jobId:job.id}});
+    await tx.insert(auditEvents).values(workspaceAudit(context,{organisationId:context.organisationId,actorUserId:context.internalUserId,action:"document.removal_requested",resourceType:"organisation_document",resourceId:id,metadata:{reason:parsed.data.reason,confirmed:true,checksum:document.checksum,retentionUntil:document.retentionUntil,jobId:job.id}}));
     return ok({id,purgeStatus:"pending",jobId:job.id,removed:false});
   });
 }
@@ -47,7 +48,7 @@ export async function PATCH(request:Request,route:RouteContext<"/api/v1/document
     const now=new Date();
     await tx.update(backgroundJobs).set({status:"cancelled",deduplicationKey:null,lockedUntil:null,updatedAt:now}).where(eq(backgroundJobs.id,job.id));
     await tx.update(organisationDocuments).set({purgeStatus:"retained",purgeRequestedAt:null,updatedAt:now}).where(eq(organisationDocuments.id,id));
-    await tx.insert(auditEvents).values({organisationId:context.organisationId,actorUserId:context.internalUserId,action:"document.removal_cancelled",resourceType:"organisation_document",resourceId:id,metadata:{jobId:job.id,reason:parsed.data.reason,confirmed:true,checksum:document.checksum}});
+    await tx.insert(auditEvents).values(workspaceAudit(context,{organisationId:context.organisationId,actorUserId:context.internalUserId,action:"document.removal_cancelled",resourceType:"organisation_document",resourceId:id,metadata:{jobId:job.id,reason:parsed.data.reason,confirmed:true,checksum:document.checksum}}));
     return ok({id,purgeStatus:"retained",updatedAt:now,removed:false});
   });
 }

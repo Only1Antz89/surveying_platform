@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { type FormEvent, useMemo, useState } from "react";
 import { Check, FilePlus2, Pencil, Search, Trash2, X } from "lucide-react";
@@ -36,13 +37,13 @@ export function WordingLibrary({ clauses: initial, elements, canAuthor, canAppro
   }, [clauses, query]);
 
   async function refresh() {
-    const response = await fetch("/api/v1/wording-clauses", { cache: "no-store" });
+    const response = await workspaceFetch("/api/v1/wording-clauses", { cache: "no-store" });
     if (response.ok) setClauses((await response.json()).data);
   }
 
   async function call(url: string, init: RequestInit, done: string) {
     setBusy(true); setMessage(null);
-    const response = await fetch(url, { ...init, headers: { "content-type": "application/json" } });
+    const response = await workspaceFetch(url, { ...init, headers: { "content-type": "application/json" } });
     const payload = await response.json().catch(() => null);
     setBusy(false);
     if (!response.ok) {

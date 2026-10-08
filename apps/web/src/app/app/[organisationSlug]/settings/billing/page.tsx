@@ -1,5 +1,5 @@
 import { requireWorkspacePageAccess } from "@/lib/workspace-page-access";
-import Link from "next/link";
+import Link from "@/components/workspace-link";
 import { CreditCard } from "lucide-react";
 import { canManageBilling } from "@surveynt/domain";
 import { StatusDot } from "@surveynt/ui";

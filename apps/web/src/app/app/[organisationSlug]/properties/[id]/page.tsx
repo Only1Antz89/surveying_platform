@@ -12,5 +12,5 @@ export default async function PropertyPage({ params }: PageProps<"/app/[organisa
   const [access, data] = await Promise.all([requireFirmAccess(organisationSlug), loadPropertyWorkspace(organisationSlug, id)]);
   if (!data) notFound();
   const canEdit = access.accessLevel === "full" && canMutateOperations(access.userRole);
-  return <main className="page"><PropertyWorkspace slug={organisationSlug} data={data} canEdit={canEdit} canConfirm={canEdit && canConfirmPropertyIdentity(access.userRole, access.canRecordSurvey)} /></main>;
+  return <main className="page"><PropertyWorkspace slug={organisationSlug} data={data} canEdit={canEdit} canConfirm={canEdit && canConfirmPropertyIdentity(access.actorRole??access.userRole, access.canRecordSurvey)} /></main>;
 }

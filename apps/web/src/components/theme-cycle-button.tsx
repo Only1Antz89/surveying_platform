@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 import { useRef, useState } from "react";
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useAppearance } from "./appearance-provider";
@@ -21,7 +22,7 @@ export function ThemeCycleButton() {
     // Keep rapid clicks in order without delaying the visible theme change.
     saves.current = saves.current.then(async () => {
       try {
-        const response = await fetch("/api/v1/me", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ appearance }) });
+        const response = await workspaceFetch("/api/v1/me", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ appearance }) });
         if (!response.ok) throw new Error("Preference save failed");
       } catch {
         setStatus("Theme saved on this device. Account synchronisation is currently unavailable.");

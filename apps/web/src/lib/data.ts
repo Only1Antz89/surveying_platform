@@ -202,7 +202,7 @@ export async function loadClients(slug: string): Promise<Client[]> {
   if (!connected()) {
     const state = await demoStore.snapshot();
     const tenant = demoTenant(state, slug);
-    return tenant ? storedDemoClients(state, tenant.id) : [];
+    const access=await requireFirmAccess(slug);const names=new Set(demoJobs.filter(j=>j.assignee===access.userName).map(j=>j.client));return (tenant ? storedDemoClients(state, tenant.id) : []).filter(c=>access.userRole!=="surveyor"||names.has(c.name));
   }
   const context = await requireFirmAccess(slug);
   const db = createDatabase();
@@ -216,7 +216,7 @@ export async function loadClients(slug: string): Promise<Client[]> {
 }
 
 export async function loadProperties(slug: string): Promise<Property[]> {
-  if (!connected()) return demoProperties;
+  if (!connected()) {const access=await requireFirmAccess(slug);return demoProperties.filter(p=>access.userRole!=="surveyor"||demoJobs.some(j=>j.assignee===access.userName&&j.client===p.client));}
   const context = await requireFirmAccess(slug);
   const db = createDatabase();
   const data = await db.transaction(async (tx) => {
@@ -230,13 +230,13 @@ export async function loadProperties(slug: string): Promise<Property[]> {
 
 export async function loadPropertyWorkspace(slug: string, propertyId: string) {
   if (!connected()) {
-    const property = demoProperties.find((item) => item.id === propertyId);
+    const property = (await loadProperties(slug)).find((item) => item.id === propertyId);
     if (!property) return null;
     const identityFixture = property.id === "prop_01" ? { country: "ENG" as const, latitude: 51.4589, longitude: -2.6202, locationConfidence: "approximate" as const, addressSource: "development_fixture", resolvedAt: null } : { country: null, latitude: null, longitude: null, locationConfidence: "unresolved" as const, addressSource: null, resolvedAt: null };
     return {
       property: { id: property.id, line1: property.address, line2: null, city: property.town, postcode: property.postcode, propertyType: property.type, version: property.version ?? 1, uprn: null, ...identityFixture },
       clientName: property.client,
-      jobs: demoJobs.filter((job) => job.address.includes(property.address)).map((job) => ({ id: job.id, reference: job.reference, serviceName: job.service, stage: job.stage, targetDate: null })),
+      jobs: (await loadJobs(slug)).filter((job) => job.address.includes(property.address)).map((job) => ({ id: job.id, reference: job.reference, serviceName: job.service, stage: job.stage, targetDate: null })),
       events: [],
     };
   }
@@ -260,7 +260,7 @@ export async function loadPropertyWorkspace(slug: string, propertyId: string) {
 }
 
 export async function loadJobs(slug: string): Promise<Job[]> {
-  if (!connected()) return demoJobs;
+  if (!connected()) {const access=await requireFirmAccess(slug);return demoJobs.filter(j=>access.userRole!=="surveyor"||j.assignee===access.userName).map(j=>access.userRole==="surveyor"?{...j,fee:undefined}:j);}
   const context = await requireFirmAccess(slug);
   const db = createDatabase();
   const rows = await db.transaction(async (tx) => {

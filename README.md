@@ -59,3 +59,7 @@ database. Migrate Anthony and Stephen through Clerk invitations or activation
 links so Clerk owns password and MFA enrolment. Anthony should be both the
 Clifton organisation owner and the initial Surveynt `super_admin`; Stephen is a
 Clifton organisation member only unless platform access is granted separately.
+
+## New workspace rollout
+
+See [workspace rollout and integration setup](docs/rollout/new-workspaces.md) and the [native fieldwork companion](apps/mobile/README.md).
