@@ -42,6 +42,8 @@ GitHub main was checked read-only on 3 October and remains `68d406e811384c159a55
 
 ## Native work still required before final handover
 
+The list below is the historical inventory. Current completion work and newer verification are tracked in [the completion goal](completion-goal.md); consult that record before treating an item as still missing.
+
 1. Complete manual verified-payment and immutable credit-adjustment workflows; add signed client-Checkout/subscription-routing regression coverage beyond the refund-event cases.
 2. Complete streamed invoice/payment/reconciliation exports and authenticated UI checks of Insights date filters and totals.
 3. Finish document archive recovery/retention operations and upload-time access classification/job selection. Existing replacement and classification controls require authenticated browser checks.

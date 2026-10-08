@@ -1,6 +1,6 @@
 import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { isManagementRole } from "@surveynt/domain";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, isNotNull } from "drizzle-orm";
 import { auditEvents, createDatabase, organisationDocuments, withTenant } from "@surveynt/db";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { problem } from "@/lib/api";
@@ -59,4 +59,26 @@ export async function DELETE(request: Request, route: RouteContext<"/api/v1/docu
   if (result.held) return problem(409, "legal_hold", "This document is under legal hold and cannot be archived.");
   // Archiving must not erase a retained original. Physical removal needs a separate retention/legal-hold review.
   return new Response(null, { status: 204 });
+}
+
+/** Recovery restores the retained original; it does not create another upload. */
+export async function POST(request: Request, route: RouteContext<"/api/v1/documents/[id]">) {
+  const context = await apiContext(request);
+  if (!context) return problem(401, "unauthorised", "Authentication is required.");
+  const denial = await workspaceApiGuard(request, context);
+  if (denial) return denial;
+  if (!canWriteWorkspace(context) || !isManagementRole(context.role)) return problem(403, "forbidden", "Practice management access is required to restore documents.");
+  const parsed = await parseBody(request, z.object({ action: z.literal("restore"), expectedChecksum: z.string().min(1) }));
+  if (!parsed.success) return problem(400, "invalid_request", "Choose an archived document to restore.");
+  const { id } = await route.params;
+  if (!z.uuid().safeParse(id).success || context.demo) return problem(404, "document_not_found", "The document could not be found.");
+  return withTenant(createDatabase(), context.organisationId, async tx => {
+    const [document] = await tx.select().from(organisationDocuments).where(and(eq(organisationDocuments.id, id), eq(organisationDocuments.organisationId, context.organisationId), isNotNull(organisationDocuments.deletedAt), documentAccess(context.role, context.internalUserId))).for("update").limit(1);
+    if (!document) return problem(404, "document_not_found", "The archived document could not be found.");
+    if (document.purgeStatus !== "retained") return problem(409,"removal_pending","This original is pending removal or has been removed. It cannot be restored.");
+    if (document.checksum !== parsed.data.expectedChecksum) return problem(409, "document_changed", "Reload the document archive before restoring it.");
+    const [restored] = await tx.update(organisationDocuments).set({ deletedAt: null, updatedAt: new Date() }).where(and(eq(organisationDocuments.id, id), eq(organisationDocuments.organisationId, context.organisationId))).returning();
+    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "document.restored", resourceType: "organisation_document", resourceId: id, metadata: { checksum: document.checksum, archivedAt: document.deletedAt, retainedOriginal: true } });
+    return ok({ id: restored.id, name: restored.name, checksum: restored.checksum });
+  });
 }

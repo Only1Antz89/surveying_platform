@@ -1,3 +1,4 @@
+import { demoStore, recordDemoAudit } from "@/lib/demo-store";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { canManageTenants } from "@surveynt/domain";
@@ -14,16 +15,27 @@ export async function PATCH(request: Request, route: RouteContext<"/api/platform
   const parsed = await parseBody(request, statusChange);
   if (!parsed.success) return problem(400, "invalid_request", "A status and a reason of at least 10 characters are required.", parsed.error.flatten());
   const { tenantId } = await route.params;
-  if (operator.demo) return ok({ id: tenantId, ...parsed.data }, { demo: true, persisted: false });
+  if (operator.demo) return demoStore.mutate(state => {
+    const tenant = state.tenants.find(item => item.id === tenantId);
+    if (!tenant) return problem(404, "tenant_not_found", "The tenant could not be found.");
+    if (!["active", "suspended"].includes(tenant.status)) return problem(409, "invalid_tenant_status", "Only active or suspended accounts can use this control.");
+    const previousStatus = tenant.status;
+    tenant.status = parsed.data.status;
+    recordDemoAudit(state, tenantId, tenant.status === "suspended" ? "tenant.suspended" : "tenant.reactivated", "organisation", tenantId, { reason: parsed.data.reason, previousStatus });
+    return ok({ id: tenantId, status: tenant.status }, { demo: true, persisted: true });
+  });
+  if (!z.uuid().safeParse(tenantId).success) return problem(404, "tenant_not_found", "The tenant could not be found.");
   if (!process.env.DATABASE_ADMIN_URL) return problem(503, "platform_database_unavailable", "Platform operations are not configured.");
   const db = createDatabase(process.env.DATABASE_ADMIN_URL);
   const result = await db.transaction(async (tx) => {
-    const [current] = await tx.select({ id: organisations.id, status: organisations.status }).from(organisations).where(eq(organisations.id, tenantId)).limit(1);
+    const [current] = await tx.select({ id: organisations.id, status: organisations.status }).from(organisations).where(eq(organisations.id, tenantId)).for("update").limit(1);
     if (!current) return null;
+    if (!["active", "suspended"].includes(current.status)) return { invalidStatus: true } as const;
     const [updated] = await tx.update(organisations).set({ status: parsed.data.status, suspendedReason: parsed.data.status === "suspended" ? parsed.data.reason : null, updatedAt: new Date() }).where(eq(organisations.id, tenantId)).returning({ id: organisations.id, status: organisations.status, suspendedReason: organisations.suspendedReason });
     await tx.insert(auditEvents).values({ organisationId: tenantId, platformStaffId: operator.platformStaffId, action: parsed.data.status === "suspended" ? "tenant.suspended" : "tenant.reactivated", resourceType: "organisation", resourceId: tenantId, metadata: { reason: parsed.data.reason, previousStatus: current.status } });
     return updated;
   });
   if (!result) return problem(404, "tenant_not_found", "The tenant could not be found.");
+  if ("invalidStatus" in result) return problem(409, "invalid_tenant_status", "Only active or suspended accounts can use this control.");
   return ok(result);
 }

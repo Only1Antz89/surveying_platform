@@ -6,29 +6,33 @@ import type { SupportAccessRequest } from "@/lib/data";
 
 const dateTime = (value: string) => new Date(value).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/London" });
 
-export function SupportApprovalPanel({ initialRequests }: { initialRequests: SupportAccessRequest[] }) {
+export function SupportApprovalPanel({ initialRequests, organisationSlug }: { initialRequests: SupportAccessRequest[]; organisationSlug?: string }) {
   const [requests, setRequests] = useState(initialRequests);
   const [workingId, setWorkingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   async function decide(id: string, decision: "approve" | "deny") {
-    setWorkingId(id);
-    setError(null);
-    setMessage(null);
-    const response = await fetch(`/api/v1/support-sessions/${id}`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ decision }),
-    });
-    const payload = await response.json();
-    setWorkingId(null);
-    if (!response.ok) {
-      setError(payload?.error?.message ?? "The support access request could not be updated.");
-      return;
-    }
-    setRequests((current) => current.filter((request) => request.id !== id));
-    setMessage(decision === "approve" ? "Write support access approved and audited." : "Write support access denied and audited.");
+    try {
+      setWorkingId(id);
+      setError(null);
+      setMessage(null);
+      const response = await fetch(`/api/v1/support-sessions/${id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", ...(organisationSlug ? { "x-demo-organisation-slug": organisationSlug } : {}) },
+        body: JSON.stringify({ decision }),
+      });
+      const payload = await response.json();
+      setWorkingId(null);
+      if (!response.ok) {
+        setError(payload?.error?.message ?? "The support access request could not be updated.");
+        return;
+      }
+      setRequests((current) => current.filter((request) => request.id !== id));
+      setMessage(decision === "approve" ? "Write support access approved and audited." : "Write support access denied and audited.");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "The support request failed. Please retry.");
+    } finally { setWorkingId(null); }
   }
 
   return <section className="panel">

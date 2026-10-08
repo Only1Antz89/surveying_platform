@@ -161,18 +161,20 @@ export function SurveyWorkspace({ surveyId, canEdit: initialCanEdit, canJudge: i
   const elementRows = useMemo(() => new Map((pack?.elements ?? []).map((element) => [elementKey(element.sectionKey, element.elementKey, element.locationLabel), element])), [pack]);
 
   const fieldDisplay = useCallback((path: string): FieldDisplay => {
+    const stored = values.get(path);
+    if (stored?.value.retentionRemoved === true) return { value: null, pending: false, origin: stored.origin, contentRemoved: true };
     const pending = [...outbox].reverse().find((entry) => entry.status === "pending" && entry.operation.type === "set_field" && entry.operation.fieldPath === path);
     if (pending && pending.operation.type === "set_field") return { value: pending.operation.value, pending: true, origin: "surveyor_entry" };
-    const stored = values.get(path);
     return { value: (stored?.value as FieldValue | undefined) ?? null, pending: false, origin: stored?.origin ?? null };
   }, [outbox, values]);
 
   const elementView = useCallback((sectionKey: string, key: string): ElementView => {
-    const row = elementRows.get(elementKey(sectionKey, key));
+    const row = elementRows.get(elementKey(sectionKey, key)) ?? pack?.elements.find(element => element.sectionKey === sectionKey && element.elementKey === key && element.locationLabel === `retention-removed:${element.id}` && element.limitationReason === "Content removed after retention review");
+    if (row?.locationLabel === `retention-removed:${row?.id}` && row.limitationReason === "Content removed after retention review") return {serverId:row.id,version:row.version,inspectionStatus:row.inspectionStatus,limitationReason:null,pending:false,contentRemoved:true};
     const pending = [...outbox].reverse().find((entry) => entry.status === "pending" && entry.operation.type === "set_element" && entry.operation.element.sectionKey === sectionKey && entry.operation.element.elementKey === key && entry.operation.element.locationLabel === "");
     if (pending && pending.operation.type === "set_element") return { serverId: row?.id ?? null, version: row?.version ?? null, inspectionStatus: pending.operation.inspectionStatus, limitationReason: pending.operation.limitationReason, pending: true };
     return { serverId: row?.id ?? null, version: row?.version ?? null, inspectionStatus: (row?.inspectionStatus as InspectionStatus | null) ?? null, limitationReason: row?.limitationReason ?? null, pending: false };
-  }, [elementRows, outbox]);
+  }, [elementRows, outbox, pack]);
 
   const photoUrls = useMemo(() => new Map(uploads.map((upload) => [upload.clientId, URL.createObjectURL(upload.blob)])), [uploads]);
   useEffect(() => () => { for (const url of photoUrls.values()) URL.revokeObjectURL(url); }, [photoUrls]);
@@ -235,7 +237,7 @@ export function SurveyWorkspace({ surveyId, canEdit: initialCanEdit, canJudge: i
         const pendingLinks = (target: { observationId?: string; observationOperationId?: string }) => outbox.filter((entry) => entry.status === "pending" && entry.operation.type === "link_evidence" && entry.operation.target.type === "observation" && ((target.observationId && entry.operation.target.observationId === target.observationId) || (target.observationOperationId && entry.operation.target.observationOperationId === target.observationOperationId))).length;
         const serverObservations: ObservationView[] = pack.observations.filter((observation) => observation.elementId && elementRowIds.has(observation.elementId)).map((observation) => {
           const structured = observation.structured as { measurement?: { value: number; unit: string }; defect?: { nextAction: string } };
-          return { key: observation.id, text: observation.text, kind: observation.kind, pending: false, measurement: structured.measurement ?? null, locationLabel: observation.locationLabel, defect: structured.defect ?? null, evidenceCount: pack.evidence.filter((link) => link.targetType === "observation" && link.targetId === observation.id).length + pendingLinks({ observationId: observation.id }) };
+          return { contentRemoved: observation.structured.retentionRemoved === true, key: observation.id, text: observation.text, kind: observation.kind, pending: false, measurement: structured.measurement ?? null, locationLabel: observation.locationLabel, defect: structured.defect ?? null, evidenceCount: pack.evidence.filter((link) => link.targetType === "observation" && link.targetId === observation.id).length + pendingLinks({ observationId: observation.id }) };
         });
         const pendingObservations: ObservationView[] = outbox.flatMap((entry) => entry.status === "pending" && entry.operation.type === "add_observation" && entry.operation.element?.sectionKey === activeSection.key && entry.operation.element.elementKey === element.key ? [{ key: entry.operationId, text: entry.operation.text, kind: entry.operation.kind, pending: true, measurement: entry.operation.measurement ?? null, locationLabel: entry.operation.element.locationLabel || null, defect: entry.operation.defect ?? null, evidenceCount: pendingLinks({ observationOperationId: entry.operationId }) }] : []);
         const linkedMedia = new Set(pack.evidence.filter((link) => link.evidenceType === "media" && link.targetType === "element" && link.targetId === view.serverId).map((link) => link.evidenceId));

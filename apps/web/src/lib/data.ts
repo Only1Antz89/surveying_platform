@@ -1,10 +1,14 @@
+import {calendarConnectionReviewVersion} from "./calendar-missing-channel";
+import {loadCalendarQueueHealth,type CalendarQueueHealth} from "./calendar-queue-health";
+import {calendarReviewSummary,type CalendarReviewSummary} from "./calendar-review-summary";
 import { assignedJobScope, assignedClientScope, assignedPropertyScope } from "@/lib/workspace-scope";
-import { and, asc, count, desc, eq, gt, gte, lt, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
-import { appointments, auditEvents, backgroundJobs, createDatabase, clients, invitations, jobs, onboardingSteps, organisationBranding, organisationMemberships, organisations, platformIncidentOrganisations, platformIncidents, platformStaff, practicePacks, practicePackVersions, properties, serviceDefinitions, subscriptions, supportSessions, users, webhookEvents } from "@surveynt/db";
+import { and, asc, count, desc, eq, gt, gte, lt, inArray, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
+import { appointments, auditEvents, backgroundJobs,calendarConnections, createDatabase, clients, invitations, jobs, onboardingSteps, organisationBranding, organisationMemberships, organisations, platformIncidentOrganisations, platformIncidents, platformStaff, practicePacks, practicePackVersions, properties, serviceDefinitions, subscriptions, supportSessions, users, webhookEvents } from "@surveynt/db";
 import type { PlatformRole } from "@surveynt/domain";
 import type { Client, Job, Member, Property, Tenant } from "./demo-data";
-import { activities as demoActivities, clients as demoClients, jobs as demoJobs, members as demoMembers, properties as demoProperties, tenants as demoTenants } from "./demo-data";
+import { activities as demoActivities, clients as demoClients, jobs as demoJobs, members as demoMembers, properties as demoProperties } from "./demo-data";
 import { isClerkConfigured, requireFirmAccess, requirePlatformAccess } from "./access";
+import { demoStore, demoTenant, demoClients as storedDemoClients, demoSessionActive } from "./demo-store";
 import { localDayRange } from "./scheduling";
 
 const connected = () => Boolean(isClerkConfigured() && (process.env.DATABASE_APP_URL ?? process.env.DATABASE_URL));
@@ -65,7 +69,7 @@ export type PlatformTenantDetail = {
   onboarding: { key: string; completedAt: string | null }[];
   audit: { id: string; action: string; resourceType: string; occurredAt: string; actor: string }[];
 };
-export type PlatformQueueRow = { id: string; primary: string; secondary: string; state: string; detail: string; href?: string; action?: string; actionEndpoint?: string; tone?: "blue" | "green" | "amber" | "red" | "slate" };
+export type PlatformQueueRow = { id: string; primary: string; secondary: string; state: string; detail: string; href?: string; action?: string; actionEndpoint?: string; emailReview?: { attempts: number; leaseToken: string | null }; calendarReview?: CalendarReviewSummary; tone?: "blue" | "green" | "amber" | "red" | "slate" };
 export type PracticePackRecord = {
   id: string;
   key: string;
@@ -183,7 +187,7 @@ export async function loadOverview(slug: string): Promise<OverviewData> {
   if (!connected()) return {
     activeJobs: demoJobs.filter(job => !["paid", "archived"].includes(job.stage)).length,
     inspectionsThisWeek: demoJobs.filter(job => job.stage === "scheduled").length,
-    openClients: demoClients.length,
+    openClients: (await loadClients(slug)).length,
     feesInProgress: demoJobs.filter(job => !["paid", "archived"].includes(job.stage)).reduce((total, job) => total + (job.fee ?? 0), 0),
     onboardingProgress: 0,
     workQueue: demoJobs.slice(0, 4),
@@ -195,7 +199,11 @@ export async function loadOverview(slug: string): Promise<OverviewData> {
 }
 
 export async function loadClients(slug: string): Promise<Client[]> {
-  if (!connected()) return demoClients;
+  if (!connected()) {
+    const state = await demoStore.snapshot();
+    const tenant = demoTenant(state, slug);
+    return tenant ? storedDemoClients(state, tenant.id) : [];
+  }
   const context = await requireFirmAccess(slug);
   const db = createDatabase();
   const data = await db.transaction(async (tx) => {
@@ -291,7 +299,10 @@ export async function loadMembers(slug: string): Promise<Member[]> {
 }
 
 export async function loadPendingSupportRequests(slug: string): Promise<SupportAccessRequest[]> {
-  if (!connected()) return [];
+  if (!connected()) {
+    const context = await requireFirmAccess(slug);
+    return (await demoStore.snapshot()).sessions.filter(session => session.organisationId === context.organisationId && session.permission === "write" && !session.breakGlass && !session.approvedByUserId && !session.revokedAt && new Date(session.expiresAt) > new Date()).map(session => ({ id: session.id, ticketReference: session.ticketReference, reason: session.reason, expiresAt: session.expiresAt, requestedAt: session.requestedAt }));
+  }
   const context = await requireFirmAccess(slug);
   if (context.userRole !== "owner") return [];
   const db = createDatabase();
@@ -388,7 +399,7 @@ export async function loadBillingSummary(slug: string): Promise<BillingSummary> 
 }
 
 export async function loadTenants(): Promise<Tenant[]> {
-  if (!process.env.DATABASE_ADMIN_URL || !isClerkConfigured()) return demoTenants;
+  if (!process.env.DATABASE_ADMIN_URL || !isClerkConfigured()) return (await demoStore.snapshot()).tenants;
   await requirePlatformAccess();
   const db = createDatabase(process.env.DATABASE_ADMIN_URL);
   const [rows, ownerRows, onboardingRows, activityRows] = await Promise.all([
@@ -403,6 +414,8 @@ export async function loadTenants(): Promise<Tenant[]> {
     const lastAudit = activityRows.find((row) => row.organisationId === organisation.id)?.occurredAt;
     return {
       id: organisation.id,
+      slug: organisation.slug,
+      isDemo: organisation.isDemo,
       name: organisation.name,
       owner: owner ? [owner.firstName, owner.lastName].filter(Boolean).join(" ") || owner.email : "No owner assigned",
       plan: subscription?.planKey ?? "Pending",
@@ -419,9 +432,10 @@ export async function loadTenants(): Promise<Tenant[]> {
 
 export async function loadTenantDetail(tenantId: string): Promise<PlatformTenantDetail | null> {
   if (!process.env.DATABASE_ADMIN_URL || !isClerkConfigured()) {
-    const tenant = demoTenants.find((item) => item.id === tenantId);
+    const state = await demoStore.snapshot();
+    const tenant = state.tenants.find((item) => item.id === tenantId);
     if (!tenant) return null;
-    return { tenant, region: "United Kingdom", practiceType: "multi-disciplinary", createdAt: "26 September 2026", branding: { tradingName: tenant.name, supportEmail: "", accentColour: "#3b82f6", logoUrl: null }, subscription: { status: tenant.subscription, planKey: tenant.plan, seats: tenant.seats, trialEndsAt: null, currentPeriodEndsAt: null, graceEndsAt: null, cancelAtPeriodEnd: false }, members: demoMembers.map((member) => ({ id: member.id, name: member.name, email: member.email, role: member.role, active: member.status === "Active" })), invitations: [], usage: { clients: demoClients.length, properties: demoProperties.length, jobs: demoJobs.length, activeJobs: demoJobs.filter((job) => job.stage !== "paid" && job.stage !== "archived").length }, onboarding: [], audit: demoActivities.map((activity, index) => ({ id: String(index), action: activity.text, resourceType: "demo", occurredAt: activity.time, actor: "Demo operator" })) };
+    return { tenant, region: "United Kingdom", practiceType: "multi-disciplinary", createdAt: "26 September 2026", branding: { tradingName: tenant.name, supportEmail: "", accentColour: "#3b82f6", logoUrl: null }, subscription: { status: tenant.subscription, planKey: tenant.plan, seats: tenant.seats, trialEndsAt: null, currentPeriodEndsAt: null, graceEndsAt: null, cancelAtPeriodEnd: false }, members: demoMembers.map((member) => ({ id: member.id, name: member.name, email: member.email, role: member.role, active: member.status === "Active" })), invitations: [], usage: { clients: storedDemoClients(state, tenantId).length, properties: demoProperties.length, jobs: demoJobs.length, activeJobs: demoJobs.filter((job) => job.stage !== "paid" && job.stage !== "archived").length }, onboarding: [], audit: state.audit.filter(event => event.organisationId === tenantId).reverse() };
   }
   await requirePlatformAccess();
   const db = createDatabase(process.env.DATABASE_ADMIN_URL);
@@ -440,6 +454,8 @@ export async function loadTenantDetail(tenantId: string): Promise<PlatformTenant
   const completed = onboardingRows.filter((step) => step.completedAt).length;
   const tenant: Tenant = {
     id: record.organisation.id,
+    slug: record.organisation.slug,
+    isDemo: record.organisation.isDemo,
     name: record.organisation.name,
     owner: owner ? [owner.firstName, owner.lastName].filter(Boolean).join(" ") || owner.email : "No owner assigned",
     plan: record.subscription?.planKey ?? "Pending",
@@ -481,29 +497,32 @@ export async function loadPlatformIncidentQueue(): Promise<PlatformQueueRow[]> {
   await requirePlatformAccess();
   const db = createDatabase(process.env.DATABASE_ADMIN_URL);
   const [failedJobs, failedWebhooks] = await Promise.all([
-    db.select({ job: backgroundJobs, organisationName: organisations.name }).from(backgroundJobs).leftJoin(organisations, eq(backgroundJobs.organisationId, organisations.id)).where(eq(backgroundJobs.status, "failed")).orderBy(desc(backgroundJobs.failedAt)).limit(100),
+    db.select({ job: backgroundJobs, organisationName: organisations.name }).from(backgroundJobs).leftJoin(organisations, eq(backgroundJobs.organisationId, organisations.id)).where(inArray(backgroundJobs.status, ["failed","delivery_unknown"])).orderBy(desc(backgroundJobs.failedAt)).limit(100),
     db.select().from(webhookEvents).where(and(isNotNull(webhookEvents.failedAt), isNull(webhookEvents.processedAt))).orderBy(desc(webhookEvents.failedAt)).limit(100),
   ]);
   return [
-    ...failedJobs.map(({ job, organisationName }) => ({ id: job.id, primary: job.type.replaceAll("_", " "), secondary: organisationName ?? "Platform-wide", state: "Delivery failed", detail: `${job.attempts} attempts · ${job.error ?? "No error detail"}`, action: "Retry delivery", actionEndpoint: `/api/platform/background-jobs/${job.id}/retry`, tone: "red" as const })),
+    ...failedJobs.map(({ job, organisationName }) => ({ id: job.id, primary: job.type.replaceAll("_", " "), secondary: organisationName ?? "Platform-wide", state: job.queue==="calendar_subscription" ? "Calendar provider review required" : job.status === "delivery_unknown" ? "Provider verification required" : job.queue==="email" ? "Delivery failed" : "Processing failed", detail: `${job.attempts} attempts · ${job.error ?? "No error detail"}`, ...(job.queue==="calendar_subscription" ? {calendarReview:calendarReviewSummary(job)!} : job.queue==="email" ? job.status === "delivery_unknown" ? { emailReview: { attempts: job.attempts, leaseToken: job.leaseToken } } : { action: "Retry delivery", actionEndpoint: `/api/platform/background-jobs/${job.id}/retry` } : {}), tone: "red" as const })),
     ...failedWebhooks.map((event) => ({ id: event.id, primary: event.eventType, secondary: `${event.provider} webhook`, state: "Processing failed", detail: event.error ?? "No error detail", tone: "red" as const })),
   ];
 }
 
-export async function loadPlatformIncidents(): Promise<{ incidents: PlatformIncidentRecord[]; tenants: { id: string; name: string }[]; technicalFailures: PlatformQueueRow[] }> {
-  if (!process.env.DATABASE_ADMIN_URL || !isClerkConfigured()) return { incidents: [], tenants: [], technicalFailures: [] };
+export async function loadPlatformIncidents(): Promise<{ incidents: PlatformIncidentRecord[]; tenants: { id: string; name: string }[]; technicalFailures: PlatformQueueRow[]; calendarHealth:CalendarQueueHealth|null; missingCalendarChannels:{id:string;provider:string;accountId:string;reviewVersion:string}[] }> {
+  if (!process.env.DATABASE_ADMIN_URL || !isClerkConfigured()) return { incidents: [], tenants: [], technicalFailures: [],calendarHealth:null,missingCalendarChannels:[] };
   await requirePlatformAccess();
   const db = createDatabase(process.env.DATABASE_ADMIN_URL);
-  const [incidentRows, affectedRows, tenantRows, technicalFailures] = await Promise.all([
+  const [incidentRows, affectedRows, tenantRows, technicalFailures,calendarHealth,missingConnections] = await Promise.all([
     db.select().from(platformIncidents).orderBy(desc(platformIncidents.startedAt)).limit(100),
     db.select({ incidentId: platformIncidentOrganisations.incidentId, organisationId: organisations.id, organisationName: organisations.name }).from(platformIncidentOrganisations).innerJoin(organisations, eq(platformIncidentOrganisations.organisationId, organisations.id)),
     db.select({ id: organisations.id, name: organisations.name }).from(organisations).orderBy(asc(organisations.name)),
     loadPlatformIncidentQueue(),
+    loadCalendarQueueHealth(db),
+    db.select().from(calendarConnections).where(and(eq(calendarConnections.status,"active"),isNull(calendarConnections.webhookChannelId))).orderBy(asc(calendarConnections.updatedAt)).limit(100),
   ]);
   return {
     incidents: incidentRows.map((incident) => ({ id: incident.id, title: incident.title, summary: incident.summary, severity: incident.severity, status: incident.status, startedAt: incident.startedAt.toISOString(), resolvedAt: incident.resolvedAt?.toISOString() ?? null, affectedOrganisations: affectedRows.filter((row) => row.incidentId === incident.id).map((row) => ({ id: row.organisationId, name: row.organisationName })) })),
     tenants: tenantRows,
-    technicalFailures,
+    technicalFailures,calendarHealth,
+    missingCalendarChannels:missingConnections.map(row=>({id:row.id,provider:row.provider,accountId:row.providerAccountId,reviewVersion:calendarConnectionReviewVersion(row)})),
   };
 }
 
@@ -544,30 +563,48 @@ export async function loadPlatformUsageQueue(): Promise<PlatformQueueRow[]> {
 }
 
 export async function loadPlatformSupportQueue(): Promise<PlatformQueueRow[]> {
-  if (!process.env.DATABASE_ADMIN_URL || !isClerkConfigured()) return [];
-  await requirePlatformAccess();
+  if (!isClerkConfigured()) {
+    const operator = await requirePlatformAccess();
+    const data = await demoStore.snapshot();
+    return data.sessions.filter(session => session.platformStaffId === operator.platformStaffId).reverse().map(session => {
+      const active = demoSessionActive(session, operator.platformStaffId);
+      const pending = !session.revokedAt && new Date(session.expiresAt) > new Date() && !active;
+      return { id: session.id, primary: session.ticketReference, secondary: data.tenants.find(tenant => tenant.id === session.organisationId)?.name ?? "Demo practice", state: active ? "Active" : pending ? "Awaiting approval" : "Expired or revoked", detail: `${session.permission} · Expires ${new Date(session.expiresAt).toLocaleString("en-GB")}`, href: active ? `/platform/support/${session.id}` : `/platform/tenants/${session.organisationId}`, action: active ? "Open support session" : "Open tenant", tone: active ? "blue" as const : "slate" as const };
+    });
+  }
+  if (!process.env.DATABASE_ADMIN_URL) return [];
+  const operator = await requirePlatformAccess();
   const db = createDatabase(process.env.DATABASE_ADMIN_URL);
-  const rows = await db.select({ session: supportSessions, organisationName: organisations.name }).from(supportSessions).innerJoin(organisations, eq(supportSessions.organisationId, organisations.id)).orderBy(desc(supportSessions.createdAt)).limit(100);
+  const rows = await db.select({ session: supportSessions, organisationName: organisations.name }).from(supportSessions).innerJoin(organisations, eq(supportSessions.organisationId, organisations.id)).where(eq(supportSessions.platformStaffId, operator.platformStaffId)).orderBy(desc(supportSessions.createdAt)).limit(100);
   const now = new Date();
   return rows.map(({ session, organisationName }) => {
     const active = !session.revokedAt && session.expiresAt > now;
     const awaiting = active && session.permission === "write" && !session.approvedByUserId && !session.breakGlass;
     const state = session.revokedAt ? "Revoked" : session.expiresAt <= now ? "Expired" : awaiting ? "Awaiting approval" : "Active";
-    return { id: session.id, primary: session.ticketReference, secondary: organisationName, state, detail: `${session.breakGlass ? "Emergency write" : session.permission === "read" ? "Read-only" : "Write"} · Expires ${session.expiresAt.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/London" })}`, href: `/platform/tenants/${session.organisationId}`, action: "Open tenant", tone: active ? awaiting ? "amber" : "blue" : "slate" };
+    return { id: session.id, primary: session.ticketReference, secondary: organisationName, state, detail: `${session.breakGlass ? "Emergency write" : session.permission === "read" ? "Read-only" : "Write"} · Expires ${session.expiresAt.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/London" })}`, href: active && !awaiting ? `/platform/support/${session.id}` : `/platform/tenants/${session.organisationId}`, action: active && !awaiting ? "Open support session" : "Open tenant", tone: active ? awaiting ? "amber" : "blue" : "slate" };
   });
 }
 
 export async function loadSupportSessionView(sessionId: string) {
-  if (!process.env.DATABASE_ADMIN_URL || !isClerkConfigured()) return null;
   const operator = await requirePlatformAccess();
+  if (!isClerkConfigured()) {
+    const state = await demoStore.snapshot();
+    const session = state.sessions.find(item => item.id === sessionId);
+    if (!session || !demoSessionActive(session, operator.platformStaffId)) return null;
+    const tenant = state.tenants.find(item => item.id === session.organisationId);
+    if (!tenant) return null;
+    return { session, organisation: { id: tenant.id, name: tenant.name, status: tenant.status, practiceType: "multi-disciplinary", region: "United Kingdom" }, members: demoMembers.map(member => ({ ...member, active: member.status === "Active" })), clients: state.clients.filter(client => client.organisationId === tenant.id), properties: demoProperties.map(property => ({ ...property, archivedAt: null })), jobs: demoJobs };
+  }
+  if (!process.env.DATABASE_ADMIN_URL) return null;
   const db = createDatabase(process.env.DATABASE_ADMIN_URL);
   const [record] = await db.select({ session: supportSessions, organisation: organisations }).from(supportSessions).innerJoin(organisations, eq(supportSessions.organisationId, organisations.id)).where(eq(supportSessions.id, sessionId)).limit(1);
   if (!record || record.session.revokedAt || record.session.expiresAt <= new Date()) return null;
-  if (record.session.platformStaffId !== operator.platformStaffId && operator.role !== "super_admin") return null;
+  if (record.session.platformStaffId !== operator.platformStaffId || !["super_admin", "support"].includes(operator.role)) return null;
+  if (record.session.breakGlass && operator.role !== "super_admin") return null;
   if (record.session.permission !== "read" && !record.session.approvedByUserId && !record.session.breakGlass) return null;
   const [memberRows, clientRows, propertyRows, jobRows] = await Promise.all([
     db.select({ id: organisationMemberships.id, role: organisationMemberships.role, active: organisationMemberships.active, email: users.email, firstName: users.firstName, lastName: users.lastName }).from(organisationMemberships).innerJoin(users, eq(organisationMemberships.userId, users.id)).where(eq(organisationMemberships.organisationId, record.organisation.id)),
-    db.select({ id: clients.id, displayName: clients.displayName, archivedAt: clients.archivedAt }).from(clients).where(eq(clients.organisationId, record.organisation.id)),
+    db.select({ id: clients.id, displayName: clients.displayName, kind: clients.kind, email: clients.email, phone: clients.phone, version: clients.version, archivedAt: clients.archivedAt }).from(clients).where(eq(clients.organisationId, record.organisation.id)),
     db.select({ id: properties.id, archivedAt: properties.archivedAt }).from(properties).where(eq(properties.organisationId, record.organisation.id)),
     db.select({ id: jobs.id, reference: jobs.reference, stage: jobs.stage }).from(jobs).where(eq(jobs.organisationId, record.organisation.id)),
   ]);

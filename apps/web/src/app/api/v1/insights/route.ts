@@ -1,3 +1,4 @@
+import { csvCell } from "@/lib/tenant-csv";
 import { z } from "zod";
 import { apiContext } from "@/lib/access";
 import { ok, problem } from "@/lib/api";
@@ -16,7 +17,7 @@ export async function GET(request:Request) {
   if(from>=to||to.getTime()-from.getTime()>366*86400000)return problem(400,"invalid_range","Choose a period of up to one year.");
   const data=await practiceInsights(context.organisationId,from,to);
   if(url.searchParams.get("format")==="csv"){
-    const cell=(value:unknown)=>`"${String(value??"").replace(/^[=+@-]/,"'$&").replaceAll('"','""')}"`;
+    const cell=csvCell;
     const lines:unknown[][]=[["section","label","currency","value"],["conversion","quotes","",data.quotes],["conversion","converted","",data.converted]];
     for(const row of data.money)for(const [key,value] of Object.entries(row))if(key!=="currency")lines.push(["finance",key,row.currency,value]);
     for(const [section,rows] of [["pipeline",data.pipeline],["workload",data.workload],["services",data.services]] as const)for(const row of rows)lines.push([section,row.name,"",row.count]);

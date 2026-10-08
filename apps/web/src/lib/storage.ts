@@ -4,7 +4,8 @@ import { del, get, put } from "@vercel/blob";
 export interface ObjectStorage {
   readonly name: string;
   put(key: string, body: ArrayBuffer, contentType: string): Promise<void>;
-  get(key: string): Promise<{ stream: ReadableStream<Uint8Array>; contentType: string | null } | null>;
+  /** `fresh` bypasses the provider cache; use it when a decision depends on the latest state, such as removal checks. */
+  get(key: string, options?: { fresh?: boolean }): Promise<{ stream: ReadableStream<Uint8Array>; contentType: string | null } | null>;
   remove(key: string): Promise<void>;
 }
 
@@ -15,8 +16,9 @@ function vercelBlobStorage(token: string): ObjectStorage {
     async put(key, body, contentType) {
       await put(key, Buffer.from(body), { access: "private", contentType, addRandomSuffix: false, allowOverwrite: false, token });
     },
-    async get(key) {
-      const result = await get(key, { access: "private", token });
+    async get(key, options) {
+      // Reads can be served from cache for up to 60 seconds after a change unless the cache is bypassed.
+      const result = await get(key, { access: "private", token, ...(options?.fresh ? { useCache: false } : {}) });
       if (!result) return null;
       return { stream: result.stream as ReadableStream<Uint8Array>, contentType: result.blob.contentType ?? null };
     },

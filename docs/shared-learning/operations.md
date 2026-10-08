@@ -91,13 +91,50 @@ The integration test asserts all three on a 40-case synthetic corpus.
 | Every decision | `learning_restricted.audit_log` (append-only) |
 | Firm-side grants, withdrawals and feedback | Each firm's audit trail |
 
-## Configuration checklist
+## Activation requirements (confirmed 8 October 2026)
 
-Nothing below has been done in any environment.
+**Current state.** Production has the learning schema, and nothing else.
 
-1. Apply migrations 0029–0034 on a non-production branch first.
-2. Create the learning login role and grant it `surveynt_learning_write`. Grant `surveynt_learning_read` to the app role (see [`configuration.md`](../property-intelligence/configuration.md#database-roles)).
-3. Set `DATABASE_LEARNING_URL` and `LEARNING_LINEAGE_SECRET`.
-4. Appoint platform staff with the `privacy_reviewer`, `technical_reviewer` and `release_manager` roles: different people.
-5. Complete the DPIA and legal review. Publish a policy version with the approved privacy assessment reference and the reviewers' release criteria.
-6. Only then set `SHARED_LEARNING_ENABLED=true`. Firms still need to grant scopes individually.
+- According to the 2 October production record, migrations 0000–0025 are applied, including the learning migrations 0010 and 0023–0025.
+- The deployed Vercel project has none of these variables: `SHARED_LEARNING_ENABLED`, `DATABASE_LEARNING_URL`, `LEARNING_LINEAGE_SECRET`.
+- So the programme is off, and nothing is copied.
+
+**Checking readiness.** Run this from a trusted operator machine:
+
+```
+DATABASE_ADMIN_URL=… DATABASE_APP_URL=… DATABASE_LEARNING_URL=… LEARNING_LINEAGE_SECRET=… pnpm --filter @surveynt/web check:learning-activation
+```
+
+It is read-only and prints no secrets. It exits non-zero until every software-checkable prerequisite holds. It was not run against production from this environment.
+
+Every row must pass before `SHARED_LEARNING_ENABLED=true` is set:
+
+| # | Requirement | How it is checked |
+|---|---|---|
+| 1 | Migrations through 0025 are applied (`learning_restricted` and `learning_shared` schemas; `surveynt_learning_write` and `surveynt_learning_read` NOLOGIN group roles) | `migrations` |
+| 2 | A **separate** login role, used only in `DATABASE_LEARNING_URL`, is a member of `surveynt_learning_write`. It is not the application or owner role and has no BYPASSRLS. See [`configuration.md`](../property-intelligence/configuration.md#database-roles) | `learning_role` |
+| 3 | The application role is a member of `surveynt_learning_read` (to retrieve released cases) and never of `surveynt_learning_write` | `app_role` |
+| 4 | `LEARNING_LINEAGE_SECRET` is at least 32 random characters, kept in the secret manager | `lineage_secret` |
+| 5 | A published contribution policy has an approved privacy assessment reference and valid release criteria, set by qualified reviewers (`releaseCriteriaSchema`) | `policy`, using the same `programmeStatus` gate the application uses |
+| 6 | Active platform staff are appointed as privacy reviewer, technical reviewer and release manager. One platform role per person, so they are different people | `reviewers` |
+| 7 | The DPIA and legal review are complete | Not checkable by software. The policy's privacy assessment reference records completion |
+| 8 | Then set `SHARED_LEARNING_ENABLED=true` | `enabled` |
+
+**After enabling.** Nothing is copied until:
+
+- a firm grants a scope with all three authority confirmations, under the current policy version; and
+- a survey of that firm has a signed-off report.
+
+**What runs automatically.**
+
+- The daily cron (`/api/cron/daily`) runs `runLearningSweep`. Until 8 October this ran only from the console's "Run sweep now".
+- The sweep retries pending withdrawals.
+- It erases staged and released copies of any survey file whose retention removal has reached storage dispatch or later.
+- It extracts new candidates only while the programme is active.
+- Withdrawals and removals are still honoured while the programme is off, as long as the learning service is configured.
+
+**Still not met by design.**
+
+- L3 quality and leakage pass marks need qualified reviewers.
+- L4 fine-tuning is not implemented ([`fine-tuning.md`](./fine-tuning.md)).
+- Photo releases stay excluded until a reviewed cropping tool exists.

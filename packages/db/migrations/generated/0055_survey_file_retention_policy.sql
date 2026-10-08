@@ -1,0 +1,1 @@
+ALTER TABLE organisation_operational_settings ADD COLUMN survey_file_retention_policy jsonb;

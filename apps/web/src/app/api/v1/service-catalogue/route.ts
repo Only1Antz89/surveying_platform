@@ -1,19 +1,19 @@
+import { servicePricingInput } from "@/lib/service-pricing-input";
 import { workspaceApiGuard } from "@/lib/workspace-api-guard";
-import { z } from "zod";
 import { isManagementRole } from "@surveynt/domain";
 import { auditEvents, createDatabase, serviceDefinitions, servicePricingVersions, withTenant } from "@surveynt/db";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
 
-const schema = z.object({ name: z.string().trim().min(2).max(160), baseAmountMinor: z.number().int().min(0).max(100_000_000), vatBasisPoints: z.number().int().min(0).max(10000).default(2000), depositBasisPoints: z.number().int().min(0).max(10000).default(1000), durationMinutes: z.number().int().min(15).max(2880), validityDays: z.number().int().min(1).max(365).default(7), surcharges: z.record(z.string(), z.object({ label: z.string().max(120), amountMinor: z.number().int().min(0) })).default({}), recommendationRules: z.record(z.string(), z.unknown()).default({}), active: z.boolean().default(true) });
+const schema = servicePricingInput;
 
 export async function GET(request: Request) {
   const context = await apiContext(request); if (!context) return problem(401, "unauthorised", "Authentication is required.");
   const accessDenial = await workspaceApiGuard(request, context);
   if (accessDenial) return accessDenial;
   if (context.demo) return ok([] as unknown[], { demo: true });
-  const data = await withTenant(createDatabase(), context.organisationId, (tx) => tx.select({ service: serviceDefinitions, pricing: servicePricingVersions }).from(serviceDefinitions).leftJoin(servicePricingVersions, and(eq(servicePricingVersions.serviceDefinitionId, serviceDefinitions.id), eq(servicePricingVersions.active, true))).where(eq(serviceDefinitions.organisationId, context.organisationId)).orderBy(serviceDefinitions.name, desc(servicePricingVersions.version)));
+  const data = await withTenant(createDatabase(), context.organisationId, (tx) => tx.select({ service: serviceDefinitions, pricing: servicePricingVersions }).from(serviceDefinitions).leftJoin(servicePricingVersions, and(eq(servicePricingVersions.serviceDefinitionId, serviceDefinitions.id), eq(servicePricingVersions.version, sql`(select max(v.version) from service_pricing_versions v where v.service_definition_id=${serviceDefinitions.id} and v.organisation_id=${context.organisationId})`))).where(eq(serviceDefinitions.organisationId, context.organisationId)).orderBy(serviceDefinitions.name, desc(servicePricingVersions.version)));
   return ok(data);
 }
 

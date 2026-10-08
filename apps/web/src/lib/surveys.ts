@@ -1,6 +1,7 @@
 import { and, asc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { assignedJobScope } from "./workspace-scope";
 import { currentProfessionalPermission } from "./professional-membership";
+import { verifiedSurveyFileOriginalRemoval } from "./survey-file-original-removal-status";
 import {
   assistantTasks,
   auditEvents,
@@ -171,7 +172,7 @@ export async function readSurveyPack(tx: TenantTransaction, context: Pick<Survey
     values: values.map((item) => ({ id: item.id, fieldPath: item.fieldPath, value: item.value, origin: item.origin, sourceKind: item.sourceKind, sourceRef: item.sourceRef, createdAt: item.createdAt.toISOString() })),
     observations: observationRows.map((item) => ({ id: item.id, elementId: item.elementId, kind: item.kind, text: item.text, structured: item.structured, locationLabel: item.locationLabel, origin: item.origin, observedAt: item.observedAt?.toISOString() ?? null, version: item.version, clientGeneratedId: item.clientGeneratedId })),
     media: media.map((item) => ({ ...item, capturedAt: item.capturedAt?.toISOString() ?? null, createdAt: item.createdAt.toISOString(), analysis: analysisByMedia.get(item.id) ?? null })),
-    evidence: evidence.map((item) => ({ id: item.id, targetType: item.targetType, targetId: item.targetId, evidenceType: item.evidenceType, evidenceId: item.evidenceId, region: item.region, note: item.note })),
+    evidence: evidence.map((item) => ({ id: item.id, targetType: item.targetType, targetId: item.targetId, evidenceType: item.evidenceType, evidenceId: item.evidenceId, contentRemoved: item.note === null && item.region?.retentionRemoved === true, region: item.region?.retentionRemoved === true ? null : item.region, note: item.region?.retentionRemoved === true ? null : item.note })),
     tasks: tasks.map((item) => ({ id: item.id, kind: item.kind, status: item.status, title: item.title, detail: item.detail, elementKey: item.elementKey, fieldPath: item.fieldPath, evidence: item.evidence })),
     assistantEnabled: assistantEnabled(),
     proposals: proposals.map((item) => ({ id: item.id, fieldPath: item.fieldPath, proposedValue: item.proposedValue, originClass: item.originClass, evidenceRefs: item.evidenceRefs, limitations: item.limitations, baseValueId: item.baseValueId, createdAt: item.createdAt.toISOString() })),
@@ -246,6 +247,7 @@ async function applyOperation(tx: TenantTransaction, context: SurveyContext, sur
       const validation = validateFieldValue(resolved.field, operation.value);
       if (!validation.ok) return reject(operationId, validation.message);
       const [current] = await tx.select().from(surveyFieldValues).where(and(eq(surveyFieldValues.surveyId, survey.id), eq(surveyFieldValues.fieldPath, resolved.path), isNull(surveyFieldValues.supersededAt))).limit(1);
+      if (current?.value.retentionRemoved === true) return reject(operationId, "This answer was removed after retention review. Record further work under a new instruction.");
       if ((current?.id ?? null) !== operation.baseValueId) return conflict(operationId, "This field changed since you last saw it. Compare the values before saving.", current ? { id: current.id, value: current.value, origin: current.origin, createdAt: current.createdAt.toISOString() } : null);
       if (current && canonicalJson(current.value) === canonicalJson(validation.value)) return { id: current.id, fieldPath: current.fieldPath, value: current.value, unchanged: true };
       if (current) await tx.update(surveyFieldValues).set({ supersededAt: new Date() }).where(eq(surveyFieldValues.id, current.id));
@@ -269,6 +271,7 @@ async function applyOperation(tx: TenantTransaction, context: SurveyContext, sur
     case "withdraw_observation": {
       const [existing] = await tx.select().from(observations).where(and(eq(observations.id, operation.observationId), eq(observations.surveyId, survey.id), eq(observations.organisationId, context.organisationId))).limit(1);
       if (!existing || existing.status !== "recorded") return reject(operationId, "That observation is no longer current.");
+      if (existing.structured.retentionRemoved === true) return reject(operationId, "This observation content was removed after retention review. Record further work under a new instruction.");
       if (existing.version !== operation.baseVersion) return conflict(operationId, "This observation was changed by someone else.", { id: existing.id, text: existing.text, version: existing.version });
       if (operation.type === "withdraw_observation") {
         await tx.update(observations).set({ status: "withdrawn", version: existing.version + 1, updatedAt: new Date(), structured: { ...existing.structured, withdrawalReason: operation.reason } }).where(eq(observations.id, existing.id));
@@ -410,11 +413,18 @@ export async function storeSurveyMedia(context: SurveyContext, surveyId: string,
 }
 
 export async function readSurveyMedia(context: Pick<SurveyContext, "organisationId">, mediaId: string) {
+  const db = createDatabase();
+  const result = await withTenant(db, context.organisationId, async tx => {
+    const [media] = await tx.select().from(mediaAssets).where(and(eq(mediaAssets.id, mediaId), eq(mediaAssets.organisationId, context.organisationId), eq(mediaAssets.status, "stored"))).limit(1);
+    if (!media) return null;
+    const removal = await verifiedSurveyFileOriginalRemoval(tx, context.organisationId, "media", media.id);
+    return removal ? { removed: true as const } : { media };
+  });
+  if (!result) return null;
+  if (result.removed) return { removed: true as const };
   const storage = getObjectStorage();
   if (!storage) return null;
-  const db = createDatabase();
-  const [media] = await withTenant(db, context.organisationId, (tx) => tx.select().from(mediaAssets).where(and(eq(mediaAssets.id, mediaId), eq(mediaAssets.organisationId, context.organisationId), eq(mediaAssets.status, "stored"))).limit(1));
-  if (!media) return null;
+  const { media } = result;
   const object = await storage.get(media.storageKey);
   return object ? { media, object } : null;
 }

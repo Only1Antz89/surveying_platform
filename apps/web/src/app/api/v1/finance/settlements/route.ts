@@ -1,3 +1,4 @@
+import { GET as exportFinance } from "../exports/route";
 import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { z } from "zod";
 import { canManageFinance } from "@surveynt/domain";
@@ -11,8 +12,9 @@ export async function GET(request: Request) {
   const context = await apiContext(request); if (!context) return problem(401, "unauthorised", "Authentication is required."); if (!canManageFinance(context.role)) return problem(403, "forbidden", "Finance access is required."); if (context.demo) return ok([], { demo: true });
   const accessDenial = await workspaceApiGuard(request, context);
   if (accessDenial) return accessDenial;
+  if (new URL(request.url).searchParams.get("format") === "csv") { const url = new URL(request.url); url.pathname = "/api/v1/finance/exports"; url.search = "dataset=reconciliation&unsettled=true"; return exportFinance(new Request(url, request)); }
   const rows = await withTenant(createDatabase(), context.organisationId, (tx) => tx.select({ entry: settlementLedger }).from(settlementLedger).leftJoin(settlementBatchItems, eq(settlementBatchItems.ledgerEntryId, settlementLedger.id)).where(and(eq(settlementLedger.organisationId, context.organisationId), isNull(settlementBatchItems.id))));
-  if (new URL(request.url).searchParams.get("format") === "csv") { const escaped = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`; const body = ["id,type,currency,amount_minor,created_at", ...rows.map(({ entry }) => [entry.id, entry.entryType, entry.currency, entry.amountMinor, entry.createdAt.toISOString()].map(escaped).join(","))].join("\n"); return new Response(body, { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": "attachment; filename=surveynt-unsettled-ledger.csv", "cache-control": "private, no-store" } }); }
+
   return ok(rows.map((row) => row.entry));
 }
 export async function POST(request: Request) {

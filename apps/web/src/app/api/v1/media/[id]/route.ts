@@ -16,5 +16,6 @@ export async function GET(request: Request, route: RouteContext<"/api/v1/media/[
   if (context.demo || !z.uuid().safeParse(id).success) return problem(404, "media_not_found", "The file could not be found.");
   const result = await readSurveyMedia(context, id);
   if (!result) return problem(404, "media_not_found", "The file could not be found.");
+  if ("removed" in result) return problem(410, "original_removed", "This original was removed after its retention review.");
   return new Response(result.object.stream, { headers: { "content-type": result.media.contentType, "cache-control": "private, no-store", "x-content-type-options": "nosniff", "content-disposition": result.media.kind === "document" ? "attachment" : "inline" } });
 }

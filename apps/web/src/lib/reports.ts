@@ -2,7 +2,7 @@ import { hasProfessionalPermission } from "@surveynt/domain";
 import { currentProfessionalPermission } from "./professional-membership";
 import { and, desc, eq, inArray, max } from "drizzle-orm";
 import { canonicalJson, composeReport, composerInputFingerprint, COMPOSER, REPORT_SIGN_OFF_STATEMENT, type ComposedReport, type ComposerInput, type FieldValue, type InspectionStatus, type ServiceLevel } from "@surveynt/assistant";
-import { auditEvents, completionOverrides, createDatabase, jobs, reportApprovals, reportVersions, surveys, withTenant, type TenantTransaction } from "@surveynt/db";
+import { auditEvents, completionOverrides, createDatabase, jobs, reportApprovals, reportVersions, surveyFileRemovals, surveys, withTenant, type TenantTransaction } from "@surveynt/db";
 import { completionReportFromPack } from "./completion-input";
 import { readSurveyPack, type SurveyContext, type SurveyPack } from "./surveys";
 import { approvedClauses } from "./wording";
@@ -46,6 +46,10 @@ export async function composeSurveyReport(context: SurveyContext, surveyId: stri
     if (!await currentProfessionalPermission(tx, context, "record_survey")) throw new ReportError(403, "professional_recording_required", "Your professional recording permission has changed.");
     const current = await currentReportInput(tx, context, surveyId);
     if (!current) throw new ReportError(404, "survey_not_found", "The survey could not be found.");
+    // Serialize composition with the removal claim before reading its state.
+    await tx.select({ id: jobs.id }).from(jobs).where(and(eq(jobs.id, current.pack.survey.jobId), eq(jobs.organisationId, context.organisationId))).for("update");
+    const [removal] = await tx.select({ id: surveyFileRemovals.id }).from(surveyFileRemovals).where(and(eq(surveyFileRemovals.jobId, current.pack.survey.jobId), eq(surveyFileRemovals.organisationId, context.organisationId), inArray(surveyFileRemovals.status, ["dispatched", "verification_required", "completed"]))).limit(1);
+    if (removal) throw new ReportError(409, "originals_under_removal", "This survey file is under retention removal. Create a new instruction for further reporting.");
     const { report, trace } = composeReport(current.input);
     const completion = completionReportFromPack(current.pack);
     const [{ latest }] = await tx.select({ latest: max(reportVersions.versionNumber) }).from(reportVersions).where(and(eq(reportVersions.surveyId, surveyId), eq(reportVersions.organisationId, context.organisationId)));
@@ -72,10 +76,10 @@ export async function loadSurveyReports(context: Pick<SurveyContext, "organisati
       surveyStatus: current.pack.survey.status,
       currentFingerprint: current.fingerprint,
       versions: versions.map((row) => ({
-        id: row.id, versionNumber: row.versionNumber, createdAt: row.createdAt.toISOString(), composer: row.composer, current: row.inputFingerprint === current.fingerprint,
+        id: row.id, versionNumber: row.versionNumber, createdAt: row.createdAt.toISOString(), composer: row.composer, contentRemoved: row.content.retentionRemoved === true, current: row.content.retentionRemoved !== true && row.inputFingerprint === current.fingerprint,
         approval: approvalFor.get(row.id) ? { approvedAt: approvalFor.get(row.id)!.createdAt.toISOString(), approverRole: approvalFor.get(row.id)!.approverRole, note: approvalFor.get(row.id)!.note } : null,
       })),
-      latest: versions[0] ? { id: versions[0].id, versionNumber: versions[0].versionNumber, content: versions[0].content as unknown as ComposedReport, trace: versions[0].trace } : null,
+      latest: versions[0] && versions[0].content.retentionRemoved !== true ? { id: versions[0].id, versionNumber: versions[0].versionNumber, content: versions[0].content as unknown as ComposedReport, trace: versions[0].trace } : null,
     };
   });
 }
@@ -95,6 +99,7 @@ export async function approveReportVersion(context: SurveyContext, surveyId: str
     if (current.pack.template.key.startsWith("surveynt-home-survey") && current.pack.template.reviewStatus !== "surveyor_reviewed") throw new ReportError(409, "template_review_required", "This firm Home Survey template is a draft. Complete professional template review and any required licence verification before approving or issuing reports.");
     const [latest] = await tx.select().from(reportVersions).where(and(eq(reportVersions.surveyId, surveyId), eq(reportVersions.organisationId, context.organisationId))).orderBy(desc(reportVersions.versionNumber)).limit(1);
     if (!latest || latest.id !== versionId) throw new ReportError(409, "not_latest", "Only the latest report version can be signed off.");
+    if (latest.content.retentionRemoved === true) throw new ReportError(410, "report_content_removed", "Report content was removed after retention review.");
     if (latest.inputFingerprint !== current.fingerprint) throw new ReportError(409, "out_of_date", "The survey or approved wording changed after this version was composed. Compose a new version and review it.");
     const [existing] = await tx.select({ id: reportApprovals.id }).from(reportApprovals).where(eq(reportApprovals.reportVersionId, versionId)).limit(1);
     if (existing) throw new ReportError(409, "already_approved", "This version is already signed off.");
@@ -131,10 +136,11 @@ export async function reopenSurvey(context: SurveyContext, surveyId: string, rea
 
 /** For the issue gate: whether the newest signed-off version still matches the survey. */
 export async function approvedReportIsCurrent(tx: TenantTransaction, context: Pick<SurveyContext, "organisationId">, surveyId: string) {
-  const [latestApproved] = await tx.select({ id: reportVersions.id, fingerprint: reportVersions.inputFingerprint, versionNumber: reportVersions.versionNumber }).from(reportVersions)
+  const [latestApproved] = await tx.select({ id: reportVersions.id, fingerprint: reportVersions.inputFingerprint, versionNumber: reportVersions.versionNumber, content: reportVersions.content }).from(reportVersions)
     .innerJoin(reportApprovals, eq(reportApprovals.reportVersionId, reportVersions.id))
     .where(and(eq(reportVersions.surveyId, surveyId), eq(reportVersions.organisationId, context.organisationId))).orderBy(desc(reportVersions.versionNumber)).limit(1);
   if (!latestApproved) return { approved: false as const, current: false };
+  if (latestApproved.content.retentionRemoved === true) return { approved: true as const, current: false, versionNumber: latestApproved.versionNumber, contentRemoved: true };
   const current = await currentReportInput(tx, context, surveyId);
   return { approved: true as const, current: current?.fingerprint === latestApproved.fingerprint, versionNumber: latestApproved.versionNumber };
 }

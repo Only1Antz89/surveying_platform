@@ -12,3 +12,12 @@ export function integrationReadiness(demo:boolean,env:Record<string,string|undef
     {key:"routing",label:"Daily route planning",state:demo?"Demo":ready(["ROUTING_PROVIDER_URL","ROUTING_PROVIDER_ATTRIBUTION"])?"Available":"Setup required",detail:"Appointment order and navigation remain available. Direct-distance fallbacks are visibly approximate, not drive-time estimates.",action:"Configure the production routing provider"},
   ];
 }
+
+export type CalendarCapabilityConnection={status:string;lastError:string|null;webhookChannelId:string|null;webhookExpiresAt:Date|null};
+export function calendarCapabilityState(configured:boolean,connections:CalendarCapabilityConnection[],now=Date.now()):CapabilityState{
+ if(!configured)return "Setup required";
+ const active=connections.filter(row=>row.status==="active");
+ if(active.some(row=>row.lastError||!row.webhookChannelId||!row.webhookExpiresAt||row.webhookExpiresAt.getTime()<=now))return "Sync error";
+ if(active.length)return "Available";
+ return connections.some(row=>["error","revoked","expired"].includes(row.status))?"Sync error":"Setup required";
+}
