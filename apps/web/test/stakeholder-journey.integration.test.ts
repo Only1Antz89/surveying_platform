@@ -124,6 +124,25 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     expect(questionnaireFile?.questionnaireDocuments[0]).not.toHaveProperty("analysis");
     await expect(withTenant(createDatabase(),context.organisationId,tx=>prepareReviewedSurveyFileRemoval(tx,context.organisationId,jobId,questionnaireFile!.assessment.reviewVersion))).rejects.toThrow("manager");
     await db.insert(auditEvents).values({organisationId:context.organisationId,actorUserId:context.internalUserId!,action:"job.retention_file_reviewed",resourceType:"job",resourceId:jobId,metadata:{reviewVersion:questionnaireFile!.assessment.reviewVersion,confirmed:true,noUnresolvedComplaintOrClaim:true}});
+    await expect(withTenant(createDatabase(),context.organisationId,async tx=>{
+      const [task]=await tx.insert(assistantTasks).values({organisationId:context.organisationId,surveyId:capture.survey.id,kind:"discrepancy",dedupeKey:"stale-retention-content-fixture",title:"Fictional reviewed adviser text",evidence:{}}).returning();
+      const before=await readSurveyFileRetention(tx,context.organisationId,jobId);
+      await tx.insert(auditEvents).values({organisationId:context.organisationId,actorUserId:context.internalUserId!,action:"job.retention_file_reviewed",resourceType:"job",resourceId:jobId,metadata:{reviewVersion:before!.assessment.reviewVersion,confirmed:true,noUnresolvedComplaintOrClaim:true}});
+      await tx.update(assistantTasks).set({title:"Fictional changed adviser text",updatedAt:task.updatedAt}).where(eq(assistantTasks.id,task.id));
+      const after=await readSurveyFileRetention(tx,context.organisationId,jobId);
+      expect(after!.assessment.reviewVersion).not.toBe(before!.assessment.reviewVersion);
+      await expect(requestReviewedSurveyFileRemoval(tx,context.organisationId,jobId,context.internalUserId!,{requestId:crypto.randomUUID(),reviewVersion:before!.assessment.reviewVersion,reason:"Reject a stale review after adviser content changes.",confirmed:true})).rejects.toThrow("file changed");
+      expect(await tx.select().from(surveyFileRemovals).where(eq(surveyFileRemovals.jobId,jobId))).toHaveLength(0);
+      const [proposal]=await tx.insert(fieldProposals).values({organisationId:context.organisationId,surveyId:capture.survey.id,fieldPath:"matters.legal.guarantees",proposedValue:{state:"provided",value:"Fictional retained proposal"},valueType:"text",evidenceRefs:[],originClass:"document_extraction",inputVersion:"fixture-v1",generator:"retention-fixture",dedupeKey:"stale-retention-proposal-fixture"}).returning();
+      const proposalBefore=await readSurveyFileRetention(tx,context.organisationId,jobId);
+      await tx.insert(auditEvents).values({organisationId:context.organisationId,actorUserId:context.internalUserId!,action:"job.retention_file_reviewed",resourceType:"job",resourceId:jobId,metadata:{reviewVersion:proposalBefore!.assessment.reviewVersion,confirmed:true,noUnresolvedComplaintOrClaim:true}});
+      await tx.update(fieldProposals).set({reviewNote:"Fictional changed review content",reviewedAt:proposal.reviewedAt}).where(eq(fieldProposals.id,proposal.id));
+      const proposalAfter=await readSurveyFileRetention(tx,context.organisationId,jobId);
+      expect(proposalAfter!.assessment.reviewVersion).not.toBe(proposalBefore!.assessment.reviewVersion);
+      await expect(requestReviewedSurveyFileRemoval(tx,context.organisationId,jobId,context.internalUserId!,{requestId:crypto.randomUUID(),reviewVersion:proposalBefore!.assessment.reviewVersion,reason:"Reject stale review after proposal review content changes.",confirmed:true})).rejects.toThrow("file changed");
+      expect(await tx.select().from(surveyFileRemovals).where(eq(surveyFileRemovals.jobId,jobId))).toHaveLength(0);
+      throw new Error("Rollback stale adviser review fixture");
+    })).rejects.toThrow("Rollback stale adviser review fixture");
     const prepared=await withTenant(createDatabase(),context.organisationId,tx=>prepareReviewedSurveyFileRemoval(tx,context.organisationId,jobId,questionnaireFile!.assessment.reviewVersion));
     expect(prepared.manifest.objects).toHaveLength(2);expect(prepared.manifest.objects.every(object=>object.kind==="questionnaire")).toBe(true);
     await db.update(organisationMemberships).set({active:false}).where(eq(organisationMemberships.userId,context.internalUserId!));
