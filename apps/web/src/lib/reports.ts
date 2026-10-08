@@ -72,10 +72,10 @@ export async function loadSurveyReports(context: Pick<SurveyContext, "organisati
       surveyStatus: current.pack.survey.status,
       currentFingerprint: current.fingerprint,
       versions: versions.map((row) => ({
-        id: row.id, versionNumber: row.versionNumber, createdAt: row.createdAt.toISOString(), composer: row.composer, current: row.inputFingerprint === current.fingerprint,
+        id: row.id, versionNumber: row.versionNumber, createdAt: row.createdAt.toISOString(), composer: row.composer, contentRemoved: row.content.retentionRemoved === true, current: row.content.retentionRemoved !== true && row.inputFingerprint === current.fingerprint,
         approval: approvalFor.get(row.id) ? { approvedAt: approvalFor.get(row.id)!.createdAt.toISOString(), approverRole: approvalFor.get(row.id)!.approverRole, note: approvalFor.get(row.id)!.note } : null,
       })),
-      latest: versions[0] ? { id: versions[0].id, versionNumber: versions[0].versionNumber, content: versions[0].content as unknown as ComposedReport, trace: versions[0].trace } : null,
+      latest: versions[0] && versions[0].content.retentionRemoved !== true ? { id: versions[0].id, versionNumber: versions[0].versionNumber, content: versions[0].content as unknown as ComposedReport, trace: versions[0].trace } : null,
     };
   });
 }

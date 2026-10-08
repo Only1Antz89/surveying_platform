@@ -11,7 +11,7 @@ export async function readSurveyFileMedia(tx: TenantTransaction, organisationId:
   const surveyRows = complete(await tx.select({ id: surveys.id }).from(surveys).where(and(eq(surveys.organisationId, organisationId), eq(surveys.jobId, jobId))).orderBy(asc(surveys.id)).limit(limit + 1));
   const surveyIds = surveyRows.map(survey => survey.id);
   const links = surveyIds.length ? complete(await tx.select({ id: evidenceLinks.id, surveyId: evidenceLinks.surveyId, evidenceType: evidenceLinks.evidenceType, evidenceId: evidenceLinks.evidenceId, removedAt: evidenceLinks.removedAt }).from(evidenceLinks).where(and(eq(evidenceLinks.organisationId, organisationId), inArray(evidenceLinks.surveyId, surveyIds))).orderBy(asc(evidenceLinks.id)).limit(limit + 1)) : [];
-  const traceValid = traces.every(trace => Array.isArray(trace.media) && trace.media.every(id => typeof id === "string"));
+  const traceValid = traces.every(trace => (trace.retentionRemoved === true && Object.keys(trace).length === 1) || (Array.isArray(trace.media) && trace.media.every(id => typeof id === "string")));
   const references = [...new Set([...traces.flatMap(trace => Array.isArray(trace.media) ? trace.media.filter((id): id is string => typeof id === "string") : []), ...links.filter(link => link.evidenceType === "media").map(link => link.evidenceId)])];
   if (references.length > limit) throw new Error("The survey evidence exceeds the review register limit.");
   const uuidReferences = references.filter(id => z.uuid().safeParse(id).success);
