@@ -373,12 +373,16 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     const removalMediaId=crypto.randomUUID();
     const [removalMedia]=await db.insert(mediaAssets).values({id:removalMediaId,organisationId:context.organisationId,propertyId:retentionJob.propertyId,surveyId:removalSurvey.survey.id,kind:"photo",storageKey:`organisations/${context.organisationId}/surveys/${removalSurvey.survey.id}/${removalMediaId}/original`,contentType:"image/jpeg",byteSize:originalBytes.length,sha256:createHash("sha256").update(originalBytes).digest("hex"),clientGeneratedId:crypto.randomUUID()}).returning();
     const [removalAnalysis]=await db.insert(mediaAnalyses).values({organisationId:context.organisationId,mediaId:removalMedia.id,surveyId:removalSurvey.survey.id,analyser:"fictional-retention",status:"completed",result:{fictionalText:"Fictional extracted media text for disposal."}}).returning();
+    const batchDocuments=await db.insert(organisationDocuments).values(Array.from({length:25},(_,index)=>{
+      const id=crypto.randomUUID();return {id,organisationId:context.organisationId,jobId:removalJob.id,name:`Fictional batch original ${index+1}`,category:"report" as const,blobUrl:"https://example.test/fictional-batch",blobPathname:`organisations/${context.organisationId}/documents/${id}/original`,checksum:createHash("sha256").update(deliveryBytes).digest("hex"),contentType:"text/plain",sizeBytes:deliveryBytes.length,deletedAt:new Date("2000-03-01T00:00:00Z"),retentionUntil:new Date("2001-03-01T00:00:00Z")};
+    })).returning();
     const removalFile=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,removalJob.id));expect(removalFile?.assessment.eligibleForManagerReview).toBe(true);
     await db.insert(auditEvents).values({organisationId:context.organisationId,actorUserId:context.internalUserId!,action:"job.retention_file_reviewed",resourceType:"job",resourceId:removalJob.id,metadata:{reviewVersion:removalFile!.assessment.reviewVersion,confirmed:true,noUnresolvedComplaintOrClaim:true}});
     const removalIntent=await withTenant(createDatabase(),context.organisationId,tx=>requestReviewedSurveyFileRemoval(tx,context.organisationId,removalJob.id,context.internalUserId!,{requestId:crypto.randomUUID(),reviewVersion:removalFile!.assessment.reviewVersion,reason:"Manager reviewed fictional storage integration original.",confirmed:true}));
     const storageClaim=await withTenant(createDatabase(),context.organisationId,tx=>claimQueuedSurveyFileRemoval(tx,context.organisationId,removalJob.id,removalIntent.id));
     const fixtureStorage=createMemoryStorage();await fixtureStorage.put(removalOriginal.storageKey,originalBytes.buffer,"text/plain");
     await fixtureStorage.put(deliveryOriginal.blobPathname,deliveryBytes.buffer,"text/plain");
+    for(const document of batchDocuments)await fixtureStorage.put(document.blobPathname,deliveryBytes.buffer,"text/plain");
     await fixtureStorage.put(removalMedia.storageKey,originalBytes.buffer,"image/jpeg");
     expect(await processSurveyFileOriginal(createDatabase(),context.organisationId,removalJob.id,storageClaim,`media:${removalMedia.id}`,fixtureStorage)).toEqual({removed:true,verificationRequired:false});
     await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeQuestionnaireAnalysis(tx,context.organisationId,removalJob.id,context.internalUserId!,removalOriginal.id))).rejects.toThrow("Whole-file removal");
@@ -403,12 +407,19 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     readSpy.mockRestore();
     const secondRecovery=await withTenant(createDatabase(),context.organisationId,tx=>claimSurveyFileRemovalRecovery(tx,context.organisationId,removalIntent.id));
     expect(await observeInterruptedSurveyFileOriginal(createDatabase(),context.organisationId,secondRecovery,`questionnaire:${removalOriginal.id}`,fixtureStorage)).toEqual({removed:true,verificationRequired:true});
-    expect(deleteSpy).toHaveBeenCalledOnce();expect(fixtureStorage.objects.size).toBe(1);
+    expect(deleteSpy).toHaveBeenCalledOnce();expect(fixtureStorage.objects.size).toBe(26);
     const [partialRemoval]=await db.select().from(surveyFileRemovals).where(eq(surveyFileRemovals.id,removalIntent.id));
     expect(partialRemoval.status).toBe("verification_required");expect(partialRemoval.lockedUntil).toBeNull();
     const resumedOutcome=await processReviewedRemainingOriginals(createDatabase(),context.organisationId,removalJob.id,context.internalUserId!,{id:removalIntent.id,manifestVersion:storageClaim.manifest.manifestVersion,reason:"Manager reviewed the remaining fictional delivery original.",confirmed:true},fixtureStorage);
-    expect(resumedOutcome).toEqual({completed:true,verificationRequired:false,processed:1});
-    expect(deleteSpy).toHaveBeenCalledTimes(2);expect(deleteSpy.mock.calls.map(call=>call[0])).toEqual([removalOriginal.storageKey,deliveryOriginal.blobPathname]);
+    expect(resumedOutcome).toEqual({completed:false,verificationRequired:true,processed:25});
+    expect(fixtureStorage.objects.size).toBe(1);
+    const [pausedBatch]=await db.select().from(surveyFileRemovals).where(eq(surveyFileRemovals.id,removalIntent.id));
+    expect(pausedBatch.status).toBe("verification_required");expect(pausedBatch.lockedUntil).toBeNull();expect(pausedBatch.error).toBe("additional_originals_require_review");
+    const pausedAudits=await db.select().from(auditEvents).where(and(eq(auditEvents.resourceId,removalIntent.id),eq(auditEvents.action,"job.original_removal_batch_paused")));
+    expect(pausedAudits).toHaveLength(1);expect(pausedAudits[0].actorUserId).toBe(context.internalUserId);expect(pausedAudits[0].metadata).toMatchObject({processed:25,remainingOriginalCount:1});
+    expect(await processReviewedRemainingOriginals(createDatabase(),context.organisationId,removalJob.id,context.internalUserId!,{id:removalIntent.id,manifestVersion:storageClaim.manifest.manifestVersion,reason:"Manager reviewed the final untouched fictional batch original.",confirmed:true},fixtureStorage)).toEqual({completed:true,verificationRequired:false,processed:1});
+    expect(deleteSpy).toHaveBeenCalledTimes(27);
+    expect(deleteSpy.mock.calls.map(call=>call[0]).sort()).toEqual([removalOriginal.storageKey,deliveryOriginal.blobPathname,...batchDocuments.map(document=>document.blobPathname)].sort());
     expect(fixtureStorage.objects.size).toBe(0);
     const [completedRemoval]=await db.select().from(surveyFileRemovals).where(eq(surveyFileRemovals.id,removalIntent.id));expect(completedRemoval.status).toBe("completed");expect(completedRemoval.completedAt).not.toBeNull();
     await expect(withTenant(createDatabase(),context.organisationId,async tx=>{
@@ -418,7 +429,7 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     })).rejects.toMatchObject({cause:{message:"A record bound to a file under original removal cannot be added, changed, moved or deleted"}});
     const retryRead=vi.spyOn(fixtureStorage,"get");
     expect(await processSurveyFileOriginal(createDatabase(),context.organisationId,removalJob.id,storageClaim,`questionnaire:${removalOriginal.id}`,fixtureStorage)).toEqual({removed:true,verificationRequired:false});
-    expect(retryRead).not.toHaveBeenCalled();expect(deleteSpy).toHaveBeenCalledTimes(2);retryRead.mockRestore();
+    expect(retryRead).not.toHaveBeenCalled();expect(deleteSpy).toHaveBeenCalledTimes(27);retryRead.mockRestore();
     const [dispositionHold]=await db.insert(jobRetentionHolds).values({organisationId:context.organisationId,jobId:removalJob.id,kind:"legal",reason:"Fictional legal hold blocks extracted content disposition.",reviewedByUserId:context.internalUserId!}).returning();
     await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeQuestionnaireAnalysis(tx,context.organisationId,removalJob.id,context.internalUserId!,removalOriginal.id))).rejects.toThrow("protected");
     await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeMediaAnalysis(tx,context.organisationId,removalJob.id,context.internalUserId!,removalAnalysis.id))).rejects.toThrow("protected");
