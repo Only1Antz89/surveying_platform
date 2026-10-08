@@ -491,6 +491,13 @@
       "when": 1791409200000,
       "tag": "0069_observation_content_disposition",
       "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1791412800000,
+      "tag": "0070_retained_sync_result_disposition",
+      "breakpoints": true
     }
   ]
 }

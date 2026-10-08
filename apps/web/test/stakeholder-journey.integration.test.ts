@@ -1,3 +1,4 @@
+import { syncOperations } from "@surveynt/db";
 import { disposeObservationContent } from "../src/lib/survey-file-observation-disposition";
 import { disposeRecordedFieldValue } from "../src/lib/survey-file-recorded-value-disposition";
 import { startReviewedSurveyFileRemoval } from "../src/lib/survey-file-removal-start";
@@ -423,8 +424,11 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     const [removalTask]=await db.insert(assistantTasks).values({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,kind:"discrepancy",status:"resolved",dedupeKey:"fictional-task-disposition",title:"Fictional extracted task title",detail:"Fictional private task detail",evidence:{source:{id:removalOriginal.id}},resolvedAt:new Date(),resolvedByUserId:context.internalUserId!,resolutionNote:"Fictional task resolution text"}).returning();
     const [removalProposal]=await db.insert(fieldProposals).values({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,fieldPath:"matters.legal.guarantees",proposedValue:{state:"provided",value:{text:"Fictional private proposal value",source:{id:removalOriginal.id}}},valueType:"text",evidenceRefs:[{type:"document_span",id:removalOriginal.id}],limitations:["Fictional private limitation"],originClass:"document_extraction",inputVersion:"fixture-v1",generator:"retention-fixture",dedupeKey:"fictional-proposal-disposition",reviewStatus:"rejected",reviewedAt:new Date(),reviewedByUserId:context.internalUserId!,reviewNote:"Fictional private review text"}).returning();
     const [removalValue]=await db.insert(surveyFieldValues).values({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,fieldPath:"matters.legal.guarantees",value:{state:"provided",value:"Fictional private accepted survey answer"},sourceRef:removalOriginal.id,correctionReason:"Fictional private correction reason",clientGeneratedId:"retention-value-disposition-fixture"}).returning();
+    const valueReplayFixtures=await db.insert(syncOperations).values([0,1].map(index=>({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,operationId:`op_retention_value_replay_${index}`,operationType:"set_field",appliedByUserId:context.internalUserId,result:{id:removalValue.id,value:removalValue.value,fieldPath:removalValue.fieldPath}}))).returning();
     const [acceptedRemovalProposal]=await db.insert(fieldProposals).values({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,fieldPath:removalValue.fieldPath,proposedValue:removalValue.value,valueType:"text",evidenceRefs:[],originClass:"document_extraction",inputVersion:"fixture-v1",generator:"retention-fixture",dedupeKey:"accepted-retention-link-fixture",reviewStatus:"accepted",reviewedAt:new Date(),reviewedByUserId:context.internalUserId!,acceptedValueId:removalValue.id}).returning();
     const [removalObservation]=await db.insert(observations).values({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,kind:"current_observation",text:"Fictional private retained observation",structured:{source:{id:removalOriginal.id}},locationLabel:"Fictional private room",sourceRef:removalOriginal.id,clientGeneratedId:"retention-observation-disposition"}).returning();
+    const observationReplayFixtures=await db.insert(syncOperations).values(["add_observation","revise_observation"].map((type,index)=>({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,operationId:`op_retention_observation_replay_${index}`,operationType:type,appliedByUserId:context.internalUserId,result:{id:removalObservation.id,text:removalObservation.text,version:removalObservation.version}}))).returning();
+
     const removalFile=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,removalJob.id));expect(removalFile?.assessment.eligibleForManagerReview).toBe(true);
     await db.insert(auditEvents).values({organisationId:context.organisationId,actorUserId:context.internalUserId!,action:"job.retention_file_reviewed",resourceType:"job",resourceId:removalJob.id,metadata:{reviewVersion:removalFile!.assessment.reviewVersion,confirmed:true,noUnresolvedComplaintOrClaim:true}});
     const removalIntent=await withTenant(createDatabase(),context.organisationId,tx=>requestReviewedSurveyFileRemoval(tx,context.organisationId,removalJob.id,context.internalUserId!,{requestId:crypto.randomUUID(),reviewVersion:removalFile!.assessment.reviewVersion,reason:"Manager reviewed fictional storage integration original.",confirmed:true}));
@@ -619,6 +623,20 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     const observationDisposalEvents=await db.select().from(auditEvents).where(and(eq(auditEvents.resourceId,removalObservation.id),eq(auditEvents.action,"job.observation_content_disposed")));
     expect(observationDisposalEvents).toHaveLength(1);expect(observationDisposalEvents[0].actorUserId).toBe(context.internalUserId);expect(JSON.stringify(observationDisposalEvents)).not.toContain("Fictional private");
     await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(observations).set({text:"Restored observation"}).where(eq(observations.id,removalObservation.id)))).rejects.toThrow();
+    for(const previous of [...valueReplayFixtures,...observationReplayFixtures]) {
+      const [ledger]=await db.select().from(syncOperations).where(eq(syncOperations.id,previous.id));
+      expect(ledger).toEqual({...previous,result:{id:previous.result.id,retentionRemoved:true}});
+      await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(syncOperations).set({result:previous.result}).where(eq(syncOperations.id,previous.id)))).rejects.toThrow();
+      await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.delete(syncOperations).where(eq(syncOperations.id,previous.id)))).rejects.toThrow();
+    }
+    const safeReplays=await applySyncOperations(context,removalSurvey.survey.id,[
+      {type:"set_field",operationId:valueReplayFixtures[0].operationId,fieldPath:removalValue.fieldPath,value:{state:"provided",value:"Attempted replay"},baseValueId:removalValue.id},
+      {type:"revise_observation",operationId:observationReplayFixtures[1].operationId,observationId:removalObservation.id,text:"Attempted replay",baseVersion:removalObservation.version},
+    ]);
+    expect(safeReplays).toEqual([
+      {operationId:valueReplayFixtures[0].operationId,status:"duplicate",record:{id:removalValue.id,retentionRemoved:true}},
+      {operationId:observationReplayFixtures[1].operationId,status:"duplicate",record:{id:removalObservation.id,retentionRemoved:true}},
+    ]);
     const removedSync=await applySyncOperations(context,removalSurvey.survey.id,[
       {type:"set_field",operationId:"op_retained_answer_restore",fieldPath:removalValue.fieldPath,value:{state:"provided",value:"Attempted restoration"},baseValueId:removalValue.id},
       {type:"revise_observation",operationId:"op_retained_observation_restore",observationId:removalObservation.id,text:"Attempted restoration",baseVersion:removalObservation.version},
