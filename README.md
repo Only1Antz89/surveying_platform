@@ -21,7 +21,11 @@ pnpm install
 pnpm dev
 ```
 
-Open `http://localhost:3000`. With no provider credentials, the app opens a labelled demo workspace using representative surveying data. Copy `.env.example` to `.env.local` and connect Clerk, Neon and Stripe to enable production-backed authentication, storage and billing.
+Open `http://localhost:3000`. With no provider credentials, the app opens a labelled demo workspace using representative surveying data.
+
+For an authenticated local environment, copy `.env.example` to `apps/web/.env.local` and configure the intended development or staging services there. Next.js runs from `apps/web`; a `.env.local` stored only at the repository root is not automatically loaded by this setup. Restart `pnpm dev` after changing these settings. Keep secret files out of Git.
+
+Use separate tenant-runtime and administrative database credentials. Identify the staging database explicitly and apply its pending migrations before acceptance testing. The migration CLI runs from `packages/db` and requires `DATABASE_ADMIN_URL` in its process environment; it does not inherit `apps/web/.env.local`. Keep client payments and other gated providers disabled until their configuration and practice approvals are verified. An unauthenticated design preview cannot demonstrate saved demo accounts or platform-management permissions.
 
 ## Quality checks
 
