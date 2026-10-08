@@ -505,6 +505,13 @@
       "when": 1791416400000,
       "tag": "0071_element_content_disposition",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1791420000000,
+      "tag": "0072_media_metadata_disposition",
+      "breakpoints": true
     }
   ]
 }
