@@ -35,12 +35,13 @@ export async function observeInterruptedSurveyFileOriginal(db: Database, organis
     await withTenant(db, organisationId, tx => recordSurveyFileOriginalOutcome(tx, organisationId, recovery.id, recovery.leaseToken, objectKey, { state: "verification_required", reason: "storage_unavailable" }));
     return { removed: false, verificationRequired: true };
   }
-  await withTenant(db, organisationId, async tx => {
+  const verificationRequired = await withTenant(db, organisationId, async tx => {
     const outcome = await recordSurveyFileOriginalOutcome(tx, organisationId, recovery.id, recovery.leaseToken, objectKey, existing ? { state: "verification_required", reason: "object_still_present" } : { state: "removed" });
     if (outcome.status === "dispatched") {
       await tx.update(surveyFileRemovals).set({ status: "verification_required", lockedUntil: null, error: "additional_originals_require_review", updatedAt: new Date() }).where(and(eq(surveyFileRemovals.id, recovery.id), eq(surveyFileRemovals.leaseToken, recovery.leaseToken), eq(surveyFileRemovals.status, "dispatched")));
       await tx.insert(auditEvents).values({ organisationId, action: "job.original_removal_partial_observation", resourceType: "survey_file_removal", resourceId: recovery.id, metadata: { objectKey, attemptId: recovery.leaseToken, deletionAuthorised: false } });
     }
+    return Boolean(existing) || outcome.status !== "completed";
   });
-  return { removed: !existing, verificationRequired: Boolean(existing) };
+  return { removed: !existing, verificationRequired };
 }

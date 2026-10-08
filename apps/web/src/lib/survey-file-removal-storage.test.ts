@@ -7,7 +7,10 @@ import { processSurveyFileOriginal } from "./survey-file-removal-storage";
 import { observeInterruptedSurveyFileOriginal } from "./survey-file-removal-recovery";
 
 const mocks = vi.hoisted(() => ({ dispatch: vi.fn(), outcome: vi.fn(), preflight: vi.fn(), recorded: vi.fn() }));
-vi.mock("@surveynt/db", () => ({ withTenant: async (_db: unknown, _org: string, callback: (tx: unknown) => unknown) => callback({}) }));
+vi.mock("@surveynt/db", async importOriginal => ({ ...await importOriginal<typeof import("@surveynt/db")>(), withTenant: async (_db: unknown, _org: string, callback: (tx: unknown) => unknown) => callback({
+  update: () => ({ set: () => ({ where: async () => undefined }) }),
+  insert: () => ({ values: async () => undefined }),
+}) }));
 vi.mock("./survey-file-removal-object-dispatch", () => ({ recordSurveyFileOriginalDispatch: mocks.dispatch }));
 vi.mock("./survey-file-removal-object-outcome", () => ({ recordSurveyFileOriginalOutcome: mocks.outcome }));
 vi.mock("./survey-file-removal-preflight-failure", () => ({ recordSurveyFilePreflightFailure: mocks.preflight }));
@@ -62,6 +65,12 @@ describe("survey original storage processor", () => {
     const storage = await fixture(); vi.spyOn(storage, "remove").mockImplementation(async key => { storage.objects.delete(key); throw new Error("Lost response"); });
     expect(await processSurveyFileOriginal(db, organisationId, jobId, claim, objectKey, storage)).toEqual({ removed: false, verificationRequired: true });
     expect(mocks.outcome).toHaveBeenLastCalledWith(expect.anything(), organisationId, id, id, objectKey, { state: "verification_required", reason: "uncertain_delete" });
+  });
+  it("reports remaining file review after observing only one removed original", async () => {
+    const storage = createMemoryStorage(); const remove = vi.spyOn(storage, "remove");
+    mocks.outcome.mockResolvedValue({ status: "dispatched" });
+    expect(await observeInterruptedSurveyFileOriginal(db, organisationId, { id, leaseToken: id as typeof id, objects: [object] }, objectKey, storage)).toEqual({ removed: true, verificationRequired: true });
+    expect(remove).not.toHaveBeenCalled();
   });
   it("recovers observed absence without another delete", async () => {
     const storage = createMemoryStorage(); const remove = vi.spyOn(storage, "remove");
