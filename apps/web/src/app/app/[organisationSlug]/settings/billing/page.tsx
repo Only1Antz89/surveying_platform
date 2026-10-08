@@ -1,3 +1,4 @@
+import { requireWorkspacePageAccess } from "@/lib/workspace-page-access";
 import Link from "next/link";
 import { CreditCard } from "lucide-react";
 import { canManageBilling } from "@surveynt/domain";
@@ -14,7 +15,7 @@ const tones = { incomplete: "slate", trialing: "blue", active: "green", past_due
 const date = (value: string | null) => value ? new Date(value).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London" }) : "—";
 
 export default async function BillingPage({ params }: { params: Promise<{ organisationSlug: string }> }) {
-  const { organisationSlug } = await params;
+  const { organisationSlug } = await params; await requireWorkspacePageAccess(organisationSlug, "settings");
   const [billing, access] = await Promise.all([loadBillingSummary(organisationSlug), requireFirmAccess(organisationSlug)]);
   const canManage = canManageBilling(access.userRole);
   return <main className="page"><PageHeader title="Billing" description="Your subscription, seats and payment administration." /><div className="settings-grid"><nav className="settings-nav" aria-label="Settings"><Link href={`/app/${organisationSlug}/settings`}>Practice details</Link><Link className="active" href={`/app/${organisationSlug}/settings/billing`}>Billing</Link><Link href={`/app/${organisationSlug}/settings/ai`}>AI and assistant</Link><Link href={`/app/${organisationSlug}/settings/learning`}>Shared learning</Link><Link href={`/app/${organisationSlug}/team`}>Security</Link></nav><div className="billing-stack">

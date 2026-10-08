@@ -1,3 +1,4 @@
+import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { z } from "zod";
 import { canMutateOperations } from "@surveynt/domain";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
@@ -12,6 +13,8 @@ const resolveBody = z.object({ lookupId: z.union([z.uuid(), z.literal("demo")]),
 export async function POST(request: Request) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  const accessDenial = await workspaceApiGuard(request, context);
+  if (accessDenial) return accessDenial;
   if (!canWriteWorkspace(context)) return problem(402, "workspace_read_only", "Restore billing before changing workspace records.");
   if (!canMutateOperations(context.role)) return problem(403, "forbidden", "Your role cannot create or edit property records.");
   const parsed = await parseBody(request, resolveBody);

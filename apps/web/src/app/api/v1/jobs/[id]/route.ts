@@ -1,3 +1,4 @@
+import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { z } from "zod";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { canMutateOperations, canTransitionJob, jobStages } from "@surveynt/domain";
@@ -32,6 +33,8 @@ class StageGateBlocked extends Error {
 export async function GET(request: Request, context: RouteContext<"/api/v1/jobs/[id]">) {
   const session = await apiContext(request);
   if (!session) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  const accessDenial = await workspaceApiGuard(request, session);
+  if (accessDenial) return accessDenial;
   const { id } = await context.params;
   if (session.demo) {
     const job = demoJobs.find((item) => item.id === id);
@@ -47,7 +50,7 @@ export async function GET(request: Request, context: RouteContext<"/api/v1/jobs/
     const events = await tx.select({ event: jobStageEvents, firstName: users.firstName, lastName: users.lastName, email: users.email }).from(jobStageEvents).leftJoin(users, eq(jobStageEvents.changedByUserId, users.id)).where(and(eq(jobStageEvents.jobId, id), eq(jobStageEvents.organisationId, session.organisationId))).orderBy(asc(jobStageEvents.createdAt));
     const [coordinator] = await tx.select({ userId: jobAssignments.userId }).from(jobAssignments).where(and(eq(jobAssignments.jobId, id), eq(jobAssignments.organisationId, session.organisationId), eq(jobAssignments.responsibility, "coordinator"))).limit(1);
     return {
-      job: { ...job, coordinatorId: coordinator?.userId ?? null },
+      job: { ...(session.role === "surveyor" ? { ...job, fee: undefined } : job), coordinatorId: coordinator?.userId ?? null },
       stageHistory: events.map(({ event, firstName, lastName, email }) => ({ ...event, changedBy: [firstName, lastName].filter(Boolean).join(" ") || email || "System" })),
     };
   });
@@ -57,6 +60,8 @@ export async function GET(request: Request, context: RouteContext<"/api/v1/jobs/
 export async function PATCH(request: Request, context: RouteContext<"/api/v1/jobs/[id]">) {
   const session = await apiContext(request);
   if (!session) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  const accessDenial = await workspaceApiGuard(request, session);
+  if (accessDenial) return accessDenial;
   if (!canWriteWorkspace(session)) return problem(402, "workspace_read_only", "Restore billing before changing workspace records.");
   if (!canMutateOperations(session.role)) return problem(403, "forbidden", "Your role cannot change jobs.");
   const parsed = await parseBody(request, patchJob);
@@ -91,7 +96,7 @@ export async function PATCH(request: Request, context: RouteContext<"/api/v1/job
     const [updated] = await tx.update(jobs).set({ ...changes, ...(parsed.data.assigneeId !== undefined ? { assignedSurveyorId: parsed.data.assigneeId } : {}), version: current.version + 1, updatedAt: new Date() }).where(and(eq(jobs.id, id), eq(jobs.organisationId, session.organisationId), eq(jobs.version, current.version))).returning();
     if (!updated) return { kind: "conflict" as const };
     if (parsed.data.stage && parsed.data.stage !== current.stage) {
-      const gate = await enforceStageGate(tx, { organisationId: session.organisationId, internalUserId: session.internalUserId, role: session.role }, { jobId: id, targetStage: parsed.data.stage, overrides: parsed.data.completionOverrides ?? [] });
+      const gate = await enforceStageGate(tx, { organisationId: session.organisationId, internalUserId: session.internalUserId, role: session.role, canRecordSurvey: session.canRecordSurvey, canApproveReports: session.canApproveReports }, { jobId: id, targetStage: parsed.data.stage, overrides: parsed.data.completionOverrides ?? [] });
       if (gate.kind === "blocked") throw new StageGateBlocked(gate);
     }
     if (parsed.data.coordinatorId !== undefined) {

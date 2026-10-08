@@ -32,7 +32,7 @@ export function CompletionPanel({ pack, pendingCount, onGoTo }: { pack: SurveyPa
   return <section className="panel completion-panel" aria-labelledby="completion-heading">
     <div className="panel-header"><div><h2 id="completion-heading">Completion checks</h2><p>{report.ready ? "Ready for internal review." : `${hard.length} to resolve before internal review · ${advisory.length} advisory`} Rules {report.ruleSetVersion} for template {report.templateVersion}.</p></div><ListChecks size={17} color="#3b82f6" aria-hidden="true" /></div>
     {pendingCount ? <p className="identity-warning intel-inline">{pendingCount} change{pendingCount === 1 ? "" : "s"} saved on this device {pendingCount === 1 ? "is" : "are"} not yet included. Sync to update these checks.</p> : null}
-    {failures.length ? <ul className="completion-list">{[...hard, ...advisory].map(row)}</ul> : <p className="form-help assistant-empty">All checks pass.</p>}
+    {!showAll && failures.length ? <ul className="completion-list">{[...hard, ...advisory].slice(0, 3).map(row)}</ul> : !failures.length ? <p className="form-help assistant-empty">All checks pass.</p> : null}
     <div className="completion-footer"><button type="button" className="button button-quiet" onClick={() => setShowAll((value) => !value)} aria-expanded={showAll}>{showAll ? "Hide full checklist" : `Show full checklist (${report.items.length} items)`}</button></div>
     {showAll ? <ul className="completion-list full">{report.items.map(row)}</ul> : null}
   </section>;

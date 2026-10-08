@@ -1,9 +1,9 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { dataSources, datasetSyncs, datasetVersions, providerResponseCache, type Database } from "@surveynt/db";
+import { referenceDataSources, referenceDatasetSyncs, providerResponseCache, type Database } from "@surveynt/db";
 import { sourceFreshness } from "../operations/freshness";
 import type { ProbeResult } from "../operations/probes";
 import { getSourceDefinition, sourceDefinitions } from "../registry/sources";
-import { activateSync, rollbackSource, toReferenceVersion } from "./reference";
+import { activateSync, rollbackSource } from "./reference";
 
 // Operator actions on the reference registry. They run on the owner
 // connection (platform administration), never on the tenant runtime role.
@@ -11,12 +11,10 @@ import { activateSync, rollbackSource, toReferenceVersion } from "./reference";
 export type SourceOperationsView = Awaited<ReturnType<typeof loadSourceOperations>>[number];
 
 export async function loadSourceOperations(db: Database, now = new Date()) {
-  const [rows, versions, failures] = await Promise.all([
-    db.select().from(dataSources),
-    db.select().from(datasetVersions).orderBy(desc(datasetVersions.createdAt)).limit(2000),
-    db.select().from(datasetSyncs).where(eq(datasetSyncs.status, "failed")).orderBy(desc(datasetSyncs.createdAt)).limit(500),
+  const [rows, syncs] = await Promise.all([
+    db.select().from(referenceDataSources),
+    db.select().from(referenceDatasetSyncs).orderBy(desc(referenceDatasetSyncs.startedAt)).limit(2000),
   ]);
-  const syncs = versions.map(toReferenceVersion);
   return sourceDefinitions.map((definition) => {
     const row = rows.find((item) => item.key === definition.key) ?? null;
     const history = syncs.filter((sync) => sync.sourceKey === definition.key);
@@ -31,17 +29,10 @@ export async function loadSourceOperations(db: Database, now = new Date()) {
       releaseCheck: row?.lastReleaseCheckAt ? { at: row.lastReleaseCheckAt.toISOString(), by: row.lastReleaseCheckBy, note: row.lastReleaseCheckNote } : null,
       freshness,
       active: active.map((sync) => ({ id: sync.id, layer: sync.layer, datasetVersion: sync.datasetVersion, recordCount: sync.recordCount, activatedAt: sync.activatedAt?.toISOString() ?? null })),
-      history: [
-        ...history.map((sync) => ({
-          id: sync.id, layer: sync.layer, datasetVersion: sync.datasetVersion, status: sync.status as string, recordCount: sync.recordCount, extent: sync.extent, importedBy: sync.importedBy,
-          startedAt: sync.startedAt.toISOString(), completedAt: sync.completedAt?.toISOString() ?? null, activatedAt: sync.activatedAt?.toISOString() ?? null, error: null as string | null, validation: sync.validation,
-        })),
-        // Failed imports are deleted with their rows; the job log keeps what happened.
-        ...failures.filter((entry) => entry.sourceKey === definition.key).map((entry) => ({
-          id: entry.id, layer: "", datasetVersion: String((entry.validation as { datasetVersion?: string }).datasetVersion ?? "—"), status: "failed", recordCount: 0, extent: null, importedBy: null,
-          startedAt: entry.createdAt.toISOString(), completedAt: entry.completedAt?.toISOString() ?? null, activatedAt: null, error: entry.safeError, validation: entry.validation,
-        })),
-      ].sort((a, b) => b.startedAt.localeCompare(a.startedAt)).slice(0, 20),
+      history: history.slice(0, 20).map((sync) => ({
+        id: sync.id, layer: sync.layer, datasetVersion: sync.datasetVersion, status: sync.status, recordCount: sync.recordCount, extent: sync.extent, importedBy: sync.importedBy,
+        startedAt: sync.startedAt.toISOString(), completedAt: sync.completedAt?.toISOString() ?? null, activatedAt: sync.activatedAt?.toISOString() ?? null, error: sync.error, validation: sync.validation,
+      })),
     };
   });
 }
@@ -54,27 +45,27 @@ export async function setSourceEnablement(db: Database, key: string, input: { en
   if (!definition) throw new OperationRefused("Unknown source.");
   if (input.enabled && definition.registerStatus === "blocked") throw new OperationRefused("This source is blocked in the source register (licence or access) and cannot be enabled.");
   if (input.enabled && (input.notes?.trim().length ?? 0) < 20) throw new OperationRefused("Record what was verified (licence, terms, endpoint, date) in at least 20 characters.");
-  const [updated] = await db.update(dataSources).set(input.enabled
+  const [updated] = await db.update(referenceDataSources).set(input.enabled
     ? { enabled: true, verifiedAt: new Date(), verifiedBy: input.actor, verificationNotes: input.notes!.trim(), updatedAt: new Date() }
-    : { enabled: false, updatedAt: new Date() }).where(eq(dataSources.key, key)).returning({ key: dataSources.key });
+    : { enabled: false, updatedAt: new Date() }).where(eq(referenceDataSources.key, key)).returning({ key: referenceDataSources.key });
   if (!updated) throw new OperationRefused("Run the registry sync before enabling this source.");
   return updated;
 }
 
 export async function recordReleaseCheck(db: Database, key: string, input: { actor: string; note: string }) {
   if (input.note.trim().length < 10) throw new OperationRefused("Say what was checked (at least 10 characters).");
-  const [updated] = await db.update(dataSources).set({ lastReleaseCheckAt: new Date(), lastReleaseCheckBy: input.actor, lastReleaseCheckNote: input.note.trim(), updatedAt: new Date() }).where(eq(dataSources.key, key)).returning({ key: dataSources.key });
+  const [updated] = await db.update(referenceDataSources).set({ lastReleaseCheckAt: new Date(), lastReleaseCheckBy: input.actor, lastReleaseCheckNote: input.note.trim(), updatedAt: new Date() }).where(eq(referenceDataSources.key, key)).returning({ key: referenceDataSources.key });
   if (!updated) throw new OperationRefused("Unknown or unregistered source.");
   return updated;
 }
 
 export async function recordProbe(db: Database, key: string, result: ProbeResult) {
   const at = new Date();
-  await db.update(dataSources).set({
+  await db.update(referenceDataSources).set({
     lastProbeAt: at, lastProbeStatus: result.status, lastProbeMessage: result.message.slice(0, 300),
     ...(result.status === "ok" ? { lastSuccessAt: at } : result.status === "failed" ? { lastFailureAt: at, lastFailureCode: result.message.slice(0, 60) } : {}),
     updatedAt: at,
-  }).where(eq(dataSources.key, key));
+  }).where(eq(referenceDataSources.key, key));
 }
 
 /** Removes cached public responses for a source so the next request uses the newly active data. */
@@ -101,6 +92,6 @@ export async function staleSources(db: Database, now = new Date()) {
 }
 
 export async function sourcesToProbe(db: Database) {
-  const rows = await db.select({ key: dataSources.key }).from(dataSources).where(and(eq(dataSources.enabled, true), inArray(dataSources.key, ["postcodes_io", "planning_data"])));
+  const rows = await db.select({ key: referenceDataSources.key }).from(referenceDataSources).where(and(eq(referenceDataSources.enabled, true), inArray(referenceDataSources.key, ["postcodes_io", "planning_data"])));
   return rows.map((row) => row.key);
 }

@@ -85,6 +85,9 @@ export const historicEnglandProvider = referenceLayerProvider({
     { layer: "registered_park_garden", category: "registered_park_garden_nhle", label: "Registered park and garden", caveat: "Check the list entry for the registered area.", evidenceUrl: nhleEntry },
     { layer: "registered_battlefield", category: "registered_battlefield_nhle", label: "Registered battlefield", caveat: "Check the list entry for the registered area.", evidenceUrl: nhleEntry },
     { layer: "world_heritage_site", category: "world_heritage_site_nhle", label: "World Heritage Site", caveat: "Check the World Heritage Site boundary and buffer zone with the local authority.", evidenceUrl: nhleEntry },
+    { layer: "protected_wreck_site", category: "protected_wreck_site_nhle", label: "Protected wreck site", caveat: "Marine designation context only; check the National Heritage List entry for the protected area.", evidenceUrl: nhleEntry },
+    { layer: "certificate_of_immunity", category: "certificate_of_immunity_nhle", label: "Certificate of immunity from listing", caveat: "Certificates are time-limited legal records; check the entry dates and current status.", evidenceUrl: nhleEntry },
+    { layer: "building_preservation_notice", category: "building_preservation_notice_nhle", label: "Building preservation notice", caveat: "Check the notice and local planning authority records for its current effect.", evidenceUrl: nhleEntry },
   ],
 });
 

@@ -25,7 +25,10 @@
     "prepare:hmlr-manifest": "tsx scripts/prepare-hmlr-manifest.ts",
     "import:property-data": "tsx scripts/import-property-data.ts",
     "activate:property-data": "tsx scripts/activate-property-data.ts",
-    "rollback:property-data": "tsx scripts/rollback-property-data.ts"
+    "rollback:property-data": "tsx scripts/rollback-property-data.ts",
+    "backup:reference-metadata": "tsx scripts/backup-reference-metadata.ts",
+    "grant:reference-read": "tsx scripts/grant-reference-read.ts",
+    "seed:clifton-operations": "tsx scripts/seed-clifton-operations.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",

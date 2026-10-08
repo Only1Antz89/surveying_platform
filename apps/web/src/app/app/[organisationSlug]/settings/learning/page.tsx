@@ -1,3 +1,4 @@
+import { requireWorkspacePageAccess } from "@/lib/workspace-page-access";
 import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
 import { createDatabase, jobs, withTenant } from "@surveynt/db";
@@ -12,7 +13,7 @@ export const metadata = { title: "Shared learning" };
 export const dynamic = "force-dynamic";
 
 export default async function LearningSettingsPage({ params }: PageProps<"/app/[organisationSlug]/settings/learning">) {
-  const { organisationSlug } = await params;
+  const { organisationSlug } = await params; await requireWorkspacePageAccess(organisationSlug, "settings");
   const access = await requireFirmAccess(organisationSlug);
   const demo = access.userId === "demo_user";
   const [dashboard, jobOptions] = demo

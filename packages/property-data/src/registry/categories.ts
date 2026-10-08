@@ -18,6 +18,7 @@ export type CategoryInfo = { label: string; group: CategoryGroup; caveat: string
 // Professional caveats shown wherever a category appears. They are fixed
 // product wording and never generated per property.
 export const categoryCatalogue: Record<string, CategoryInfo> = {
+  postcode_geography: { label: "Postcode administrative geography", group: "environment", caveat: "Approximate postcode-level context, not a classification of the individual property." },
   conservation_area: { label: "Conservation area", group: "planning", caveat: "Planning coverage varies; confirm with the local planning authority." },
   listed_building: { label: "Listed building (planning record)", group: "planning", caveat: "Planning coverage varies; the official list entry is definitive." },
   article_4_direction: { label: "Article 4 direction", group: "planning", caveat: "Planning coverage varies; confirm with the local planning authority." },
@@ -32,6 +33,9 @@ export const categoryCatalogue: Record<string, CategoryInfo> = {
   registered_park_garden_nhle: { label: "Registered park and garden (National Heritage List)", group: "heritage", caveat: "Check the list entry for the registered area." },
   registered_battlefield_nhle: { label: "Registered battlefield", group: "heritage", caveat: "Check the list entry for the registered area." },
   world_heritage_site_nhle: { label: "World Heritage Site (National Heritage List)", group: "heritage", caveat: "Check the boundary and buffer zone with the authority." },
+  protected_wreck_site_nhle: { label: "Protected wreck site", group: "heritage", caveat: "Marine designation context only; check the National Heritage List entry." },
+  certificate_of_immunity_nhle: { label: "Certificate of immunity from listing", group: "heritage", caveat: "Check the record dates and current legal status." },
+  building_preservation_notice_nhle: { label: "Building preservation notice", group: "heritage", caveat: "Check the notice and local planning authority records." },
   energy_certificate: { label: "Energy performance certificate", group: "energy", caveat: "EPC record: verify during inspection. Certificates can be out of date." },
   inspire_indicative_extent: { label: "Registered freehold (indicative extent)", group: "land", caveat: "Indicative registered extent: not a legal title boundary, ownership record or title search." },
   planning_flood_zone_3: { label: "Flood Zone 3 (planning)", group: "flood", caveat: "Planning flood zone, not a property flood risk assessment." },

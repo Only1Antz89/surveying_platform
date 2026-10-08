@@ -2,8 +2,9 @@
 // (DATABASE_IMPORTER_URL). Registry sync and rollback use the owner role
 // (DATABASE_ADMIN_URL) because they change operator-controlled metadata.
 import { parseArgs } from "node:util";
-import { createDatabase } from "@surveynt/db";
+import { auditEvents, createDatabase } from "@surveynt/db";
 import { activateSyncAndInvalidate, rollbackAndInvalidate } from "../db/operations";
+import { setSourceEnablement } from "../db/operations";
 import { pruneRetiredSyncs, syncSourceRegistry } from "../db/reference";
 import { spawn } from "node:child_process";
 import { mkdtemp } from "node:fs/promises";
@@ -13,6 +14,7 @@ import { importOsOpenUprn, type Bbox } from "./os-open-uprn";
 import { importPricePaid, importPricePaidUprnLookup, parsePostcodeAreas } from "./price-paid";
 import { importScottishEpc, scottishEpcColumns, type ScottishEpcField } from "./scottish-epc";
 import { importSpatialLayer } from "./spatial-layer";
+import { bridgeLegacyHistoricEngland } from "./legacy-historic-england";
 
 /** Converts a shapefile, GML or GeoPackage to GeoJSONSeq in EPSG:4326 using GDAL (no shell). */
 async function convertWithOgr(input: string) {
@@ -43,9 +45,9 @@ async function main() {
   const [command, ...rest] = process.argv.slice(2);
   const { values } = parseArgs({ args: rest, options: {
     file: { type: "string" }, version: { type: "string" }, "source-url": { type: "string" }, bbox: { type: "string" }, layer: { type: "string" }, convert: { type: "boolean", default: false }, "source-crs": { type: "string" }, "id-property": { type: "string" }, "name-property": { type: "string" }, attributes: { type: "string" },
-    activate: { type: "boolean", default: false }, sync: { type: "string" }, source: { type: "string" }, keep: { type: "string" },
+    activate: { type: "boolean", default: false }, "legacy-reference": { type: "boolean", default: false }, sync: { type: "string" }, source: { type: "string" }, keep: { type: "string" },
     column: { type: "string", multiple: true },
-    mode: { type: "string" }, "postcode-areas": { type: "string" }, "max-rejected": { type: "string" }, "transaction-column": { type: "string" }, "uprn-column": { type: "string" },
+    mode: { type: "string" }, notes: { type: "string" }, "postcode-areas": { type: "string" }, "max-rejected": { type: "string" }, "transaction-column": { type: "string" }, "uprn-column": { type: "string" },
   } });
   const maxRejected = values["max-rejected"] === undefined ? undefined : Number(values["max-rejected"]);
   if (maxRejected !== undefined && (!Number.isInteger(maxRejected) || maxRejected < 0)) throw new Error("--max-rejected must be a whole number.");
@@ -53,6 +55,29 @@ async function main() {
     case "registry-sync": {
       const db = createDatabase(requireEnv("DATABASE_ADMIN_URL"));
       console.log(`Upserted ${await syncSourceRegistry(db)} source definitions. Enablement is unchanged.`);
+      break;
+    }
+    case "source-enable": {
+      if (!values.source) throw new Error("--source is required.");
+      const db = createDatabase(requireEnv("DATABASE_ADMIN_URL"));
+      const actor = `cli:${process.env.USER ?? "operator"}`;
+      const updated = await setSourceEnablement(db, values.source, { enabled: true, actor, notes: values.notes });
+      await db.insert(auditEvents).values({ action: "data_source.enable", resourceType: "data_source", resourceId: values.source, metadata: { actor, notes: values.notes } });
+      console.log(JSON.stringify(updated, null, 2));
+      break;
+    }
+    case "source-disable": {
+      if (!values.source) throw new Error("--source is required.");
+      const db = createDatabase(requireEnv("DATABASE_ADMIN_URL"));
+      const actor = `cli:${process.env.USER ?? "operator"}`;
+      const updated = await setSourceEnablement(db, values.source, { enabled: false, actor });
+      await db.insert(auditEvents).values({ action: "data_source.disable", resourceType: "data_source", resourceId: values.source, metadata: { actor } });
+      console.log(JSON.stringify(updated, null, 2));
+      break;
+    }
+    case "bridge-legacy-historic-england": {
+      const db = createDatabase(requireEnv("DATABASE_ADMIN_URL"));
+      console.log(JSON.stringify(await bridgeLegacyHistoricEngland(db, process.env.USER ?? "operator", { legacyReference: values["legacy-reference"] }), null, 2));
       break;
     }
     case "os-open-uprn": {
@@ -124,11 +149,13 @@ async function main() {
       break;
     }
     default:
-      throw new Error("Commands: registry-sync | os-open-uprn --file --version [--bbox] [--activate] | spatial-layer --source --layer --file --version [--convert] [--activate] | price-paid --file --version --mode full|update [--postcode-areas BS,BA] [--max-rejected N] [--activate] | price-paid-lookup --file --version [--transaction-column --uprn-column] [--activate] | scottish-epc --file --version [--column field=Header ...] [--activate] | activate --sync | rollback --source [--layer] | prune --source [--layer] [--keep N]. spatial-layer also accepts --id-property --name-property --attributes a,b");
+      throw new Error("Commands: registry-sync | source-enable --source --notes 'verification record' | source-disable --source | bridge-legacy-historic-england | os-open-uprn --file --version [--bbox] [--activate] | spatial-layer --source --layer --file --version [--convert] [--activate] | price-paid --file --version --mode full|update [--postcode-areas BS,BA] [--max-rejected N] [--activate] | price-paid-lookup --file --version [--transaction-column --uprn-column] [--activate] | scottish-epc --file --version [--column field=Header ...] [--activate] | activate --sync | rollback --source [--layer] | prune --source [--layer] [--keep N]. spatial-layer also accepts --id-property --name-property --attributes a,b");
   }
 }
 
 main().then(() => process.exit(process.exitCode ?? 0), (reason) => {
-  console.error(reason instanceof Error ? reason.message : reason);
+  const messages: string[] = []; let current: unknown = reason;
+  while (current instanceof Error && messages.length < 4) { messages.push(current.message); current = current.cause; }
+  console.error(messages.join("\nCaused by: ") || String(reason));
   process.exit(1);
 });

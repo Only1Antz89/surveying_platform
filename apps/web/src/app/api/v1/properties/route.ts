@@ -1,3 +1,5 @@
+import { assignedPropertyScope } from "@/lib/workspace-scope";
+import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { z } from "zod";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
@@ -12,11 +14,13 @@ const createProperty = z.object({ clientId: z.uuid(), line1: z.string().trim().m
 export async function GET(request: Request) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  const accessDenial = await workspaceApiGuard(request, context);
+  if (accessDenial) return accessDenial;
   if (context.demo) return ok(demoProperties, { demo: true, nextCursor: null });
   const db = createDatabase();
   const rows = await db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
-    return tx.select().from(properties).where(eq(properties.organisationId, context.organisationId)).orderBy(asc(properties.line1)).limit(50);
+    return tx.select().from(properties).where(and(assignedPropertyScope(context), eq(properties.organisationId, context.organisationId), assignedPropertyScope(context))).orderBy(asc(properties.line1)).limit(50);
   });
   return ok(rows, { nextCursor: null });
 }
@@ -24,6 +28,8 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  const accessDenial = await workspaceApiGuard(request, context);
+  if (accessDenial) return accessDenial;
   if (!canWriteWorkspace(context)) return problem(402, "workspace_read_only", "Restore billing before changing workspace records.");
   const parsed = await parseBody(request, createProperty);
   if (!parsed.success) return problem(400, "invalid_request", "The property details are invalid.", parsed.error.flatten());

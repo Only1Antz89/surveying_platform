@@ -81,14 +81,14 @@ describe.skipIf(!integrationEnabled)("shared learning controls and restricted st
       { id: firmB, clerkOrganisationId: "org_bd", name: "Firm B", slug: "firm-bd", practiceType: "residential", region: "Leeds" },
     ]);
     const [ownerUser, surveyorUser] = await admin.insert(users).values([{ clerkUserId: "user_ad_owner", email: "owner@ad.test", firstName: "Maya", lastName: "Patel" }, { clerkUserId: "user_ad_surveyor", email: "surveyor@ad.test", firstName: "Sam", lastName: "Okafor" }]).returning();
-    await admin.insert(organisationMemberships).values([{ organisationId: firmA, userId: ownerUser.id, role: "owner" }, { organisationId: firmA, userId: surveyorUser.id, role: "surveyor" }]);
+    await admin.insert(organisationMemberships).values([{ organisationId: firmA, userId: ownerUser.id, role: "owner" }, { organisationId: firmA, userId: surveyorUser.id, role: "surveyor", canApproveReports: true }]);
     owner = { organisationId: firmA, internalUserId: ownerUser.id, role: "owner" };
-    surveyor = { organisationId: firmA, internalUserId: surveyorUser.id, role: "surveyor" };
+    surveyor = { organisationId: firmA, internalUserId: surveyorUser.id, role: "surveyor", canApproveReports: true };
     coordinator = { organisationId: firmA, internalUserId: surveyorUser.id, role: "coordinator" };
     const [client] = await admin.insert(clients).values({ organisationId: firmA, kind: "individual", displayName: "Jane Doe", email: "jane@doe.test" }).returning();
     await admin.insert(clientContacts).values({ organisationId: firmA, clientId: client.id, name: "John Doe", phone: "07700 900123" });
     const [property] = await admin.insert(properties).values({ organisationId: firmA, clientId: client.id, line1: "14 Acacia Avenue", city: "Bristol", postcode: "BS8 1AA", country: "ENG" }).returning();
-    [{ id: jobId }] = await admin.insert(jobs).values({ organisationId: firmA, clientId: client.id, propertyId: property.id, reference: "LRN-1001", serviceName: "Condition report", stage: "internal_review" }).returning();
+    [{ id: jobId }] = await admin.insert(jobs).values({ organisationId: firmA, clientId: client.id, propertyId: property.id, reference: "LRN-1001", assignedSurveyorId: surveyor.internalUserId, serviceName: "Condition report", stage: "internal_review" }).returning();
     const created = await createSurvey(surveyor, jobId, { serviceLevel: "level_1" });
     if (created.kind !== "created") throw new Error(created.kind);
     const results = await applySyncOperations(surveyor, created.survey.id, surveyOperations());

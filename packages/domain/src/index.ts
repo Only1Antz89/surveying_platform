@@ -14,6 +14,7 @@ export type SubscriptionStatus = (typeof subscriptionStatuses)[number];
 export const organisationRoles = [
   "owner",
   "administrator",
+  "manager",
   "surveyor",
   "coordinator",
   "finance",
@@ -51,6 +52,7 @@ export type JobStage = (typeof jobStages)[number];
 export const roleLabels: Record<OrganisationRole, string> = {
   owner: "Owner",
   administrator: "Administrator",
+  manager: "Manager",
   surveyor: "Surveyor",
   coordinator: "Coordinator",
   finance: "Finance",
@@ -71,7 +73,7 @@ export const jobStageLabels: Record<JobStage, string> = {
 };
 
 export function canMutateOperations(role: OrganisationRole) {
-  return role === "owner" || role === "administrator" || role === "surveyor" || role === "coordinator";
+  return role === "owner" || role === "administrator" || role === "manager" || role === "surveyor" || role === "coordinator";
 }
 
 export function canManageTeam(role: OrganisationRole) {
@@ -96,7 +98,23 @@ export function membershipChangeBlocker(
 }
 
 export function canManageBilling(role: OrganisationRole) {
-  return role === "owner" || role === "administrator" || role === "finance";
+  return role === "owner";
+}
+
+export const professionalPermissions = ["record_survey", "approve_reports"] as const;
+export type ProfessionalPermission = (typeof professionalPermissions)[number];
+export function isManagementRole(role: OrganisationRole) {
+  return role === "owner" || role === "administrator" || role === "manager";
+}
+export function canReceiveProfessionalPermissions(role: OrganisationRole) {
+  return isManagementRole(role) || role === "surveyor";
+}
+export function canManageFinance(role: OrganisationRole) {
+  return isManagementRole(role) || role === "finance";
+}
+export function hasProfessionalPermission(role: OrganisationRole, permission: ProfessionalPermission, granted = false) {
+  if (!canReceiveProfessionalPermissions(role)) return false;
+  return (role === "surveyor" && permission === "record_survey") || granted;
 }
 
 export function canApproveSupportAccess(role: OrganisationRole) {
@@ -152,6 +170,6 @@ export const ukCountryLabels: Record<UkCountry, string> = {
 };
 
 /** Confirming which property a UPRN identifies is a professional identity decision. */
-export function canConfirmPropertyIdentity(role: OrganisationRole) {
-  return role === "owner" || role === "administrator" || role === "surveyor";
+export function canConfirmPropertyIdentity(role: OrganisationRole, granted = false) {
+  return hasProfessionalPermission(role, "record_survey", granted);
 }

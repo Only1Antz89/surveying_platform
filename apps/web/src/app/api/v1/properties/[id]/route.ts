@@ -1,3 +1,4 @@
+import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { z } from "zod";
 import { and, eq, sql } from "drizzle-orm";
 import { canMutateOperations } from "@surveynt/domain";
@@ -19,6 +20,8 @@ const patchProperty = z.object({
 export async function GET(request: Request, route: RouteContext<"/api/v1/properties/[id]">) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  const accessDenial = await workspaceApiGuard(request, context);
+  if (accessDenial) return accessDenial;
   const { id } = await route.params;
   if (context.demo) {
     const property = demoProperties.find((item) => item.id === id);
@@ -42,6 +45,8 @@ export async function GET(request: Request, route: RouteContext<"/api/v1/propert
 export async function PATCH(request: Request, route: RouteContext<"/api/v1/properties/[id]">) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  const accessDenial = await workspaceApiGuard(request, context);
+  if (accessDenial) return accessDenial;
   if (!canWriteWorkspace(context)) return problem(402, "workspace_read_only", "Restore billing before changing workspace records.");
   if (!canMutateOperations(context.role)) return problem(403, "forbidden", "Your role cannot change property records.");
   const parsed = await parseBody(request, patchProperty);

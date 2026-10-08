@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
-import { dataSources } from "@surveynt/db";
+import { referenceDataSources } from "@surveynt/db";
 import { createTestDatabase, integrationEnabled, stopRelay, type TestDatabase } from "@surveynt/db/testing";
 import type { PropertyLocation } from "../src/contract";
 import { databaseHistoryQuery } from "../src/db/history";
@@ -22,7 +22,7 @@ const location = (overrides: Partial<PropertyLocation> = {}): PropertyLocation =
 async function expectDenied(work: Promise<unknown>) {
   const error = await work.then(() => null, (reason) => reason);
   expect(error, "expected the database to refuse").not.toBeNull();
-  expect(String(error?.cause?.message ?? error?.message)).toMatch(/permission denied|row-level security/);
+  expect(String(error?.cause?.message ?? error?.message)).toMatch(/permission denied/);
 }
 
 describe.skipIf(!integrationEnabled)("property history reference data", () => {
@@ -41,7 +41,7 @@ describe.skipIf(!integrationEnabled)("property history reference data", () => {
     directory = await mkdtemp(path.join(tmpdir(), "surveynt-history-"));
     const admin = database.connect(database.adminUrl);
     await syncSourceRegistry(admin);
-    await admin.update(dataSources).set({ enabled: true, verifiedAt: new Date(), verifiedBy: "test", verificationNotes: "synthetic test data" }).where(eq(dataSources.key, "hmlr_ppd_uprn_lookup"));
+    await admin.update(referenceDataSources).set({ enabled: true, verifiedAt: new Date(), verifiedBy: "test", verificationNotes: "synthetic test data" }).where(eq(referenceDataSources.key, "hmlr_ppd_uprn_lookup"));
   }, 90_000);
 
   afterAll(async () => {
@@ -55,8 +55,8 @@ describe.skipIf(!integrationEnabled)("property history reference data", () => {
     const outcome = await importPricePaid(importer, { filePath: file, datasetVersion: "2026-08", mode: "full", postcodeAreas: ["BS"], activate: true, importedBy: "test" });
     expect(outcome).toMatchObject({ status: "active", recordCount: 3, validation: { outsideExtent: 1, rejected: 0 } });
     firstSync = outcome.syncId;
-    const columns = await importer.execute(sql`select column_name from information_schema.columns where table_schema = 'public' and table_name = 'price_paid_transactions'`);
-    expect((columns as unknown as { rows: { column_name: string }[] }).rows.map((item) => item.column_name).sort()).toEqual(["dataset_version_id", "new_build", "ppd_category", "price", "property_type", "tenure", "transaction_id", "transfer_date"]);
+    const columns = await importer.execute(sql`select column_name from information_schema.columns where table_schema = 'reference' and table_name = 'price_paid_transactions'`);
+    expect((columns as unknown as { rows: { column_name: string }[] }).rows.map((item) => item.column_name).sort()).toEqual(["dataset_sync_id", "new_build", "ppd_category", "price", "property_type", "tenure", "transaction_id", "transfer_date"]);
   });
 
   it("detects the look-up header and keeps multi-UPRN links", async () => {
@@ -105,7 +105,7 @@ describe.skipIf(!integrationEnabled)("property history reference data", () => {
     expect(failed.error).toMatch(/1 rows were rejected/);
     expect(failed.error).not.toMatch(/SYNTHETIC|BS1/);
     expect((await getActiveSync(importer, "hmlr_price_paid"))?.id).toBe(before?.id);
-    const left = await importer.execute(sql`select count(*)::int as count from price_paid_transactions where dataset_version_id = ${failed.syncId}`);
+    const left = await importer.execute(sql`select count(*)::int as count from reference.price_paid_transactions where dataset_sync_id = ${failed.syncId}`);
     expect((left as unknown as { rows: { count: number }[] }).rows[0].count).toBe(0);
     await expect(importPricePaid(importer, { filePath: file, datasetVersion: "x", mode: "update", postcodeAreas: ["M"], importedBy: "test" })).rejects.toThrow(/active version's extent/);
   });
@@ -117,15 +117,13 @@ describe.skipIf(!integrationEnabled)("property history reference data", () => {
     const headerless = await importPricePaidUprnLookup(importer, { filePath: await write("plain.csv", [`${tid(1)},${UPRN}`]), datasetVersion: "plain", importedBy: "test" });
     expect(headerless).toMatchObject({ status: "staging", recordCount: 1, validation: { header: false } });
     const app = database.connect(database.appUrl);
-    await expectDenied(app.execute(sql`insert into price_paid_uprn_links (dataset_version_id, transaction_id, uprn) values (${headerless.syncId}, '8A1B2C3D-0000-4000-8000-000000000001', '1')`));
-    // Deletes by the tenant role match no rows under the read-only policy.
-    const deleted = await app.execute(sql`delete from price_paid_transactions returning transaction_id`);
-    expect((deleted as unknown as { rows: unknown[] }).rows).toEqual([]);
+    await expectDenied(app.execute(sql`insert into reference.price_paid_uprn_links (dataset_sync_id, transaction_id, uprn) values (${headerless.syncId}, '8A1B2C3D-0000-4000-8000-000000000001', '1')`));
+    await expectDenied(app.execute(sql`delete from reference.price_paid_transactions`));
   });
 
   it("reports a disabled look-up as unavailable rather than no sales", async () => {
     const admin = database.connect(database.adminUrl);
-    await admin.update(dataSources).set({ enabled: false }).where(eq(dataSources.key, "hmlr_ppd_uprn_lookup"));
+    await admin.update(referenceDataSources).set({ enabled: false }).where(eq(referenceDataSources.key, "hmlr_ppd_uprn_lookup"));
     const app = database.connect(database.appUrl);
     expect(await databaseHistoryQuery(app).salesForUprn(UPRN)).toEqual({ available: false, reason: "lookup_not_enabled" });
   });

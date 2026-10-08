@@ -1,6 +1,11 @@
 export * from "./forms/types";
 export * from "./forms/validate";
 export { residentialTemplateV1 } from "./forms/residential-v1";
+export { homeSurveyTemplates } from "./forms/home-survey-v1";
+export { homeSurveyTemplatesV1_1 } from "./forms/home-survey-v1_1";
+export { homeSurveyTemplatesV1_2 } from "./forms/home-survey-v1_2";
+export * from "./forms/home-survey-evidence";
+export * from "./questionnaire";
 export * from "./capture/sync";
 export * from "./capture/history";
 export * from "./proposals/types";

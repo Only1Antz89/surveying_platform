@@ -69,11 +69,11 @@ export async function importScottishEpc(db: Database, options: ScottishEpcImport
     const flush = async () => {
       if (!batch.length) return;
       await db.execute(sql`
-        insert into scottish_epc_certificates (dataset_version_id, certificate_key, uprn, lodgement_date, current_rating, potential_rating, property_type, built_form, construction_age_band, total_floor_area_m2)
+        insert into reference.scottish_epc_certificates (dataset_sync_id, certificate_key, uprn, lodgement_date, current_rating, potential_rating, property_type, built_form, construction_age_band, total_floor_area_m2)
         select ${sync.id}::uuid, t.k, t.u, t.d, t.c, t.p, t.ty, t.f, t.a, t.ar
         from unnest(${sql.param(batch.map((row) => row.key))}::text[], ${sql.param(batch.map((row) => row.uprn))}::text[], ${sql.param(batch.map((row) => row.lodged))}::date[], ${sql.param(batch.map((row) => row.current))}::text[], ${sql.param(batch.map((row) => row.potential))}::text[], ${sql.param(batch.map((row) => row.type))}::text[], ${sql.param(batch.map((row) => row.form))}::text[], ${sql.param(batch.map((row) => row.age))}::text[], ${sql.param(batch.map((row) => row.area))}::float8[])
           as t(k, u, d, c, p, ty, f, a, ar)
-        on conflict (dataset_version_id, certificate_key) do nothing`);
+        on conflict (dataset_sync_id, certificate_key) do nothing`);
       batch = [];
     };
     for await (const { line, number } of lines(options.filePath)) {

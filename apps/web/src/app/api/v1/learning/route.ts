@@ -1,3 +1,4 @@
+import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { apiContext } from "@/lib/access";
 import { ok, problem } from "@/lib/api";
 import { loadLearningDashboard } from "@/lib/learning";
@@ -9,6 +10,8 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  const accessDenial = await workspaceApiGuard(request, context);
+  if (accessDenial) return accessDenial;
   if (context.demo) return ok(demoLearningDashboard(), { demo: true });
   return ok(await loadLearningDashboard(context));
 }

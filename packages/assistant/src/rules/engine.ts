@@ -1,6 +1,9 @@
 import type { FieldValue, FormTemplate, InspectionStatus, ServiceLevel } from "../forms/types";
 import { isFieldRequired, resolveField } from "../forms/validate";
 import { residentialRulesV1 } from "./residential-rules-v1";
+import { homeSurveyTemplates } from "../forms/home-survey-v1";
+import { homeSurveyTemplatesV1_1 } from "../forms/home-survey-v1_1";
+import { homeSurveyTemplatesV1_2 } from "../forms/home-survey-v1_2";
 import { OTHER_OVERRIDE, ruleSetSchema, type CheckItem, type CompletionOverride, type CompletionReport, type Rule, type RuleCondition, type RuleRequirement, type RuleSet } from "./types";
 
 export type CompletionInput = {
@@ -17,7 +20,11 @@ export type CompletionInput = {
   pendingProposals: number;
 };
 
-export const builtInRuleSets: readonly RuleSet[] = [residentialRulesV1];
+export const builtInRuleSets: readonly RuleSet[] = [residentialRulesV1, ...[...homeSurveyTemplates, ...homeSurveyTemplatesV1_1, ...homeSurveyTemplatesV1_2].map((template): RuleSet => ({
+  key: `${template.key}-rules`, version: "1.0.0", templateKey: template.key,
+  templateVersions: [template.version], reviewStatus: "draft_requires_surveyor_review",
+  rules: residentialRulesV1.rules.filter(rule => ["LIMITATION-RECORDED", "SERIOUS-RATING-COMMENTARY", "DEFECT-DETAIL"].includes(rule.id)),
+}))];
 
 /** Newest rule set written for this template version, or null when none applies. */
 export function ruleSetForTemplate(templateKey: string, templateVersion: string) {

@@ -1,0 +1,18 @@
+import { describe, expect, it } from "vitest";
+import { defaultWebsiteForm, formSubmissionSchema, normaliseFormAnswers, publicationWarnings, publicFormConfig, websiteFormSchema, type FormContext } from "./website-form-config";
+import { formDecision } from "./website-form-decision";
+const config = defaultWebsiteForm(), service = { id: "00000000-0000-4000-8000-000000000001", name: "RICS Level 2 Survey Only", description: null, currency: "GBP", baseAmountMinor: 45000, vatBasisPoints: 2000, depositBasisPoints: 1000, validityDays: 7, surcharges: {}, adviser: true };
+const context: FormContext = { config, services: [service], quotesReady: true, demo: false, versionId: null, slug: "example" };
+const answers = { path: "residential" as const, purpose: "condition-survey" as const, propertyType: "Detached house", propertyAge: "1950-1989" as const, alterationTypes: [], concerns: "" };
+describe("website form configuration and recommendation", () => {
+  it("starts disabled and requires privacy, fallback contacts and approved domains", () => { expect(config.enabled).toBe(false); expect(config.enquiriesEnabled).toBe(false); expect(publicationWarnings(config)).toHaveLength(2); expect(publicationWarnings({ ...config, enabled: true })).toHaveLength(3); });
+  it("limits colours, rejects script URLs, wildcard/path origins and duplicate paths", () => {
+    for (const patch of [{ accentColour: "#ffffff" }, { logoUrl: "javascript:alert(1)" }, { approvedOrigins: ["https://*.example.com"] }, { approvedOrigins: ["https://example.com/path"] }, { paths: ["residential", "residential"] }, { privacyUrl: "https://user:pass@example.com" }]) expect(websiteFormSchema.safeParse({ ...config, ...patch }).success).toBe(false);
+    expect(websiteFormSchema.safeParse({ ...config, approvedOrigins: ["https://www.example.com"] }).success).toBe(true);
+  });
+  it("does not disclose allowed domains in public configuration", () => { expect(publicFormConfig({ ...config, approvedOrigins: ["https://example.com"] }).approvedOrigins).toEqual([]); });
+  it("uses configured catalogue and shared VAT/deposit calculations only", () => { const decision = formDecision(context, answers); expect(decision.service?.id).toBe(service.id); expect(decision.money).toMatchObject({ subtotalMinor: 45000, vatMinor: 9000, totalMinor: 54000, depositMinor: 5400 }); expect(formDecision({ ...context, services: [] }, answers).money).toBeNull(); });
+  it("routes commercial, land, unknown age and other types to bespoke review", () => { for (const patch of [{ path: "commercial" as const }, { path: "land" as const }, { propertyAge: "unknown" as const }, { propertyType: "Other" }]) expect(formDecision(context, { ...answers, ...patch }, service.id).service).toBeUndefined(); });
+  it("normalises apartment answers while retaining the reported type", () => { expect(normaliseFormAnswers({ ...answers, propertyType: "Flat / apartment" })).toMatchObject({ propertyType: "flat", reportedPropertyType: "Flat / apartment", extensions: false }); });
+  it("requires structured bounded contact/address, version and privacy acknowledgement", () => { const input = { organisationSlug: "example", versionId: crypto.randomUUID(), requestId: crypto.randomUUID(), firstName: "Test", lastName: "Customer", email: "test@example.test", phone: "", address: { line1: "1 Example Road", line2: "", city: "Bristol", postcode: "BS1 1AA", country: "ENG" }, answers, privacyAcknowledged: true }; expect(formSubmissionSchema.safeParse(input).success).toBe(true); for (const patch of [{ privacyAcknowledged: false }, { email: "invalid" }, { versionId: "guess" }, { answers: { ...answers, concerns: "x".repeat(2001) } }]) expect(formSubmissionSchema.safeParse({ ...input, ...patch }).success).toBe(false); });
+});

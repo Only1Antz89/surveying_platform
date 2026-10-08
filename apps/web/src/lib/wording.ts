@@ -2,9 +2,9 @@ import { and, asc, desc, eq, max } from "drizzle-orm";
 import { z } from "zod";
 import { builtInTemplates, clausePurposes, conditionRatings, inspectionStatuses, nextActions, serviceLevels, unknownPlaceholders, type WordingClause } from "@surveynt/assistant";
 import { auditEvents, createDatabase, wordingClauses, withTenant, type TenantTransaction } from "@surveynt/db";
-import { canApproveWording, canConfirmPropertyIdentity, ukCountries, type OrganisationRole } from "@surveynt/domain";
+import { hasProfessionalPermission, canConfirmPropertyIdentity, ukCountries, type OrganisationRole } from "@surveynt/domain";
 
-export type WordingContext = { organisationId: string; internalUserId: string | null; role: OrganisationRole };
+export type WordingContext = { organisationId: string; internalUserId: string | null; role: OrganisationRole; canRecordSurvey?: boolean; canApproveReports?: boolean };
 
 const elementKeys = new Set(builtInTemplates.flatMap((template) => template.sections.flatMap((section) => section.elements.map((element) => `${section.key}.${element.key}`))));
 
@@ -38,7 +38,7 @@ export class WordingError extends Error {
   constructor(readonly status: number, readonly code: string, message: string) { super(message); }
 }
 
-export const canAuthorWording = (role: OrganisationRole) => canConfirmPropertyIdentity(role);
+export const canAuthorWording = (role: OrganisationRole, granted = false) => canConfirmPropertyIdentity(role, granted);
 
 export function toClause(row: typeof wordingClauses.$inferSelect): WordingClause {
   return { id: row.id, clauseKey: row.clauseKey, version: row.version, status: row.status as WordingClause["status"], purpose: row.purpose as WordingClause["purpose"], title: row.title, body: row.body, elementKey: row.elementKey, conditionRatings: row.conditionRatings, nextActions: row.nextActions, inspectionStatuses: row.inspectionStatuses, jurisdictions: row.jurisdictions, serviceLevels: row.serviceLevels };
@@ -61,7 +61,7 @@ async function audit(tx: TenantTransaction, context: WordingContext, action: str
 
 /** Creates a draft: version 1 of a new key, or the next version of an existing key. */
 export async function createWordingDraft(context: WordingContext, input: ClauseInput) {
-  if (!canAuthorWording(context.role)) throw new WordingError(403, "forbidden", "Only surveyors, administrators and owners can write wording.");
+  if (!canAuthorWording(context.role, context.canRecordSurvey)) throw new WordingError(403, "forbidden", "Only surveyors, administrators and owners can write wording.");
   return withTenant(createDatabase(), context.organisationId, async (tx) => {
     const [{ latest }] = await tx.select({ latest: max(wordingClauses.version) }).from(wordingClauses).where(and(eq(wordingClauses.organisationId, context.organisationId), eq(wordingClauses.clauseKey, input.clauseKey)));
     const [openDraft] = await tx.select({ id: wordingClauses.id }).from(wordingClauses).where(and(eq(wordingClauses.organisationId, context.organisationId), eq(wordingClauses.clauseKey, input.clauseKey), eq(wordingClauses.status, "draft"))).limit(1);
@@ -74,7 +74,7 @@ export async function createWordingDraft(context: WordingContext, input: ClauseI
 }
 
 export async function updateWordingDraft(context: WordingContext, id: string, input: ClauseUpdate) {
-  if (!canAuthorWording(context.role)) throw new WordingError(403, "forbidden", "Only surveyors, administrators and owners can write wording.");
+  if (!canAuthorWording(context.role, context.canRecordSurvey)) throw new WordingError(403, "forbidden", "Only surveyors, administrators and owners can write wording.");
   return withTenant(createDatabase(), context.organisationId, async (tx) => {
     const [row] = await tx.select().from(wordingClauses).where(and(eq(wordingClauses.id, id), eq(wordingClauses.organisationId, context.organisationId))).limit(1);
     if (!row) throw new WordingError(404, "clause_not_found", "The clause could not be found.");
@@ -87,7 +87,7 @@ export async function updateWordingDraft(context: WordingContext, id: string, in
 
 /** Approves a draft and retires the previously approved version of the same clause, in one transaction. */
 export async function approveWording(context: WordingContext, id: string) {
-  if (!canApproveWording(context.role)) throw new WordingError(403, "forbidden", "Only owners and administrators can approve wording.");
+  if (!hasProfessionalPermission(context.role, "approve_reports", context.canApproveReports)) throw new WordingError(403, "forbidden", "Only owners and administrators can approve wording.");
   if (!context.internalUserId) throw new WordingError(403, "forbidden", "Approval needs a named user.");
   return withTenant(createDatabase(), context.organisationId, async (tx) => {
     const [row] = await tx.select().from(wordingClauses).where(and(eq(wordingClauses.id, id), eq(wordingClauses.organisationId, context.organisationId))).limit(1);
@@ -108,12 +108,12 @@ export async function retireWording(context: WordingContext, id: string) {
     const [row] = await tx.select().from(wordingClauses).where(and(eq(wordingClauses.id, id), eq(wordingClauses.organisationId, context.organisationId))).limit(1);
     if (!row) throw new WordingError(404, "clause_not_found", "The clause could not be found.");
     if (row.status === "draft") {
-      if (!canAuthorWording(context.role)) throw new WordingError(403, "forbidden", "Only surveyors, administrators and owners can delete drafts.");
+      if (!canAuthorWording(context.role, context.canRecordSurvey)) throw new WordingError(403, "forbidden", "Only surveyors, administrators and owners can delete drafts.");
       await tx.delete(wordingClauses).where(eq(wordingClauses.id, id));
       await audit(tx, context, "wording.draft_deleted", id, { clauseKey: row.clauseKey, version: row.version });
       return null;
     }
-    if (!canApproveWording(context.role)) throw new WordingError(403, "forbidden", "Only owners and administrators can retire wording.");
+    if (!hasProfessionalPermission(context.role, "approve_reports", context.canApproveReports)) throw new WordingError(403, "forbidden", "Only owners and administrators can retire wording.");
     if (row.status !== "approved") throw new WordingError(409, "already_retired", "This version is already retired.");
     const now = new Date();
     const [retired] = await tx.update(wordingClauses).set({ status: "retired", retiredAt: now, retiredByUserId: context.internalUserId, updatedAt: now }).where(eq(wordingClauses.id, id)).returning();

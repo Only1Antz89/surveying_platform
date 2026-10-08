@@ -2,7 +2,7 @@
 
 Date: 2 October 2026
 
-This is a read-only download and conversion report. It is not approval to stage or activate a dataset. No records were written to Neon. Table/index sizes and query latency can only be measured after a separately authorised staging import, so every source remains blocked from activation until those measurements are reviewed.
+This report began as a read-only download/conversion assessment and now includes the separately authorised production staging outcome. Historic England was measured and activated. The prepared Environment Agency and OS datasets could not be staged within the current Neon project limit; no partial version was activated.
 
 Cost projections use the current published Neon storage rate of USD 0.35 per GiB-month. They exclude compute, history, backups, transfer and any provider costs. File-to-table multipliers are conservative planning estimates; the staged measurements are authoritative.
 
@@ -11,12 +11,12 @@ Cost projections use the current published Neon storage rate of USD 0.35 per GiB
 | Source and release | Validation result | Records | Source/prepared size | Estimated table storage | Estimated storage/month | Activation status |
 | --- | --- | ---: | ---: | ---: | ---: | --- |
 | OS Open UPRN `2026-09` | Full official GB CSV scanned; zero invalid rows; required headers and WGS84 ranges passed | 41,676,575 | 2,273,707,279 bytes CSV | 4,092,673,102 bytes | USD 1.3341 | Blocked: not staged; index size and latency unmeasured |
-| Historic England NHLE `2026-10-01` | All eight polygon layers converted and fully scanned; zero invalid rows | 401,771 | 401,683,375 bytes canonical CSV | 1,004,208,438 bytes | USD 0.3273 | Blocked: not staged; index size and latency unmeasured |
+| Historic England NHLE `2026-10-01` | All eight polygon layers converted, fully scanned, staged and measured; zero invalid rows | 401,771 | 404,347,640 bytes canonical CSV | 434,077,696 measured total relation bytes; 77,242,368 index bytes | USD 0.1415 measured | Active in production |
 | HMLR INSPIRE `2026-09` | Official Adur sample converted and fully scanned; zero invalid rows | 26,429 sample parcels | 3,633,091 bytes ZIP; 26,412,404 bytes GML; 17,737,855 bytes CSV | 44,344,638 bytes for sample | USD 0.0145 for sample | Blocked: national download, count, deduplication, table/index size and latency unmeasured |
-| EA Flood Zone 2, revision `2026-05-20` | Official OGC collection fully downloaded and scanned; zero invalid rows; every feature matched FZ2 | 540,282 | 3,321,129,511 bytes canonical CSV | 8,302,823,778 bytes | USD 2.7064 | Blocked: not staged; index size and latency unmeasured |
+| EA Flood Zone 2, revision `2026-05-20` | Official OGC collection fully downloaded and scanned; zero invalid rows; every feature matched FZ2 | 540,282 | 3,321,129,511 bytes canonical CSV | 8,302,823,778 bytes estimated | USD 2.7064 estimated | Staging failed safely at Neon 1,024 MB limit; inactive partial removed |
 | EA Flood Zone 3, revision `2026-05-20` | Official OGC collection fully downloaded and scanned; zero invalid rows; every feature matched FZ3 | 273,345 | 3,360,223,998 bytes canonical CSV | 8,400,559,995 bytes | USD 2.7383 | Blocked: not staged; index size and latency unmeasured |
 
-The measured OS, Historic England and Environment Agency dry-run estimate is USD 7.1061 per month before indexes and platform overhead. It must not be treated as the final Neon cost.
+The OS and Environment Agency figures remain dry-run estimates. Historic England is the only measured and activated dataset. The current 1,024 MB Neon project cannot accommodate the remaining national layers.
 
 ## OS Open UPRN evidence
 
@@ -44,7 +44,9 @@ Official service item `767f279327a24845bf47dfe5eae9862b` reported data updated o
 | Protected wreck sites | 57 | `dc1e7e6318aa249cf042b6cfded9c4b716050c9a5d2ad137019524065d5b3a9e` |
 | World Heritage Sites | 28 | `0d255a100e3ca8c9040c1c40d4dd2dc23e4b2930f72551f181edbf9486519307` |
 
-Canonical CSV SHA-256: `003510636bc2fa313ecd471ae26f582d00e9496fa8ad7f7aaf6e2bcd9eb4d6d6`.
+Canonical CSV SHA-256: `1ff55a620d79b0e827a36ff8f6fc19eb19d77f37ee9635bb0506fa215822fe92`.
+
+Production staging measured 434,077,696 incremental total relation bytes, including 77,242,368 index bytes, and a 12.36 ms sampled property-centred intersection query. The stored projection is USD 0.1415/month at USD 0.35/GiB-month. Version `2026-10-01` was then activated atomically at 14:15 UTC on 2 October 2026.
 
 ## HMLR INSPIRE evidence and national projection
 
@@ -56,7 +58,7 @@ Canonical CSV SHA-256: `003510636bc2fa313ecd471ae26f582d00e9496fa8ad7f7aaf6e2bcd
 - Adur archive SHA-256: `0193a690dd0f05a7ca62d555d36450b2841c11ec8acfb256c88124a722a08d4d`.
 - Adur GML declared `EPSG:27700`, contained 26,429 parcels and converted to 26,429 valid rows.
 - Applying the sample table-to-ZIP ratio to the published average produces a deliberately provisional national estimate of 51,749,619,588 bytes and USD 16.8685 per month. Authority size and polygon complexity vary materially, so this is not sufficient for approval.
-- The projected canonical/table footprint is close to the current local scratch capacity, so a full 296-authority conversion was not started. It requires larger temporary storage or a separately authorised staged streaming workflow; this remains an activation blocker.
+- The projected canonical/table footprint is close to the current local scratch capacity, so a full 296-authority conversion was not started. Allocate roughly 50 GB of scratch storage before starting the full conversion; this remains an activation blocker.
 - The national converter deduplicates repeated INSPIRE IDs across authority boundaries. Each record is labelled as an indicative, non-definitive freehold extent; it is not a legal title boundary or ownership record.
 
 ## Environment Agency evidence
@@ -71,11 +73,11 @@ Canonical CSV SHA-256: `003510636bc2fa313ecd471ae26f582d00e9496fa8ad7f7aaf6e2bcd
 - During one later FZ2 page, the publisher emitted an unresolvable Agrimetrics backend hostname. The downloader accepted only that exact origin and identical collection path, rewrote it to the reviewed public EA origin, and retained the publisher's unchanged query. The equivalent public URL returned the expected 10,000-feature page.
 - FZ2 canonical CSV SHA-256: `69598bc591c826ec85320b8780de26c95fcf5a9dbbca16c75856a39d0fdca434`.
 - FZ3 canonical CSV SHA-256: `facf6ec1d72642d5704f8af3ca76347f898a8f24cd0d3f38d06be3655f878675`.
-- The importer's complete semantic scan found zero invalid rows, duplicate headers or missing required columns in either layer. Actual table/index size and query latency remain unmeasured until separately authorised staging.
+- The importer's complete semantic scan found zero invalid rows, duplicate headers or missing required columns in either layer. FZ2 staging reached the Neon 1,024 MB project limit and failed safely; the inactive partial version was removed and the failure retained in the sync audit. FZ3 was not attempted after that capacity failure. Actual table/index size and query latency therefore remain unmeasured.
 
 ## Required approval gate
 
-Before any activation, separately authorise a staging run using `DATABASE_ADMIN_URL`, then record for each source:
+Before activating any additional source, stage it using `DATABASE_ADMIN_URL` and record:
 
 1. Exact national record count after deduplication and England filtering.
 2. Verified source and canonical-file checksums plus licence snapshot.
@@ -84,4 +86,6 @@ Before any activation, separately authorise a staging run using `DATABASE_ADMIN_
 5. Final Neon cost projection and rollback target.
 6. Application-role read success, reference-table write denial and tenant/map boundary tests.
 
-Until all six are reviewed, the dataset version must remain inactive.
+Until all six are reviewed, the dataset version must remain inactive. Historic England satisfied this gate. OS Open UPRN, HMLR and both EA flood layers remain inactive.
+
+The shared spatial table reports 781,008,896 bytes after cleanup because failed large imports left dead allocation. `VACUUM FULL` could reclaim it but requires an exclusive lock; it was not run without explicit maintenance-window approval.

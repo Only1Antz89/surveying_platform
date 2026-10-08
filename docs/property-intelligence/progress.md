@@ -1,7 +1,5 @@
 # Progress checklist
 
-> Reference data was later unified onto the England release's `public` tables. Older rows below that name `reference.*` tables describe the state at the time; see [`architecture.md`](./architecture.md#reconciliation-with-the-england-release).
-
 Legend for every row:
 
 - **Code**: implemented and tested in the repository.
@@ -9,7 +7,7 @@ Legend for every row:
 - **Imported**: reference data loaded into a real database.
 - **Live**: smoke-tested against the real provider.
 
-"—" means not applicable. Nothing is configured, imported or live-tested from this build environment. Its egress policy blocks every provider host (see [`architecture.md`](./architecture.md#known-environment-constraint-p0)).
+"—" means not applicable. The phase tables below preserve the original implementation evidence and may describe the build environment at the time a phase was completed. The separately authorised 2 October 2026 rollout applied migrations 0000–0025 to production, configured the submitted-search geocoder and basemap, activated Historic England, and deployed the merged `main`; the England release record at the end of this document is authoritative for current production state.
 
 Execution order: P0 → A0 → P1 → A1 → P2 → A2 → P3 → P4 → A3 → A4 → P5 → A5 → P6 → A6 → L0–L4.
 
@@ -381,9 +379,9 @@ Acceptance:
 
 ---
 
-# England first release (merged from main)
+# England first release production record
 
-The section below is the England release record from `main`, kept verbatim. Its schema (migrations 0006–0008) is the base this branch's migrations build on; see the reconciliation notes in [`architecture.md`](./architecture.md#reconciliation-with-the-england-release).
+The section below is the England release record from `main`, updated with the separately authorised 2 October 2026 production rollout. Its schema (migrations 0006–0008) is the base this branch's later migrations build on; see the reconciliation notes in [`architecture.md`](./architecture.md#reconciliation-with-the-england-release).
 
 ## Property intelligence progress
 
@@ -398,18 +396,27 @@ The section below is the England release record from `main`, kept verbatim. Its 
 - [x] Idempotent durable enrichment queue and protected worker
 - [x] Intelligence, filtered planning/environment and bounded map APIs
 - [x] Read-only target Neon audit: PostGIS 3.6.4 is available and application/admin roles are separate
-- [x] Apply PostGIS migration to the authorised non-production Neon database
+- [x] Apply and verify the additive PostGIS/property-intelligence migrations on production Neon
 - [x] Recheck application-role spatial functions, reference-table write denial and tenant RLS after migration
 - [x] Verify metre-distance candidates, inside/outside/boundary intersections and BNG-to-WGS84 transformation in PostGIS
 - [x] Live-verify Postcodes.io and Planning Data response validation against a labelled development fixture
 - [x] Verify protected worker authentication and empty-queue processing against non-production Neon
-- [ ] Import and validate national datasets
+- [ ] Import and validate national datasets (Historic England complete; OS Open UPRN and EA flood layers require a larger Neon storage allowance)
 - [x] Full dry-run OS Open UPRN and Historic England; sample-validate HMLR GML without database writes
 - [x] Resolve the EA national source and complete separate Flood Zone 2 and Flood Zone 3 dry-runs
 - [x] Materialise and validate the 296-authority England-only HMLR download manifest
 - [ ] Complete the HMLR national dry-run using sufficient scratch storage or an authorised staged streaming workflow
 - [ ] Live-test EPC after credentials/licence acceptance
-- [ ] Configure production geocoder and basemap providers
-- [ ] Measure national storage, index size and query latency before activation
+- [x] Configure production submitted-search geocoder, database-backed cache/rate gate, and production basemap
+- [x] Stage, measure and atomically activate Historic England `2026-10-01` (401,771 records)
+- [ ] Stage and measure OS Open UPRN and the separate EA Flood Zone 2/3 versions after Neon capacity is increased
+- [x] Deploy the release to Vercel with the protected intelligence worker scheduled daily on the Hobby plan
+
+## Remaining external prerequisites
+
+- Full HMLR national conversion requires roughly 50 GB of scratch storage before it can be measured, staged or activated.
+- EPC remains `not_configured` until credentials are supplied and the licence/data-handling terms are accepted.
+- The current Neon project has a 1,024 MB size limit. It cannot hold the prepared OS Open UPRN or EA national layers alongside Historic England. Increasing the storage allowance is a billing decision and was not performed.
+- Failed EA staging left reclaimable dead allocation in the shared spatial table. An exclusive-lock `VACUUM FULL` was deliberately not run without a separately approved maintenance window.
 
 Deferred: property sales history, geology, mining, national-data administration UI and non-England country adapters.

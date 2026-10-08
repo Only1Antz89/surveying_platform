@@ -71,7 +71,7 @@ Sources stay disabled until an operator has checked the official terms (see `sou
 ```sql
 -- Owner connection. Run the registry sync first:
 --   DATABASE_ADMIN_URL=… pnpm --filter @surveynt/property-data reference registry-sync
-UPDATE data_sources
+UPDATE reference.data_sources
 SET enabled = true, verified_at = now(), verified_by = '<name>', verification_notes = '<licence/terms checked, URL, date>'
 WHERE key = 'postcodes_io';
 ```
@@ -94,7 +94,7 @@ The importer never truncates the active version. A failed run is marked `failed`
 
 ## Importing spatial reference layers (P2/P3)
 
-Historic England, INSPIRE, flood zones, surface water, BGS geology and Natural England layers all load through one importer into `spatial_reference_features` (the same table the England import scripts use), one `dataset_versions` row per source, layer and release. Each `--source/--layer` pair is versioned and activated on its own, so a failed flood-zone import never touches geology.
+Historic England, INSPIRE, flood zones, surface water, BGS geology and Natural England layers all load through one importer into `reference.spatial_features`. Each `--source/--layer` pair is versioned and activated on its own, so a failed flood-zone import never touches geology.
 
 ```bash
 # Convert the official download to EPSG:4326 GeoJSONSeq with GDAL (operator machine only), then stage and validate.

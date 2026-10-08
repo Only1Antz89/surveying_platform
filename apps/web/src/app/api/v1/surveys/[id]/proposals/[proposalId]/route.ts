@@ -1,3 +1,5 @@
+import { workspaceApiGuard } from "@/lib/workspace-api-guard";
+import { professionalApiGuard } from "@/lib/professional-access";
 import { z } from "zod";
 import { fieldValueSchema } from "@surveynt/assistant";
 import { canMutateOperations } from "@surveynt/domain";
@@ -19,6 +21,10 @@ const review = z.object({
 export async function POST(request: Request, route: RouteContext<"/api/v1/surveys/[id]/proposals/[proposalId]">) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  const accessDenial = await workspaceApiGuard(request, context);
+  if (accessDenial) return accessDenial;
+  const professionalDenial = professionalApiGuard(request, context);
+  if (professionalDenial) return professionalDenial;
   if (!canWriteWorkspace(context)) return problem(402, "workspace_read_only", "Restore billing before changing workspace records.");
   if (!canMutateOperations(context.role)) return problem(403, "forbidden", "Your role cannot review suggestions.");
   const parsed = await parseBody(request, review);
@@ -27,7 +33,7 @@ export async function POST(request: Request, route: RouteContext<"/api/v1/survey
   if (context.demo) return ok({ status: parsed.data.decision === "reject" ? "rejected" : parsed.data.decision === "edit" ? "edited" : "accepted" }, { demo: true, persisted: false });
   if (!z.uuid().safeParse(id).success || !z.uuid().safeParse(proposalId).success) return problem(404, "proposal_not_found", "The suggestion could not be found.");
   if (!assistantEnabled()) return problem(503, "assistant_disabled", "Suggestions are turned off for this deployment.");
-  const result = await reviewProposal({ organisationId: context.organisationId, internalUserId: context.internalUserId, role: context.role }, id, proposalId, parsed.data);
+  const result = await reviewProposal({ organisationId: context.organisationId, internalUserId: context.internalUserId, role: context.role, canRecordSurvey: context.canRecordSurvey, canApproveReports: context.canApproveReports }, id, proposalId, parsed.data);
   if (result.kind === "missing") return problem(404, "proposal_not_found", "The suggestion could not be found.");
   if (result.kind === "conflict") return problem(409, "proposal_stale", result.message);
   if (result.kind === "invalid") return problem(422, "proposal_rejected", result.message);

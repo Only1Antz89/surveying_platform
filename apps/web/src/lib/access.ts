@@ -4,6 +4,7 @@ import { createDatabase, entitlements, organisationMemberships, organisations, p
 import { and, eq, sql } from "drizzle-orm";
 import { notFound, redirect } from "next/navigation";
 import { cache } from "react";
+import { demoStore, demoTenant } from "./demo-store";
 
 export const isClerkConfigured = () => Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY);
 const isDatabaseConfigured = () => Boolean(process.env.DATABASE_APP_URL ?? process.env.DATABASE_URL);
@@ -13,18 +14,26 @@ function hasPilotExemption(organisationId: string) {
 }
 
 async function requireFirmAccessUncached(slug: string) {
-  if (!isClerkConfigured()) return {
-    userId: "demo_user",
-    clerkOrganisationId: "demo_org",
-    organisationId: "00000000-0000-0000-0000-000000000001",
-    organisationName: "North Star Surveying",
-    organisationRegion: "Bristol, United Kingdom",
-    userName: "Maya Patel",
-    userEmail: "maya@northstarsurveying.co.uk",
-    userRole: "owner" as const,
-    accessLevel: "full" as const,
-    trialEndsAt: new Date("2026-10-10T00:00:00.000Z"),
-  };
+  if (!isClerkConfigured()) {
+    const tenant = demoTenant(await demoStore.snapshot(), slug);
+    if (!tenant) notFound();
+    return {
+      userId: "demo_user",
+      internalUserId: null,
+      clerkOrganisationId: "demo_org",
+      organisationId: tenant.id,
+      organisationName: tenant.name,
+      organisationRegion: "Bristol, United Kingdom",
+      userName: tenant.owner,
+      userEmail: "maya@northstarsurveying.co.uk",
+      userRole: "owner" as const,
+      canRecordSurvey: false,
+      canApproveReports: false,
+      accessLevel: resolveAccess(tenant.status, tenant.subscription),
+      trialEndsAt: tenant.subscription === "trialing" ? new Date("2026-10-10T00:00:00.000Z") : null,
+      isDemo: true,
+    };
+  }
   const session = await auth();
   if (!session.userId) redirect("/sign-in");
   if (!session.orgId) redirect("/start");
@@ -37,16 +46,20 @@ async function requireFirmAccessUncached(slug: string) {
     name: organisations.name,
     region: organisations.region,
     status: organisations.status,
+    isDemo: organisations.isDemo,
   }).from(organisations).where(eq(organisations.clerkOrganisationId, session.orgId)).limit(1);
   if (!organisation) notFound();
   if (organisation.slug !== slug) redirect(`/app/${organisation.slug}/overview`);
   const details = await db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.current_organisation_id', ${organisation.id}, true)`);
     const [member] = await tx.select({
+      internalUserId: users.id,
       email: users.email,
       firstName: users.firstName,
       lastName: users.lastName,
       role: organisationMemberships.role,
+      canRecordSurvey: organisationMemberships.canRecordSurvey,
+      canApproveReports: organisationMemberships.canApproveReports,
     }).from(organisationMemberships)
       .innerJoin(users, eq(organisationMemberships.userId, users.id))
       .where(and(
@@ -68,6 +81,7 @@ async function requireFirmAccessUncached(slug: string) {
     : resolveAccess(organisation.status, details.subscription?.status ?? "incomplete", details.subscription?.graceEndsAt);
   return {
     userId: session.userId,
+    internalUserId: details.member.internalUserId,
     clerkOrganisationId: session.orgId,
     organisationId: organisation.id,
     organisationName: organisation.name,
@@ -75,8 +89,11 @@ async function requireFirmAccessUncached(slug: string) {
     userName,
     userEmail: details.member.email,
     userRole: details.member.role,
+    canRecordSurvey: details.member.canRecordSurvey,
+    canApproveReports: details.member.canApproveReports,
     accessLevel,
     trialEndsAt: details.subscription?.trialEndsAt ?? null,
+    isDemo: organisation.isDemo,
   };
 }
 
@@ -111,7 +128,9 @@ export async function platformApiContext() {
 
 export async function apiContext(request: Request) {
   if (!isClerkConfigured()) {
-    return { userId: "demo_user", internalUserId: null, clerkOrganisationId: "demo_org", organisationId: "00000000-0000-0000-0000-000000000001", role: "owner" as const, accessLevel: "full" as const, demo: true };
+    const tenant = demoTenant(await demoStore.snapshot(), request.headers.get("x-demo-organisation-slug") ?? "demo");
+    if (!tenant) return null;
+    return { userId: "demo_user", internalUserId: null, clerkOrganisationId: "demo_org", organisationId: tenant.id, role: "owner" as const, canRecordSurvey: false, canApproveReports: false, accessLevel: resolveAccess(tenant.status, tenant.subscription), demo: true };
   }
   const session = await auth();
   if (!session.userId || !session.orgId) return null;
@@ -121,7 +140,7 @@ export async function apiContext(request: Request) {
   if (!organisation) return null;
   const details = await db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.current_organisation_id', ${organisation.id}, true)`);
-    const [member] = await tx.select({ internalUserId: users.id, role: organisationMemberships.role })
+    const [member] = await tx.select({ internalUserId: users.id, role: organisationMemberships.role, canRecordSurvey: organisationMemberships.canRecordSurvey, canApproveReports: organisationMemberships.canApproveReports })
       .from(organisationMemberships)
       .innerJoin(users, eq(organisationMemberships.userId, users.id))
       .where(and(
@@ -137,6 +156,8 @@ export async function apiContext(request: Request) {
   const accessLevel = organisation.status === "active" && (details.billingExemption?.enabled || hasPilotExemption(organisation.id))
     ? "full" as const
     : resolveAccess(organisation.status, details.subscription?.status ?? "incomplete", details.subscription?.graceEndsAt);
-  void request;
-  return { userId: session.userId, internalUserId: details.member.internalUserId, clerkOrganisationId: session.orgId, organisationId: organisation.id, role: details.member.role, accessLevel, demo: false };
+  const path = new URL(request.url).pathname;
+  if (accessLevel === "blocked") return null;
+  if (accessLevel === "billing_only" && !/^\/api\/v1\/(billing|me|capabilities)(\/|$)/.test(path)) return null;
+  return { userId: session.userId, internalUserId: details.member.internalUserId, clerkOrganisationId: session.orgId, organisationId: organisation.id, role: details.member.role, canRecordSurvey: details.member.canRecordSurvey, canApproveReports: details.member.canApproveReports, accessLevel, demo: false };
 }

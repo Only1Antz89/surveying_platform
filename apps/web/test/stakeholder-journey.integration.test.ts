@@ -1,0 +1,744 @@
+import { disposeEvidenceAnnotation } from "../src/lib/survey-file-evidence-annotation-disposition";
+import { disposeMediaMetadata } from "../src/lib/survey-file-media-metadata-disposition";
+import { disposeElementContent } from "../src/lib/survey-file-element-disposition";
+import { syncOperations } from "@surveynt/db";
+import { disposeObservationContent } from "../src/lib/survey-file-observation-disposition";
+import { disposeRecordedFieldValue } from "../src/lib/survey-file-recorded-value-disposition";
+import { startReviewedSurveyFileRemoval } from "../src/lib/survey-file-removal-start";
+import { disposeReportContent } from "../src/lib/survey-file-report-content-disposition";
+import { loadSurveyReports } from "../src/lib/reports";
+import { disposeFieldProposal } from "../src/lib/survey-file-field-proposal-disposition";
+import { disposeAdviserTask } from "../src/lib/survey-file-adviser-task-disposition";
+import { createSurveyFileRemovalManifest } from "../src/lib/survey-file-removal-manifest";
+import { processReviewedRemainingOriginals } from "../src/lib/survey-file-removal-resume-runner";
+import { resumeReviewedSurveyFileRemoval } from "../src/lib/survey-file-removal-resume";
+import { reviewRemovalObservation } from "../src/lib/survey-file-removal-observation-review";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+vi.mock("server-only", () => ({}));
+import { createHash } from "node:crypto";
+import { createMemoryStorage } from "../src/lib/storage";
+import { processSurveyFileOriginal } from "../src/lib/survey-file-removal-storage";
+import { verifiedSurveyFileOriginalRemoval } from "../src/lib/survey-file-original-removal-status";
+import { confirmDocumentWorks, downloadPreinspectionDocument, listPreinspectionDocuments } from "../src/lib/preinspection-documents";
+import { and, eq, sql } from "drizzle-orm";
+import { createTestDatabase, integrationEnabled, stopRelay, type TestDatabase } from "@surveynt/db/testing";
+import { clientPayments, customerQuotes, invoices, jobs, jobStageEvents, organisations, organisationDocuments, organisationOperationalSettings, organisationMemberships, reportDeliveries, users, withTenant, createDatabase } from "@surveynt/db";
+import { readSurveyFileRetention } from "../src/lib/survey-file-retention-register";
+import { jobRetentionHolds } from "@surveynt/db";
+import { evidenceLinks, mediaAssets, observations, surveyFieldValues, reportApprovals, reportVersions, surveyElements, surveys } from "@surveynt/db";
+import { preinspectionDocuments } from "@surveynt/db";
+import { auditEvents } from "@surveynt/db";
+import { prepareReviewedSurveyFileRemoval } from "../src/lib/survey-file-removal-prepare";
+import { cancelReviewedSurveyFileRemoval, requestReviewedSurveyFileRemoval } from "../src/lib/survey-file-removal-request";
+import { revalidateQueuedSurveyFileRemoval } from "../src/lib/survey-file-removal-revalidate";
+import { claimQueuedSurveyFileRemoval } from "../src/lib/survey-file-removal-claim";
+import { recordSurveyFileOriginalDispatch } from "../src/lib/survey-file-removal-object-dispatch";
+import { disposeMediaAnalysis } from "../src/lib/survey-file-media-analysis-disposition";
+import { disposeQuestionnaireAnalysis } from "../src/lib/survey-file-questionnaire-disposition";
+import { surveyFileRemovalCanCancel } from "../src/lib/survey-file-removal-cancellation";
+import { recordSurveyFilePreflightFailure } from "../src/lib/survey-file-removal-preflight-failure";
+import { recordSurveyFileOriginalOutcome } from "../src/lib/survey-file-removal-object-outcome";
+import { claimSurveyFileRemovalRecovery, observeInterruptedSurveyFileOriginal } from "../src/lib/survey-file-removal-recovery";
+import { surveyFileRemovals } from "@surveynt/db";
+import { assistantTasks, fieldProposals, mediaAnalyses } from "@surveynt/db";
+import { readSurveyFileProvenance } from "../src/lib/survey-file-provenance-register";
+import { readSurveyFileMedia } from "../src/lib/survey-file-media-register";
+import { isFieldRequired, listFields, residentialTemplateV1, type FieldDefinition, type FieldValue, type SyncOperation } from "@surveynt/assistant";
+import { syncSourceRegistry } from "@surveynt/property-data/importers";
+import { seedStakeholderDemo } from "../src/lib/stakeholder-demo";
+import { acceptQuoteAddress, createPublicQuote, readPublicQuote } from "../src/lib/firm-operations";
+import { createSurvey, applySyncOperations, type SurveyContext } from "../src/lib/surveys";
+import { composeSurveyReport, approveReportVersion, approvedReportIsCurrent } from "../src/lib/reports";
+import { enforceStageGate } from "../src/lib/completion";
+import { POST as checkout } from "../src/app/api/v1/public/quotes/[id]/checkout/route";
+import { GET as slots, POST as book } from "../src/app/api/v1/public/quotes/[id]/appointments/route";
+import { GET as reports, POST as confirmReportReceipt } from "../src/app/api/v1/public/quotes/[id]/reports/route";
+
+function sample(field: FieldDefinition): FieldValue {
+  switch(field.type){
+    case "enum": return {state:"provided",value:["listed_status","conservation_area"].includes(field.key)?"no_record_found":field.options![0].value};
+    case "integer": case "decimal": return {state:"provided",value:field.min??1};
+    case "boolean": return {state:"provided",value:false};
+    case "date": return {state:"provided",value:new Date().toISOString().slice(0,10)};
+    default: return {state:"provided",value:`Fictional demonstration: ${field.key.replaceAll("_"," ")}.`};
+  }
+}
+function inspectionFixture(): SyncOperation[] {
+  const operations:SyncOperation[]=[];let count=0;const op=()=>`op_demo_journey_${String(++count).padStart(6,"0")}`;
+  for(const section of residentialTemplateV1.sections)for(const element of section.elements)if(element.inspectable)operations.push({type:"set_element",operationId:op(),element:{sectionKey:section.key,elementKey:element.key,locationLabel:""},inspectionStatus:section.key==="outside"&&element.key==="roof_coverings"?"inspected":"not_applicable",limitationReason:null,baseVersion:null});
+  for(const resolved of listFields(residentialTemplateV1))if(!resolved.element.inspectable&&isFieldRequired(resolved.field,{serviceLevel:"level_1"}))operations.push({type:"set_field",operationId:op(),fieldPath:resolved.path,value:sample(resolved.field),baseValueId:null});
+  operations.push({type:"set_field",operationId:op(),fieldPath:"outside.roof_coverings.condition_rating",value:{state:"provided",value:"2"},baseValueId:null},{type:"set_field",operationId:op(),fieldPath:"outside.roof_coverings.construction",value:{state:"provided",value:"Fictional demo: pitched natural-slate roof."},baseValueId:null});
+  return operations;
+}
+
+describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()=>{
+  let database:TestDatabase, context:SurveyContext;
+  beforeAll(async()=>{
+    database=await createTestDatabase();Object.assign(process.env,{DATABASE_ADMIN_URL:database.adminUrl,DATABASE_APP_URL:database.appUrl});
+    const db=database.connect(database.adminUrl);await syncSourceRegistry(db);
+    const [owner]=await db.insert(users).values({clerkUserId:"user_journey_owner",email:"owner@example.test"}).returning();
+    const [org]=await db.insert(organisations).values({clerkOrganisationId:"org_journey_demo",slug:"journey-demo",name:"Journey demonstration",practiceType:"building_surveying",region:"Bristol",status:"active",isDemo:true,demoGeneration:1}).returning();
+    // This test practitioner is explicitly granted both permissions; demo owners
+    // created by the application retain false defaults.
+    await db.insert(organisationMemberships).values({ organisationId: org.id, userId: owner.id, role: "owner", active: true, canRecordSurvey: true, canApproveReports: true });
+    context={organisationId:org.id,internalUserId:owner.id,role:"owner",canRecordSurvey:true,canApproveReports:true};await seedStakeholderDemo(org.id,owner.id,db);
+  },120000);
+  afterAll(async()=>{vi.unstubAllGlobals();await database?.drop();await stopRelay();});
+  it("persists quote, decline, exactly-once deposit, booking, explicit report approval, customer issue and balance",async()=>{
+    const noExternal=vi.fn(()=>{throw new Error("Demo called an external service");});vi.stubGlobal("fetch",noExternal);
+    const created=await createPublicQuote({organisationId:context.organisationId,actorUserId:context.internalUserId!,requestId:crypto.randomUUID(),firstName:"Featured",lastName:"Customer",email:"featured@example.test",answers:{purpose:"survey-only",propertyAge:"post-1990",propertyType:"house"}});
+    const id=created.quote.id as string, route={params:Promise.resolve({id})};
+    const request=(path:string,body?:unknown,token=created.token)=>new Request(`http://surveynt.test/api/v1/public/quotes/${id}${path}`,{method:body?"POST":"GET",headers:{"content-type":"application/json","x-quote-token":token},...(body?{body:JSON.stringify(body)}:{})});
+    await acceptQuoteAddress(id,created.token,{line1:"1 Fictional Demo Street",city:"Bristol",postcode:"BS1 1AA"});
+    expect((await checkout(request("/checkout",{scenario:"failure"}),route)).status).toBe(402);
+    const deposits=await Promise.all([checkout(request("/checkout",{purpose:"deposit"}),route),checkout(request("/checkout",{purpose:"deposit"}),route)]);
+    expect(deposits.every(response=>response.ok)).toBe(true);
+    const found=(await readPublicQuote(id,created.token))!;expect(found.view.depositPaid).toBe(true);const jobId=found.row.jobId!;
+    const available=await slots(request("/appointments"),route);const choices=(await available.json()).data;expect(choices.length).toBeGreaterThan(0);
+    const first=await book(request("/appointments",{startsAt:choices[0].startsAt}),route),second=await book(request("/appointments",{startsAt:choices[0].startsAt}),route);
+    expect((await first.json()).data.id).toBe((await second.json()).data.id);
+    const capture=await createSurvey(context,jobId,{serviceLevel:"level_1"});if(capture.kind!=="created")throw new Error(capture.kind);
+    expect((await applySyncOperations(context,capture.survey.id,inspectionFixture())).every(result=>result.status==="applied")).toBe(true);
+    const draft=await composeSurveyReport(context,capture.survey.id);
+    expect((await (await reports(request("/reports"),route)).json()).data).toEqual([]);
+    await expect(approveReportVersion(context,capture.survey.id,draft.id,{confirm:false})).rejects.toMatchObject({code:"confirmation_required"});
+    await approveReportVersion(context,capture.survey.id,draft.id,{confirm:true,note:"Explicit fictional stakeholder review in isolated test database."});
+    await withTenant(createDatabase(),context.organisationId,async tx=>{expect(await enforceStageGate(tx,context,{jobId,targetStage:"issued",overrides:[]})).toMatchObject({kind:"passed"});await tx.update(jobs).set({stage:"issued"}).where(eq(jobs.id,jobId));});
+    const issued=(await (await reports(request("/reports"),route)).json()).data;expect(issued).toHaveLength(1);expect(issued[0].content).toBeTruthy();expect(issued[0]).not.toHaveProperty("trace");
+    const acknowledgements=await Promise.all([1,2].map(()=>confirmReportReceipt(request("/reports",{reportVersionId:issued[0].id,confirmed:true}),route)));
+    expect(acknowledgements.every(response=>response.ok)).toBe(true);
+    expect((await acknowledgements[0].json()).data.id).toBe((await acknowledgements[1].json()).data.id);
+    const deliveryRows=await database.connect(database.adminUrl).select().from(reportDeliveries).where(eq(reportDeliveries.jobId,jobId));
+    expect(deliveryRows).toHaveLength(1);expect(deliveryRows[0]).toMatchObject({status:"delivered",deliveryMethod:"customer_acknowledgement",reportVersionId:issued[0].id});
+    expect(deliveryRows[0].deliveredAt).toBeInstanceOf(Date);
+    expect((await confirmReportReceipt(request("/reports",{reportVersionId:issued[0].id,confirmed:true},"wrong-token"),route)).status).toBe(404);
+    expect((await confirmReportReceipt(request("/reports",{reportVersionId:crypto.randomUUID(),confirmed:true}),route)).status).toBe(409);
+    expect((await reports(request("/reports",undefined,"wrong-token"),route)).status).toBe(404);
+    expect((await checkout(request("/checkout",{purpose:"balance"}),route)).ok).toBe(true);
+    expect((await readPublicQuote(id,created.token))?.view.balanceMinor).toBe(0);
+    const db=database.connect(database.adminUrl);const payments=await db.select().from(clientPayments).where(eq(clientPayments.quoteId,id));expect(payments).toHaveLength(2);expect(payments.every(payment=>payment.status==="succeeded")).toBe(true);
+    const bills=await db.select().from(invoices).where(eq(invoices.quoteId,id));expect(bills).toHaveLength(2);expect(bills.reduce((sum,bill)=>sum+bill.totalMinor,0)).toBe(found.row.totalMinor);expect(bills.reduce((sum,bill)=>sum+bill.vatMinor,0)).toBe(found.row.vatMinor);
+    await db.update(jobs).set({stage:"archived"}).where(eq(jobs.id,jobId));
+    await db.delete(jobStageEvents).where(eq(jobStageEvents.jobId,jobId));
+    await db.insert(jobStageEvents).values({organisationId:context.organisationId,jobId,fromStage:"paid",toStage:"archived",createdAt:new Date("2000-02-01T00:00:00Z")});
+    await db.update(organisationOperationalSettings).set({surveyFileRetentionPolicy:{version:"survey-file-1-year-v2",revision:1,enabled:true,approvedAt:new Date().toISOString(),approvedByUserId:context.internalUserId!,reason:"Disposable test practice retention approval"}}).where(eq(organisationOperationalSettings.organisationId,context.organisationId));
+    const register=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,jobId));
+    expect(register?.assessment.reason).toBe("retention_active");
+    await db.update(reportDeliveries).set({deliveredAt:new Date("2000-03-01T00:00:00Z")}).where(eq(reportDeliveries.jobId,jobId));
+    const expired=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,jobId));
+    expect(expired?.assessment.reason).toBe("manager_review_required");
+    expect(expired?.assessment.retentionUntil?.toISOString()).toBe("2001-03-01T00:00:00.000Z");
+    expect(expired?.assessment.reviewVersion).not.toBe(register?.assessment.reviewVersion);
+    expect(expired?.removalAuthorised).toBe(false);
+    const [retentionJob]=await db.select().from(jobs).where(eq(jobs.id,jobId));
+    const originalQuestionnaireId=crypto.randomUUID(),replacementQuestionnaireId=crypto.randomUUID();
+    const [questionnaireOriginal]=await db.insert(preinspectionDocuments).values({id:originalQuestionnaireId,organisationId:context.organisationId,jobId,propertyId:retentionJob.propertyId,requestId:crypto.randomUUID(),name:"Original certificate.pdf",contentType:"application/pdf",sizeBytes:4,checksum:"c".repeat(64),storageKey:`organisations/${context.organisationId}/preinspection/${jobId}/${originalQuestionnaireId}/original`,source:"customer",analysis:{privateText:"Fictional extracted text"}}).returning();
+    await db.insert(preinspectionDocuments).values({id:replacementQuestionnaireId,organisationId:context.organisationId,jobId,propertyId:retentionJob.propertyId,requestId:crypto.randomUUID(),name:"Replacement certificate.pdf",contentType:"application/pdf",sizeBytes:4,checksum:"d".repeat(64),storageKey:`organisations/${context.organisationId}/preinspection/${jobId}/${replacementQuestionnaireId}/original`,source:"customer",replacesId:questionnaireOriginal.id});
+    const questionnaireFile=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,jobId));
+    expect(questionnaireFile?.questionnaireDocuments).toHaveLength(2);expect(questionnaireFile?.assessment.reviewVersion).not.toBe(expired?.assessment.reviewVersion);
+    expect(questionnaireFile?.questionnaireDocuments[0]).not.toHaveProperty("analysis");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>prepareReviewedSurveyFileRemoval(tx,context.organisationId,jobId,questionnaireFile!.assessment.reviewVersion))).rejects.toThrow("manager");
+    await db.insert(auditEvents).values({organisationId:context.organisationId,actorUserId:context.internalUserId!,action:"job.retention_file_reviewed",resourceType:"job",resourceId:jobId,metadata:{reviewVersion:questionnaireFile!.assessment.reviewVersion,confirmed:true,noUnresolvedComplaintOrClaim:true}});
+    await expect(withTenant(createDatabase(),context.organisationId,async tx=>{
+      const [task]=await tx.insert(assistantTasks).values({organisationId:context.organisationId,surveyId:capture.survey.id,kind:"discrepancy",dedupeKey:"stale-retention-content-fixture",title:"Fictional reviewed adviser text",evidence:{}}).returning();
+      const before=await readSurveyFileRetention(tx,context.organisationId,jobId);
+      await tx.insert(auditEvents).values({organisationId:context.organisationId,actorUserId:context.internalUserId!,action:"job.retention_file_reviewed",resourceType:"job",resourceId:jobId,metadata:{reviewVersion:before!.assessment.reviewVersion,confirmed:true,noUnresolvedComplaintOrClaim:true}});
+      await tx.update(assistantTasks).set({title:"Fictional changed adviser text",updatedAt:task.updatedAt}).where(eq(assistantTasks.id,task.id));
+      const after=await readSurveyFileRetention(tx,context.organisationId,jobId);
+      expect(after!.assessment.reviewVersion).not.toBe(before!.assessment.reviewVersion);
+      await expect(requestReviewedSurveyFileRemoval(tx,context.organisationId,jobId,context.internalUserId!,{requestId:crypto.randomUUID(),reviewVersion:before!.assessment.reviewVersion,reason:"Reject a stale review after adviser content changes.",confirmed:true})).rejects.toThrow("file changed");
+      expect(await tx.select().from(surveyFileRemovals).where(eq(surveyFileRemovals.jobId,jobId))).toHaveLength(0);
+      const [proposal]=await tx.insert(fieldProposals).values({organisationId:context.organisationId,surveyId:capture.survey.id,fieldPath:"matters.legal.guarantees",proposedValue:{state:"provided",value:"Fictional retained proposal"},valueType:"text",evidenceRefs:[],originClass:"document_extraction",inputVersion:"fixture-v1",generator:"retention-fixture",dedupeKey:"stale-retention-proposal-fixture"}).returning();
+      const proposalBefore=await readSurveyFileRetention(tx,context.organisationId,jobId);
+      await tx.insert(auditEvents).values({organisationId:context.organisationId,actorUserId:context.internalUserId!,action:"job.retention_file_reviewed",resourceType:"job",resourceId:jobId,metadata:{reviewVersion:proposalBefore!.assessment.reviewVersion,confirmed:true,noUnresolvedComplaintOrClaim:true}});
+      await tx.update(fieldProposals).set({reviewNote:"Fictional changed review content",reviewedAt:proposal.reviewedAt}).where(eq(fieldProposals.id,proposal.id));
+      const proposalAfter=await readSurveyFileRetention(tx,context.organisationId,jobId);
+      expect(proposalAfter!.assessment.reviewVersion).not.toBe(proposalBefore!.assessment.reviewVersion);
+      await expect(requestReviewedSurveyFileRemoval(tx,context.organisationId,jobId,context.internalUserId!,{requestId:crypto.randomUUID(),reviewVersion:proposalBefore!.assessment.reviewVersion,reason:"Reject stale review after proposal review content changes.",confirmed:true})).rejects.toThrow("file changed");
+      expect(await tx.select().from(surveyFileRemovals).where(eq(surveyFileRemovals.jobId,jobId))).toHaveLength(0);
+      const recordedBefore=await readSurveyFileRetention(tx,context.organisationId,jobId);
+      await tx.insert(surveyFieldValues).values({organisationId:context.organisationId,surveyId:capture.survey.id,fieldPath:"fixture.custom.retention",value:{state:"provided",value:"Fictional private recorded answer"},clientGeneratedId:"retention-recorded-answer-fixture"});
+      const recordedAfter=await readSurveyFileRetention(tx,context.organisationId,jobId);
+      expect(recordedAfter!.assessment.reviewVersion).not.toBe(recordedBefore!.assessment.reviewVersion);
+      await expect(requestReviewedSurveyFileRemoval(tx,context.organisationId,jobId,context.internalUserId!,{requestId:crypto.randomUUID(),reviewVersion:recordedBefore!.assessment.reviewVersion,reason:"Reject stale review after recorded answer changes.",confirmed:true})).rejects.toThrow("file changed");
+      const [observation]=await tx.insert(observations).values({organisationId:context.organisationId,surveyId:capture.survey.id,kind:"current_observation",text:"Fictional private observation",structured:{privateNote:"Fictional private context"},clientGeneratedId:"retention-observation-fixture"}).returning();
+      const observationBefore=await readSurveyFileRetention(tx,context.organisationId,jobId);
+      await tx.update(observations).set({text:"Fictional changed observation",updatedAt:observation.updatedAt,version:observation.version}).where(eq(observations.id,observation.id));
+      const observationAfter=await readSurveyFileRetention(tx,context.organisationId,jobId);
+      expect(observationAfter!.assessment.reviewVersion).not.toBe(observationBefore!.assessment.reviewVersion);
+      await expect(requestReviewedSurveyFileRemoval(tx,context.organisationId,jobId,context.internalUserId!,{requestId:crypto.randomUUID(),reviewVersion:observationBefore!.assessment.reviewVersion,reason:"Reject stale review after observation text changes.",confirmed:true})).rejects.toThrow("file changed");
+      const recordedProvenance=await readSurveyFileProvenance(tx,context.organisationId,jobId,[],[]);
+      expect(JSON.stringify(recordedProvenance)).not.toContain("Fictional private");
+      expect(recordedProvenance.values.find(value=>value.fieldPath==="fixture.custom.retention")?.contentFingerprint).toMatch(/^[a-f0-9]{64}$/);
+      expect(recordedProvenance.observations.find(value=>value.id===observation.id)?.contentFingerprint).toMatch(/^[a-f0-9]{64}$/);
+      throw new Error("Rollback stale adviser review fixture");
+    })).rejects.toThrow("Rollback stale adviser review fixture");
+    const prepared=await withTenant(createDatabase(),context.organisationId,tx=>prepareReviewedSurveyFileRemoval(tx,context.organisationId,jobId,questionnaireFile!.assessment.reviewVersion));
+    expect(prepared.manifest.objects).toHaveLength(2);expect(prepared.manifest.objects.every(object=>object.kind==="questionnaire")).toBe(true);
+    await db.update(organisationMemberships).set({active:false}).where(eq(organisationMemberships.userId,context.internalUserId!));
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>prepareReviewedSurveyFileRemoval(tx,context.organisationId,jobId,questionnaireFile!.assessment.reviewVersion))).rejects.toThrow("manager");
+    await db.update(organisationMemberships).set({active:true}).where(eq(organisationMemberships.userId,context.internalUserId!));
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>prepareReviewedSurveyFileRemoval(tx,context.organisationId,jobId,expired!.assessment.reviewVersion))).rejects.toThrow("changed");
+    const removalRequest={requestId:crypto.randomUUID(),reviewVersion:questionnaireFile!.assessment.reviewVersion,reason:"Manager confirmed expiry and reviewed every retained original.",confirmed:true as const};
+    const requested=await Promise.all([1,2].map(()=>withTenant(createDatabase(),context.organisationId,tx=>requestReviewedSurveyFileRemoval(tx,context.organisationId,jobId,context.internalUserId!,removalRequest))));
+    expect(requested[0].id).toBe(requested[1].id);expect(requested.map(result=>result.duplicate).sort()).toEqual([false,true]);expect(requested.every(result=>result.storageRemoved===false)).toBe(true);
+    await expect(withTenant(createDatabase(),context.organisationId,async tx=>{
+      const claim=await claimQueuedSurveyFileRemoval(tx,context.organisationId,jobId,requested[0].id);
+      const first=claim.manifest.objects[0];const key=`${first.kind}:${first.id}`;
+      await recordSurveyFileOriginalDispatch(tx,context.organisationId,jobId,claim.id,claim.leaseToken,key);
+      await recordSurveyFileOriginalOutcome(tx,context.organisationId,claim.id,claim.leaseToken,key,{state:"verification_required",reason:"uncertain_delete"});
+      const decision={id:claim.id,manifestVersion:claim.manifest.manifestVersion,reason:"Manager reviewed remaining fictional originals for resumption.",confirmed:true as const};
+      await expect(resumeReviewedSurveyFileRemoval(tx,context.organisationId,jobId,context.internalUserId!,decision)).rejects.toThrow("must be verified");
+      const recovery=await claimSurveyFileRemovalRecovery(tx,context.organisationId,claim.id);
+      await recordSurveyFileOriginalOutcome(tx,context.organisationId,claim.id,recovery.leaseToken,key,{state:"removed"});
+      await tx.update(surveyFileRemovals).set({status:"verification_required",lockedUntil:null,error:"additional_originals_require_review"}).where(eq(surveyFileRemovals.id,claim.id));
+      await expect(resumeReviewedSurveyFileRemoval(tx,context.organisationId,jobId,context.internalUserId!,{...decision,manifestVersion:"0".repeat(64)})).rejects.toThrow("decision changed");
+      const resumed=await resumeReviewedSurveyFileRemoval(tx,context.organisationId,jobId,context.internalUserId!,decision);
+      expect(resumed.leaseToken).not.toBe(recovery.leaseToken);
+      const [resumedRequest]=await tx.select().from(surveyFileRemovals).where(eq(surveyFileRemovals.id,claim.id));
+      expect(resumedRequest.progress[key].state).toBe("removed");expect(resumedRequest.error).toBeNull();
+      await expect(resumeReviewedSurveyFileRemoval(tx,context.organisationId,jobId,context.internalUserId!,decision)).rejects.toThrow("decision changed");
+      const second=resumed.manifest.objects.find(object=>`${object.kind}:${object.id}`!==key)!;
+      expect(await recordSurveyFileOriginalDispatch(tx,context.organisationId,jobId,resumed.id,resumed.leaseToken,`${second.kind}:${second.id}`)).toMatchObject({dispatch:true});
+      throw new Error("Rollback reviewed resumption fixture");
+    })).rejects.toThrow("Rollback reviewed resumption fixture");
+    await expect(withTenant(createDatabase(),context.organisationId,async tx=>{
+      const claim=await claimQueuedSurveyFileRemoval(tx,context.organisationId,jobId,requested[0].id);
+      const first=claim.manifest.objects[0];const key=`${first.kind}:${first.id}`;
+      await expect(recordSurveyFilePreflightFailure(tx,context.organisationId,claim.id,crypto.randomUUID(),key,"unexpected_absence")).rejects.toThrow("replaced");
+      await recordSurveyFilePreflightFailure(tx,context.organisationId,claim.id,claim.leaseToken,key,"unexpected_absence");
+      const [failed]=await tx.select().from(surveyFileRemovals).where(eq(surveyFileRemovals.id,claim.id));
+      expect(failed.status).toBe("verification_required");expect(failed.lockedUntil).toBeNull();expect(failed.progress).toEqual({});
+      const [eligibility]=await tx.select({canCancel:surveyFileRemovalCanCancel}).from(surveyFileRemovals).where(eq(surveyFileRemovals.id,claim.id));expect(eligibility.canCancel).toBe(true);
+      await expect(claimSurveyFileRemovalRecovery(tx,context.organisationId,claim.id)).rejects.toThrow("No recorded original dispatch");
+      expect(await cancelReviewedSurveyFileRemoval(tx,context.organisationId,jobId,context.internalUserId!,{id:claim.id,manifestVersion:claim.manifest.manifestVersion,reason:"Cancel failed preflight to investigate missing original.",confirmed:true})).toMatchObject({status:"cancelled",duplicate:false});
+      expect(await cancelReviewedSurveyFileRemoval(tx,context.organisationId,jobId,context.internalUserId!,{id:claim.id,manifestVersion:claim.manifest.manifestVersion,reason:"Cancel failed preflight to investigate missing original.",confirmed:true})).toMatchObject({status:"cancelled",duplicate:true});
+      throw new Error("rollback preflight failure fixture");
+    })).rejects.toThrow("rollback preflight failure fixture");
+    const removalRows=await db.select().from(surveyFileRemovals).where(eq(surveyFileRemovals.jobId,jobId));expect(removalRows).toHaveLength(1);expect(removalRows[0].manifestVersion).toBe(prepared.manifest.manifestVersion);
+    expect((await withTenant(createDatabase(),context.organisationId,tx=>revalidateQueuedSurveyFileRemoval(tx,context.organisationId,jobId,requested[0].id))).manifest.manifestVersion).toBe(prepared.manifest.manifestVersion);
+    await expect(withTenant(createDatabase(),context.organisationId,async tx=>{
+      const claim=await claimQueuedSurveyFileRemoval(tx,context.organisationId,jobId,requested[0].id);
+      expect(claim.attempts).toBe(1);expect(claim.manifest.manifestVersion).toBe(prepared.manifest.manifestVersion);
+      const [stored]=await tx.select().from(surveyFileRemovals).where(eq(surveyFileRemovals.id,claim.id));
+      expect(stored.status).toBe("dispatched");expect(stored.leaseToken).toBe(claim.leaseToken);
+      const first=claim.manifest.objects[0];const objectKey=`${first.kind}:${first.id}`;
+      await tx.update(organisations).set({status:"suspended"}).where(eq(organisations.id,context.organisationId));
+      await expect(recordSurveyFileOriginalDispatch(tx,context.organisationId,jobId,claim.id,claim.leaseToken,objectKey)).rejects.toThrow("active practice");
+      await tx.update(organisations).set({status:"active"}).where(eq(organisations.id,context.organisationId));
+      await tx.update(organisationMemberships).set({active:false}).where(eq(organisationMemberships.userId,context.internalUserId!));
+      await expect(recordSurveyFileOriginalDispatch(tx,context.organisationId,jobId,claim.id,claim.leaseToken,objectKey)).rejects.toThrow("permission");
+      await tx.update(organisationMemberships).set({active:true}).where(eq(organisationMemberships.userId,context.internalUserId!));
+      expect(await recordSurveyFileOriginalDispatch(tx,context.organisationId,jobId,claim.id,claim.leaseToken,objectKey)).toMatchObject({dispatch:true,verificationRequired:false});
+      expect(await recordSurveyFileOriginalDispatch(tx,context.organisationId,jobId,claim.id,claim.leaseToken,objectKey)).toEqual({dispatch:false,verificationRequired:true});
+      await expect(recordSurveyFileOriginalOutcome(tx,context.organisationId,claim.id,crypto.randomUUID(),objectKey,{state:"removed"})).rejects.toThrow("replaced");
+      expect(await recordSurveyFileOriginalOutcome(tx,context.organisationId,claim.id,claim.leaseToken,objectKey,{state:"removed"})).toEqual({duplicate:false,status:"dispatched"});
+      expect(await recordSurveyFileOriginalOutcome(tx,context.organisationId,claim.id,claim.leaseToken,objectKey,{state:"removed"})).toEqual({duplicate:true,status:"dispatched"});
+      await expect(claimSurveyFileRemovalRecovery(tx,context.organisationId,claim.id)).rejects.toThrow("still active");
+      const second=claim.manifest.objects[1];const secondKey=`${second.kind}:${second.id}`;
+      await recordSurveyFileOriginalDispatch(tx,context.organisationId,jobId,claim.id,claim.leaseToken,secondKey);
+      await recordSurveyFileOriginalOutcome(tx,context.organisationId,claim.id,claim.leaseToken,secondKey,{state:"verification_required",reason:"uncertain_delete"});
+      await expect(cancelReviewedSurveyFileRemoval(tx,context.organisationId,jobId,context.internalUserId!,{id:claim.id,manifestVersion:claim.manifest.manifestVersion,reason:"Attempt cancellation after an uncertain deletion.",confirmed:true})).rejects.toThrow("cannot be cancelled");
+      const recovery=await claimSurveyFileRemovalRecovery(tx,context.organisationId,claim.id);
+      expect(recovery.leaseToken).not.toBe(claim.leaseToken);expect(recovery.objects.map(object=>object.id)).toEqual([second.id]);
+      throw new Error("Rollback dispatch claim fixture");
+    }).catch((error: unknown) => {
+      const cause = (error as { cause?: { message?: string } }).cause;
+      if (cause?.message) throw new Error(`Removal workflow database guard: ${cause.message}`);
+      throw error;
+    })).rejects.toThrow("Rollback dispatch claim fixture");
+    await expect(db.update(surveyFileRemovals).set({manifest:{objects:[]}}).where(eq(surveyFileRemovals.id,requested[0].id))).rejects.toThrow();
+    await expect(db.delete(surveyFileRemovals).where(eq(surveyFileRemovals.id,requested[0].id))).rejects.toThrow();
+    await expect(db.update(surveyFileRemovals).set({progress:{unknown:{state:"removed"}}}).where(eq(surveyFileRemovals.id,requested[0].id))).rejects.toThrow();
+    const firstOriginal=prepared.manifest.objects[0];
+    await expect(db.transaction(async tx=>{
+      await tx.update(surveyFileRemovals).set({status:"dispatched",leaseToken:crypto.randomUUID(),lockedUntil:new Date(Date.now()+300000),attempts:1}).where(eq(surveyFileRemovals.id,requested[0].id));
+      await tx.delete(surveyElements).where(eq(surveyElements.surveyId,capture.survey.id));
+    })).rejects.toMatchObject({cause:{message:"Survey evidence under original removal cannot be added, changed, moved or deleted"}});
+    await expect(db.transaction(async tx=>{
+      await tx.update(surveyFileRemovals).set({status:"dispatched",leaseToken:crypto.randomUUID(),lockedUntil:new Date(Date.now()+300000),attempts:1}).where(eq(surveyFileRemovals.id,requested[0].id));
+      await tx.update(surveys).set({version:999}).where(eq(surveys.id,capture.survey.id));
+    })).rejects.toThrow();
+    await expect(db.transaction(async tx=>{
+      await tx.update(surveyFileRemovals).set({status:"dispatched",leaseToken:crypto.randomUUID(),lockedUntil:new Date(Date.now()+300000),attempts:1}).where(eq(surveyFileRemovals.id,requested[0].id));
+      await tx.delete(preinspectionDocuments).where(eq(preinspectionDocuments.jobId,jobId));
+    })).rejects.toThrow();
+    await expect(db.transaction(async tx=>{
+      await tx.update(surveyFileRemovals).set({status:"dispatched",leaseToken:crypto.randomUUID(),lockedUntil:new Date(Date.now()+300000),attempts:1}).where(eq(surveyFileRemovals.id,requested[0].id));
+      await tx.update(jobs).set({stage:"instructed"}).where(eq(jobs.id,jobId));
+    })).rejects.toThrow();
+    await expect(db.update(surveyFileRemovals).set({status:"verification_required",progress:{[`${firstOriginal.kind}:${firstOriginal.id}`]:{state:"removed",attemptId:crypto.randomUUID(),removedAt:new Date().toISOString()}}}).where(eq(surveyFileRemovals.id,requested[0].id))).rejects.toThrow();
+    await expect(db.transaction(async tx=>{
+      await tx.update(surveyFileRemovals).set({status:"dispatched",leaseToken:crypto.randomUUID(),lockedUntil:new Date(Date.now()+300000),attempts:1}).where(eq(surveyFileRemovals.id,requested[0].id));
+      await tx.update(surveyFileRemovals).set({attempts:0}).where(eq(surveyFileRemovals.id,requested[0].id));
+    })).rejects.toThrow();
+    for(const invalidEvidence of [{attemptId:"invalid",removedAt:new Date().toISOString()},{attemptId:crypto.randomUUID(),removedAt:"infinity"},{attemptId:crypto.randomUUID(),removedAt:"2999-01-01T00:00:00Z"}]) {
+      await expect(db.transaction(async tx=>{
+        await tx.update(surveyFileRemovals).set({status:"dispatched",leaseToken:crypto.randomUUID(),lockedUntil:new Date(Date.now()+300000),attempts:1,progress:{[`${firstOriginal.kind}:${firstOriginal.id}`]:{state:"removed",...invalidEvidence}}}).where(eq(surveyFileRemovals.id,requested[0].id));
+      })).rejects.toThrow();
+    }
+    await expect(db.transaction(async tx=>{
+      await tx.update(surveyFileRemovals).set({status:"dispatched",leaseToken:crypto.randomUUID(),lockedUntil:new Date(Date.now()+300000),attempts:1,progress:{[`${firstOriginal.kind}:${firstOriginal.id}`]:{state:"removed",attemptId:crypto.randomUUID(),removedAt:new Date().toISOString()}}}).where(eq(surveyFileRemovals.id,requested[0].id));
+      await tx.update(surveyFileRemovals).set({progress:{}}).where(eq(surveyFileRemovals.id,requested[0].id));
+    })).rejects.toThrow();
+    await expect(db.update(surveyFileRemovals).set({status:"completed",completedAt:new Date()}).where(eq(surveyFileRemovals.id,requested[0].id))).rejects.toThrow();
+    await expect(db.transaction(async tx=>{
+      await tx.update(surveyFileRemovals).set({status:"dispatched",leaseToken:crypto.randomUUID(),lockedUntil:new Date(Date.now()+300000),attempts:1}).where(eq(surveyFileRemovals.id,requested[0].id));
+      await tx.update(surveyFileRemovals).set({status:"completed",completedAt:new Date()}).where(eq(surveyFileRemovals.id,requested[0].id));
+    })).rejects.toThrow();
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>requestReviewedSurveyFileRemoval(tx,context.organisationId,jobId,context.internalUserId!,{...removalRequest,reason:"Changed removal decision with reused identifier."}))).rejects.toThrow("different decision");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>requestReviewedSurveyFileRemoval(tx,context.organisationId,jobId,context.internalUserId!,{...removalRequest,requestId:crypto.randomUUID()}))).rejects.toThrow("already exists");
+    await expect(withTenant(createDatabase(),context.organisationId,async tx=>{
+      const decision={id:requested[0].id,manifestVersion:prepared.manifest.manifestVersion,reason:"Manager stopped removal pending further file review.",confirmed:true as const};
+      expect(await cancelReviewedSurveyFileRemoval(tx,context.organisationId,jobId,context.internalUserId!,decision)).toMatchObject({status:"cancelled",duplicate:false});
+      expect(await cancelReviewedSurveyFileRemoval(tx,context.organisationId,jobId,context.internalUserId!,decision)).toMatchObject({status:"cancelled",duplicate:true});
+      const replacement=await requestReviewedSurveyFileRemoval(tx,context.organisationId,jobId,context.internalUserId!,{...removalRequest,requestId:crypto.randomUUID()});
+      expect(replacement.id).not.toBe(requested[0].id);
+      throw new Error("Rollback cancellation fixture");
+    })).rejects.toThrow("Rollback cancellation fixture");
+    const [jobHold]=await db.insert(jobRetentionHolds).values({organisationId:context.organisationId,jobId,kind:"complaint",reason:"Unresolved customer complaint requires file retention.",reviewedByUserId:context.internalUserId!}).returning();
+    const complaint=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,jobId));
+    expect(complaint?.assessment.reason).toBe("protected");expect(complaint?.assessment.reviewVersion).not.toBe(expired?.assessment.reviewVersion);
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>revalidateQueuedSurveyFileRemoval(tx,context.organisationId,jobId,requested[0].id))).rejects.toThrow("changed");
+    await db.update(jobRetentionHolds).set({kind:null,revision:2,reason:"Complaint resolved and manager authorised clearance."}).where(eq(jobRetentionHolds.id,jobHold.id));
+    const clearedFile=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,jobId));
+    expect(clearedFile?.assessment.reason).toBe("manager_review_required");expect(clearedFile?.assessment.reviewVersion).not.toBe(expired?.assessment.reviewVersion);
+    const [jobRow]=await db.select().from(jobs).where(eq(jobs.id,jobId));
+    const [original]=await db.insert(mediaAssets).values({organisationId:context.organisationId,propertyId:jobRow.propertyId,surveyId:capture.survey.id,kind:"photo",storageKey:`test/${jobId}/original`,contentType:"image/jpeg",byteSize:4,sha256:"a".repeat(64),clientGeneratedId:"retention-original-1",originalFilename:"inspection.jpg"}).returning();
+    await expect(db.transaction(async tx=>{
+      await tx.update(surveyFileRemovals).set({status:"dispatched",leaseToken:crypto.randomUUID(),lockedUntil:new Date(Date.now()+300000),attempts:1}).where(eq(surveyFileRemovals.id,requested[0].id));
+      await tx.update(mediaAssets).set({surveyId:null}).where(eq(mediaAssets.id,original.id));
+    })).rejects.toThrow();
+
+    await db.insert(mediaAssets).values({organisationId:context.organisationId,propertyId:jobRow.propertyId,surveyId:null,kind:"photo",storageKey:`test/${jobId}/thumbnail`,contentType:"image/jpeg",byteSize:2,sha256:"b".repeat(64),clientGeneratedId:"retention-thumbnail-1",derivedFromId:original.id,derivation:"thumbnail"});
+    const mediaFile=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,jobId));
+    expect(mediaFile?.media).toHaveLength(2);expect(mediaFile?.assessment.reviewVersion).not.toBe(clearedFile?.assessment.reviewVersion);
+    const [analysis]=await db.insert(mediaAnalyses).values({organisationId:context.organisationId,mediaId:original.id,surveyId:capture.survey.id,analyser:"retention-fixture-v1",status:"completed",result:{privateText:"Fictional extracted certificate text"}}).returning();
+    const analysedFile=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,jobId));
+    expect(analysedFile?.analysisCount).toBe(1);expect(analysedFile?.assessment.reviewVersion).not.toBe(mediaFile?.assessment.reviewVersion);
+    const provenance=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileProvenance(tx,context.organisationId,jobId,[original.id],[]));
+    expect(provenance.analyses[0]).not.toHaveProperty("result");expect(provenance.analyses[0].resultFingerprint).toMatch(/^[a-f0-9]{64}$/);
+    const missingMedia=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileMedia(tx,context.organisationId,jobId,[{media:[crypto.randomUUID()]}]));
+    expect(missingMedia.referenceReviewRequired).toBe(true);expect(missingMedia.unresolvedReferences).toHaveLength(1);
+    const malformedTrace=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileMedia(tx,context.organisationId,jobId,[{media:"invalid"}]));expect(malformedTrace.referenceReviewRequired).toBe(true);
+    const [otherJob]=await db.insert(jobs).values({organisationId:context.organisationId,clientId:jobRow.clientId,propertyId:jobRow.propertyId,reference:"RETENTION-SHARED",serviceName:"Survey"}).returning();
+    const otherSurvey=await createSurvey(context,otherJob.id,{serviceLevel:"level_1"});if(otherSurvey.kind!=="created")throw new Error(otherSurvey.kind);
+    const [sourceReport]=await db.select().from(reportVersions).where(eq(reportVersions.id,issued[0].id));
+    await db.insert(reportVersions).values({...sourceReport,id:crypto.randomUUID(),surveyId:otherSurvey.survey.id,jobId:otherJob.id,versionNumber:1,trace:{...sourceReport.trace,media:[original.id]}});
+    const sharedFile=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,jobId));
+    expect(sharedFile?.externalEvidenceReferenceCount).toBe(1);expect(sharedFile?.assessment.reason).toBe("evidence_review_required");expect(sharedFile?.assessment.eligibleForManagerReview).toBe(false);
+    const [otherElement]=await db.insert(surveyElements).values({organisationId:context.organisationId,surveyId:otherSurvey.survey.id,sectionKey:"outside",elementKey:"roof_coverings"}).returning();
+    await expect(db.transaction(async tx=>{
+      await tx.update(surveyFileRemovals).set({status:"dispatched",leaseToken:crypto.randomUUID(),lockedUntil:new Date(Date.now()+300000),attempts:1}).where(eq(surveyFileRemovals.id,requested[0].id));
+      await tx.insert(assistantTasks).values({organisationId:context.organisationId,surveyId:otherSurvey.survey.id,kind:"discrepancy",dedupeKey:"blocked-questionnaire-removal",title:"Blocked shared questionnaire",evidence:{context:{id:questionnaireOriginal.id}}});
+    })).rejects.toMatchObject({cause:{message:"Extracted references to originals under removal cannot be added or changed"}});
+
+    await expect(db.transaction(async tx=>{
+      await tx.update(surveyFileRemovals).set({status:"dispatched",leaseToken:crypto.randomUUID(),lockedUntil:new Date(Date.now()+300000),attempts:1}).where(eq(surveyFileRemovals.id,requested[0].id));
+      await tx.insert(evidenceLinks).values({organisationId:context.organisationId,surveyId:otherSurvey.survey.id,targetType:"element",targetId:otherElement.id,evidenceType:"prior_survey",evidenceId:capture.survey.id,clientGeneratedId:"blocked-removal-prior-reference"});
+    })).rejects.toMatchObject({cause:{message:"Evidence referring to a file under removal cannot be added or changed"}});
+
+    await db.insert(evidenceLinks).values({organisationId:context.organisationId,surveyId:otherSurvey.survey.id,targetType:"element",targetId:otherElement.id,evidenceType:"prior_survey",evidenceId:capture.survey.id,clientGeneratedId:"retention-prior-reference"});
+    const priorReferenced=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,jobId));
+    expect(priorReferenced?.externalEvidenceReferenceCount).toBe(2);expect(priorReferenced?.assessment.reviewVersion).not.toBe(sharedFile?.assessment.reviewVersion);
+    await db.insert(assistantTasks).values({organisationId:context.organisationId,surveyId:otherSurvey.survey.id,kind:"discrepancy",dedupeKey:"retention-shared-analysis",title:"Shared original reference",evidence:{type:"document_span",mediaId:original.id,analysisId:analysis.id}});
+    const adviserReferenced=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,jobId));
+    expect(adviserReferenced?.externalEvidenceReferenceCount).toBe(3);expect(adviserReferenced?.assessment.eligibleForManagerReview).toBe(false);
+    await db.insert(fieldProposals).values({organisationId:context.organisationId,surveyId:otherSurvey.survey.id,fieldPath:"matters.legal.guarantees",proposedValue:{state:"provided",value:"Fictional document reference"},valueType:"text",evidenceRefs:[{type:"document_span",id:questionnaireOriginal.id,context:{mediaId:original.id}}],originClass:"document_extraction",inputVersion:"fixture-v1",generator:"retention-fixture",dedupeKey:"retention-questionnaire-reference"});
+    const proposalReferenced=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,jobId));
+    expect(proposalReferenced?.externalEvidenceReferenceCount).toBe(4);expect(proposalReferenced?.assessment.reviewVersion).not.toBe(adviserReferenced?.assessment.reviewVersion);
+    await expect(db.transaction(async tx=>{
+      await tx.update(surveyFileRemovals).set({status:"dispatched",leaseToken:crypto.randomUUID(),lockedUntil:new Date(Date.now()+300000),attempts:1}).where(eq(surveyFileRemovals.id,requested[0].id));
+      await tx.insert(fieldProposals).values({organisationId:context.organisationId,surveyId:otherSurvey.survey.id,fieldPath:"matters.legal.guarantees",proposedValue:{state:"provided",value:{source:{id:questionnaireOriginal.id}}},valueType:"text",evidenceRefs:[],originClass:"document_extraction",inputVersion:"fixture-v1",generator:"retention-fixture",dedupeKey:"blocked-value-only-reference"});
+    })).rejects.toMatchObject({cause:{message:"Extracted references to originals under removal cannot be added or changed"}});
+    await db.insert(fieldProposals).values({organisationId:context.organisationId,surveyId:otherSurvey.survey.id,fieldPath:"matters.legal.guarantees",proposedValue:{state:"provided",value:{source:{id:questionnaireOriginal.id}}},valueType:"text",evidenceRefs:[],originClass:"document_extraction",inputVersion:"fixture-v1",generator:"retention-fixture",dedupeKey:"value-only-reference"});
+    const valueReferenced=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,jobId));
+    expect(valueReferenced?.externalEvidenceReferenceCount).toBe(5);expect(valueReferenced?.assessment.eligibleForManagerReview).toBe(false);
+    for (const kind of ["answer","observation"] as const) {
+      await expect(db.transaction(async tx=>{
+        await tx.update(surveyFileRemovals).set({status:"dispatched",leaseToken:crypto.randomUUID(),lockedUntil:new Date(Date.now()+300000),attempts:1}).where(eq(surveyFileRemovals.id,requested[0].id));
+        if(kind==="answer") await tx.insert(surveyFieldValues).values({organisationId:context.organisationId,surveyId:otherSurvey.survey.id,fieldPath:"fixture.shared.source",value:{state:"provided",value:{nested:{source:{id:questionnaireOriginal.id}}}},clientGeneratedId:"blocked-external-answer-reference"});
+        else await tx.insert(observations).values({organisationId:context.organisationId,surveyId:otherSurvey.survey.id,kind:"external_record",text:"Fictional shared evidence",sourceRef:questionnaireOriginal.id,clientGeneratedId:"blocked-external-observation-reference"});
+      })).rejects.toMatchObject({cause:{message:"Extracted references to originals under removal cannot be added or changed"}});
+    }
+    await db.insert(surveyFieldValues).values({organisationId:context.organisationId,surveyId:otherSurvey.survey.id,fieldPath:"fixture.shared.source",value:{state:"provided",value:{nested:{source:{id:questionnaireOriginal.id}}}},clientGeneratedId:"external-answer-reference"});
+    await db.insert(observations).values({organisationId:context.organisationId,surveyId:otherSurvey.survey.id,kind:"external_record",text:"Fictional shared evidence",sourceRef:questionnaireOriginal.id,clientGeneratedId:"external-observation-reference"});
+    const recordedReferenced=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,jobId));
+    expect(recordedReferenced?.externalEvidenceReferenceCount).toBe(7);expect(recordedReferenced?.assessment.eligibleForManagerReview).toBe(false);
+    const [foreignOrg]=await db.insert(organisations).values({clerkOrganisationId:"org_retention_foreign",slug:"retention-foreign",name:"Foreign fixture",practiceType:"residential",region:"Bristol",status:"active"}).returning();
+    const foreignProvenance=await withTenant(createDatabase(),foreignOrg.id,tx=>readSurveyFileProvenance(tx,foreignOrg.id,jobId,[original.id],[]));
+    expect(foreignProvenance.values).toEqual([]);expect(foreignProvenance.observations).toEqual([]);expect(foreignProvenance.analyses).toEqual([]);expect(foreignProvenance.tasks).toEqual([]);expect(foreignProvenance.proposals).toEqual([]);
+    expect(await withTenant(createDatabase(),foreignOrg.id,tx=>tx.select().from(surveyFileRemovals).where(eq(surveyFileRemovals.jobId,jobId)))).toEqual([]);
+    await expect(withTenant(createDatabase(),foreignOrg.id,tx=>prepareReviewedSurveyFileRemoval(tx,foreignOrg.id,jobId,questionnaireFile!.assessment.reviewVersion))).rejects.toThrow("unavailable");
+    const [heldOriginal]=await db.insert(organisationDocuments).values({organisationId:context.organisationId,jobId,name:"Held original",category:"legal",blobUrl:"https://example.test/held",blobPathname:"held",checksum:"held",contentType:"text/plain",sizeBytes:4,legalHold:false}).returning();
+    await expect(db.transaction(async tx=>{
+      await tx.update(surveyFileRemovals).set({status:"dispatched",leaseToken:crypto.randomUUID(),lockedUntil:new Date(Date.now()+300000),attempts:1}).where(eq(surveyFileRemovals.id,requested[0].id));
+      const [held]=await tx.update(organisationDocuments).set({legalHold:true}).where(eq(organisationDocuments.id,heldOriginal.id)).returning();
+      expect(held.legalHold).toBe(true);
+      await tx.update(organisationDocuments).set({legalHold:false}).where(eq(organisationDocuments.id,heldOriginal.id));
+    })).rejects.toMatchObject({cause:{message:"Documents under survey file removal cannot be changed or detached"}});
+    await db.update(organisationDocuments).set({legalHold:true}).where(eq(organisationDocuments.id,heldOriginal.id));
+    const held=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,jobId));
+    expect(held?.assessment.reason).toBe("protected");expect(held?.assessment.reviewVersion).not.toBe(expired?.assessment.reviewVersion);
+    expect((await confirmReportReceipt(request("/reports",{reportVersionId:issued[0].id,confirmed:true}),route)).status).toBe(409);
+    await db.update(organisations).set({status:"suspended"}).where(eq(organisations.id,context.organisationId));
+    expect((await confirmReportReceipt(request("/reports",{reportVersionId:issued[0].id,confirmed:true}),route)).status).toBe(404);
+    await db.update(organisations).set({status:"active"}).where(eq(organisations.id,context.organisationId));
+    await db.update(customerQuotes).set({tokenRevokedAt:new Date()}).where(eq(customerQuotes.id,id));
+    expect((await confirmReportReceipt(request("/reports",{reportVersionId:issued[0].id,confirmed:true}),route)).status).toBe(404);
+    expect(await db.select().from(reportDeliveries).where(eq(reportDeliveries.jobId,jobId))).toHaveLength(1);
+    let releaseDispatch!:()=>void;let dispatchReady!:()=>void;
+    const dispatchGate=new Promise<void>(resolve=>{releaseDispatch=resolve;});
+    const ready=new Promise<void>(resolve=>{dispatchReady=resolve;});
+    const dispatch=withTenant(createDatabase(),context.organisationId,async tx=>{
+      await tx.select({id:jobs.id}).from(jobs).where(eq(jobs.id,jobId)).for("update");
+      await tx.update(surveyFileRemovals).set({status:"dispatched",leaseToken:crypto.randomUUID(),lockedUntil:new Date(Date.now()+300000),attempts:1}).where(eq(surveyFileRemovals.id,requested[0].id));
+      dispatchReady();await dispatchGate;
+    });
+    await ready;
+    try {
+      await expect(withTenant(createDatabase(),context.organisationId,async tx=>{
+        await tx.execute(sql`set local lock_timeout='100ms'`);
+        await tx.update(surveys).set({version:999}).where(eq(surveys.id,capture.survey.id));
+      })).rejects.toMatchObject({cause:{code:"55P03"}});
+    } finally {releaseDispatch();await dispatch;}
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(surveys).set({version:999}).where(eq(surveys.id,capture.survey.id)))).rejects.toMatchObject({cause:{message:"A record bound to a file under original removal cannot be added, changed, moved or deleted"}});
+    const [removalJob]=await db.insert(jobs).values({...retentionJob,id:crypto.randomUUID(),reference:"REMOVAL-STORAGE-FIXTURE",stage:"instructed"}).returning();
+    const removalSurvey=await createSurvey(context,removalJob.id,{serviceLevel:"level_1"});if(removalSurvey.kind!=="created")throw new Error(removalSurvey.kind);
+    await db.update(jobs).set({stage:"archived"}).where(eq(jobs.id,removalJob.id));
+    await db.delete(jobStageEvents).where(eq(jobStageEvents.jobId,removalJob.id));
+    await db.insert(jobStageEvents).values({organisationId:context.organisationId,jobId:removalJob.id,fromStage:null,toStage:"archived",createdAt:new Date("2000-03-01T00:00:00Z")});
+    const [removalReport]=await db.insert(reportVersions).values({...sourceReport,id:crypto.randomUUID(),jobId:removalJob.id,surveyId:removalSurvey.survey.id,versionNumber:1,trace:{media:[]}}).returning();
+    const [sourceApproval]=await db.select().from(reportApprovals).where(eq(reportApprovals.reportVersionId,sourceReport.id));
+    expect(sourceApproval).toBeDefined();
+    const [removalApproval]=await db.insert(reportApprovals).values({...sourceApproval,id:crypto.randomUUID(),reportVersionId:removalReport.id}).returning();
+    const deliveryOriginalId=crypto.randomUUID();const deliveryBytes=new TextEncoder().encode("file");
+    const [deliveryOriginal]=await db.insert(organisationDocuments).values({id:deliveryOriginalId,organisationId:context.organisationId,name:"Fictional delivery-only original",category:"report",blobUrl:"https://example.test/fictional",blobPathname:`organisations/${context.organisationId}/documents/${deliveryOriginalId}/original`,checksum:createHash("sha256").update(deliveryBytes).digest("hex"),contentType:"text/plain",sizeBytes:deliveryBytes.length,deletedAt:new Date("2000-03-01T00:00:00Z"),retentionUntil:new Date("2001-03-01T00:00:00Z")}).returning();
+    expect(deliveryOriginal.jobId).toBeNull();expect(deliveryOriginal.reportVersionId).toBeNull();
+    await db.insert(reportDeliveries).values({organisationId:context.organisationId,jobId:removalJob.id,reportVersionId:removalReport.id,documentId:deliveryOriginal.id,recipient:"storage-fixture@example.test",status:"delivered",deliveredAt:new Date("2000-03-01T00:00:00Z")});
+    const originalBytes=new TextEncoder().encode("file");const removalOriginalId=crypto.randomUUID();
+    const [removalOriginal]=await db.insert(preinspectionDocuments).values({id:removalOriginalId,organisationId:context.organisationId,jobId:removalJob.id,propertyId:retentionJob.propertyId,requestId:crypto.randomUUID(),name:"Fictional storage original.txt",analysis:{status:"unavailable",reason:"Fictional extracted text retained for disposition testing."},contentType:"text/plain",sizeBytes:originalBytes.length,checksum:createHash("sha256").update(originalBytes).digest("hex"),storageKey:`organisations/${context.organisationId}/preinspection/${removalJob.id}/${removalOriginalId}/original`,source:"customer"}).returning();
+    const removalMediaId=crypto.randomUUID();
+    const [removalMedia]=await db.insert(mediaAssets).values({id:removalMediaId,originalFilename:"Fictional private original filename.jpg",captureContext:{locationLabel:"Fictional private capture room",note:"Fictional private capture note"},organisationId:context.organisationId,propertyId:retentionJob.propertyId,surveyId:removalSurvey.survey.id,kind:"photo",storageKey:`organisations/${context.organisationId}/surveys/${removalSurvey.survey.id}/${removalMediaId}/original`,contentType:"image/jpeg",byteSize:originalBytes.length,sha256:createHash("sha256").update(originalBytes).digest("hex"),clientGeneratedId:crypto.randomUUID()}).returning();
+    const [removalAnalysis]=await db.insert(mediaAnalyses).values({organisationId:context.organisationId,mediaId:removalMedia.id,surveyId:removalSurvey.survey.id,analyser:"fictional-retention",status:"completed",result:{fictionalText:"Fictional extracted media text for disposal."}}).returning();
+    const batchDocuments=await db.insert(organisationDocuments).values(Array.from({length:25},(_,index)=>{
+      const id=crypto.randomUUID();return {id,organisationId:context.organisationId,jobId:removalJob.id,name:`Fictional batch original ${index+1}`,category:"report" as const,blobUrl:"https://example.test/fictional-batch",blobPathname:`organisations/${context.organisationId}/documents/${id}/original`,checksum:createHash("sha256").update(deliveryBytes).digest("hex"),contentType:"text/plain",sizeBytes:deliveryBytes.length,deletedAt:new Date("2000-03-01T00:00:00Z"),retentionUntil:new Date("2001-03-01T00:00:00Z")};
+    })).returning();
+    const [removalTask]=await db.insert(assistantTasks).values({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,kind:"discrepancy",status:"resolved",dedupeKey:"fictional-task-disposition",title:"Fictional extracted task title",detail:"Fictional private task detail",evidence:{source:{id:removalOriginal.id}},resolvedAt:new Date(),resolvedByUserId:context.internalUserId!,resolutionNote:"Fictional task resolution text"}).returning();
+    const [removalProposal]=await db.insert(fieldProposals).values({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,fieldPath:"matters.legal.guarantees",proposedValue:{state:"provided",value:{text:"Fictional private proposal value",source:{id:removalOriginal.id}}},valueType:"text",evidenceRefs:[{type:"document_span",id:removalOriginal.id}],limitations:["Fictional private limitation"],originClass:"document_extraction",inputVersion:"fixture-v1",generator:"retention-fixture",dedupeKey:"fictional-proposal-disposition",reviewStatus:"rejected",reviewedAt:new Date(),reviewedByUserId:context.internalUserId!,reviewNote:"Fictional private review text"}).returning();
+    const [removalValue]=await db.insert(surveyFieldValues).values({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,fieldPath:"matters.legal.guarantees",value:{state:"provided",value:"Fictional private accepted survey answer"},sourceRef:removalOriginal.id,correctionReason:"Fictional private correction reason",clientGeneratedId:"retention-value-disposition-fixture"}).returning();
+    const valueReplayFixtures=await db.insert(syncOperations).values([0,1].map(index=>({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,operationId:`op_retention_value_replay_${index}`,operationType:"set_field",appliedByUserId:context.internalUserId,result:{id:removalValue.id,value:removalValue.value,fieldPath:removalValue.fieldPath}}))).returning();
+    const [acceptedRemovalProposal]=await db.insert(fieldProposals).values({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,fieldPath:removalValue.fieldPath,proposedValue:removalValue.value,valueType:"text",evidenceRefs:[],originClass:"document_extraction",inputVersion:"fixture-v1",generator:"retention-fixture",dedupeKey:"accepted-retention-link-fixture",reviewStatus:"accepted",reviewedAt:new Date(),reviewedByUserId:context.internalUserId!,acceptedValueId:removalValue.id}).returning();
+    const removalElements=await db.insert(surveyElements).values([0,1].map(index=>({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,sectionKey:"outside",elementKey:"roof",locationLabel:`Fictional private element location ${index}`,limitationReason:"Fictional private inaccessible inspection"}))).returning();
+    const elementReplayFixtures=await db.insert(syncOperations).values(removalElements.map((element,index)=>({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,operationId:`op_retention_element_replay_${index}`,operationType:"set_element",appliedByUserId:context.internalUserId,result:{id:element.id,limitationReason:element.limitationReason}}))).returning();
+    const [removalLink]=await db.insert(evidenceLinks).values({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,targetType:"element",targetId:removalElements[0].id,evidenceType:"media",evidenceId:removalMedia.id,note:"Fictional private inspection evidence note",region:{x:0.1,y:0.2,width:0.3,height:0.4},clientGeneratedId:"retained-annotation-fixture"}).returning();
+    const [removalObservation]=await db.insert(observations).values({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,kind:"current_observation",text:"Fictional private retained observation",structured:{source:{id:removalOriginal.id}},locationLabel:"Fictional private room",sourceRef:removalOriginal.id,clientGeneratedId:"retention-observation-disposition"}).returning();
+    const observationReplayFixtures=await db.insert(syncOperations).values(["add_observation","revise_observation"].map((type,index)=>({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,operationId:`op_retention_observation_replay_${index}`,operationType:type,appliedByUserId:context.internalUserId,result:{id:removalObservation.id,text:removalObservation.text,version:removalObservation.version}}))).returning();
+
+    const removalFile=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,removalJob.id));expect(removalFile?.assessment.eligibleForManagerReview).toBe(true);
+    await db.insert(auditEvents).values({organisationId:context.organisationId,actorUserId:context.internalUserId!,action:"job.retention_file_reviewed",resourceType:"job",resourceId:removalJob.id,metadata:{reviewVersion:removalFile!.assessment.reviewVersion,confirmed:true,noUnresolvedComplaintOrClaim:true}});
+    const removalIntent=await withTenant(createDatabase(),context.organisationId,tx=>requestReviewedSurveyFileRemoval(tx,context.organisationId,removalJob.id,context.internalUserId!,{requestId:crypto.randomUUID(),reviewVersion:removalFile!.assessment.reviewVersion,reason:"Manager reviewed fictional storage integration original.",confirmed:true}));
+    const [queuedExecution]=await db.select().from(surveyFileRemovals).where(eq(surveyFileRemovals.id,removalIntent.id));
+    const executionDecision={id:removalIntent.id,manifestVersion:queuedExecution.manifestVersion,reason:"Manager confirms fictional original execution.",confirmed:true as const};
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>startReviewedSurveyFileRemoval(tx,context.organisationId,removalJob.id,context.internalUserId!,{...executionDecision,manifestVersion:"f".repeat(64)}))).rejects.toThrow("changed");
+    await expect(withTenant(createDatabase(),context.organisationId,async tx=>{
+      const first=await startReviewedSurveyFileRemoval(tx,context.organisationId,removalJob.id,context.internalUserId!,executionDecision);
+      await tx.update(surveyFileRemovals).set({status:"verification_required",lockedUntil:null,error:"additional_originals_require_review"}).where(eq(surveyFileRemovals.id,first.id));
+      const resumed=await resumeReviewedSurveyFileRemoval(tx,context.organisationId,removalJob.id,context.internalUserId!,executionDecision);
+      expect(resumed.remaining).toEqual(first.manifest.objects);
+      expect(resumed.attempts).toBe(first.attempts+1);
+      throw new Error("rollback zero-progress execution fixture");
+    })).rejects.toThrow("rollback zero-progress execution fixture");
+    const storageClaim=await withTenant(createDatabase(),context.organisationId,tx=>startReviewedSurveyFileRemoval(tx,context.organisationId,removalJob.id,context.internalUserId!,executionDecision));
+    expect(storageClaim.remaining).toEqual(storageClaim.manifest.objects);
+    const executionAudits=await db.select().from(auditEvents).where(and(eq(auditEvents.resourceId,removalIntent.id),eq(auditEvents.action,"job.original_removal_execution_reviewed")));
+    expect(executionAudits).toHaveLength(1);expect(executionAudits[0].actorUserId).toBe(context.internalUserId);expect(executionAudits[0].metadata).toMatchObject({manifestVersion:executionDecision.manifestVersion,confirmed:true,reason:executionDecision.reason,storageRemoved:false});
+
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeRecordedFieldValue(tx,context.organisationId,removalJob.id,context.internalUserId!,removalValue.id,executionDecision))).rejects.toThrow("decision changed");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeElementContent(tx,context.organisationId,removalJob.id,context.internalUserId!,removalElements[0].id,executionDecision))).rejects.toThrow("decision changed");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeObservationContent(tx,context.organisationId,removalJob.id,context.internalUserId!,removalObservation.id,executionDecision))).rejects.toThrow("decision changed");
+    const fixtureStorage=createMemoryStorage();await fixtureStorage.put(removalOriginal.storageKey,originalBytes.buffer,"text/plain");
+    await fixtureStorage.put(deliveryOriginal.blobPathname,deliveryBytes.buffer,"text/plain");
+    for(const document of batchDocuments)await fixtureStorage.put(document.blobPathname,deliveryBytes.buffer,"text/plain");
+    await fixtureStorage.put(removalMedia.storageKey,originalBytes.buffer,"image/jpeg");
+    expect(await processSurveyFileOriginal(createDatabase(),context.organisationId,removalJob.id,storageClaim,`media:${removalMedia.id}`,fixtureStorage)).toEqual({removed:true,verificationRequired:false});
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeQuestionnaireAnalysis(tx,context.organisationId,removalJob.id,context.internalUserId!,removalOriginal.id))).rejects.toThrow("Whole-file removal");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeMediaAnalysis(tx,context.organisationId,removalJob.id,context.internalUserId!,removalAnalysis.id))).rejects.toThrow("Whole-file removal");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeMediaMetadata(tx,context.organisationId,removalJob.id,context.internalUserId!,removalMedia.id,executionDecision))).rejects.toThrow("decision changed");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeEvidenceAnnotation(tx,context.organisationId,removalJob.id,context.internalUserId!,removalLink.id,executionDecision))).rejects.toThrow("decision changed");
+    const removeOriginal=fixtureStorage.remove.bind(fixtureStorage);
+    const deleteSpy=vi.spyOn(fixtureStorage,"remove").mockImplementation(async key=>{await removeOriginal(key);if(key===removalOriginal.storageKey)throw new Error("Fictional lost delete response");});
+    expect(await processSurveyFileOriginal(createDatabase(),context.organisationId,removalJob.id,storageClaim,`questionnaire:${removalOriginal.id}`,fixtureStorage)).toEqual({removed:false,verificationRequired:true});
+    const observationDecision={id:removalIntent.id,manifestVersion:storageClaim.manifest.manifestVersion,reason:"Manager confirms fictional interrupted outcome observation.",confirmed:true as const};
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>reviewRemovalObservation(tx,context.organisationId,removalJob.id,context.internalUserId!,{...observationDecision,manifestVersion:"0".repeat(64)}))).rejects.toThrow("decision changed");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>reviewRemovalObservation(tx,context.organisationId,removalJob.id,crypto.randomUUID(),observationDecision))).rejects.toThrow("management permission");
+    const recoveryClaims=await Promise.allSettled([1,2].map(()=>withTenant(createDatabase(),context.organisationId,tx=>reviewRemovalObservation(tx,context.organisationId,removalJob.id,context.internalUserId!,{id:removalIntent.id,manifestVersion:storageClaim.manifest.manifestVersion,reason:"Manager confirms fictional interrupted outcome observation.",confirmed:true}))));
+    expect(recoveryClaims.filter(result=>result.status==="fulfilled")).toHaveLength(1);
+    const observationAudits=await db.select().from(auditEvents).where(and(eq(auditEvents.resourceId,removalIntent.id),eq(auditEvents.action,"job.original_removal_observation_reviewed")));
+    expect(observationAudits).toHaveLength(1);expect(observationAudits[0].actorUserId).toBe(context.internalUserId);expect(observationAudits[0].metadata).toMatchObject({confirmed:true,deletionAuthorised:false,reason:observationDecision.reason});
+    const deniedRecovery=recoveryClaims.find(result=>result.status==="rejected") as PromiseRejectedResult;
+    expect(deniedRecovery.reason.message).toContain("still active");
+    const firstRecovery=(recoveryClaims.find(result=>result.status==="fulfilled") as PromiseFulfilledResult<Awaited<ReturnType<typeof claimSurveyFileRemovalRecovery>>>).value;
+    const readSpy=vi.spyOn(fixtureStorage,"get").mockRejectedValueOnce(new Error("Fictional unavailable storage"));
+    expect(await observeInterruptedSurveyFileOriginal(createDatabase(),context.organisationId,firstRecovery,`questionnaire:${removalOriginal.id}`,fixtureStorage)).toEqual({removed:false,verificationRequired:true});
+    const [failedObservation]=await db.select().from(surveyFileRemovals).where(eq(surveyFileRemovals.id,removalIntent.id));
+    expect(failedObservation.status).toBe("verification_required");expect(failedObservation.error).toBe("storage_unavailable");expect(failedObservation.lockedUntil).toBeNull();
+    readSpy.mockRestore();
+    const secondRecovery=await withTenant(createDatabase(),context.organisationId,tx=>claimSurveyFileRemovalRecovery(tx,context.organisationId,removalIntent.id));
+    expect(await observeInterruptedSurveyFileOriginal(createDatabase(),context.organisationId,secondRecovery,`questionnaire:${removalOriginal.id}`,fixtureStorage)).toEqual({removed:true,verificationRequired:true});
+    expect(deleteSpy).toHaveBeenCalledOnce();expect(fixtureStorage.objects.size).toBe(26);
+    const [partialRemoval]=await db.select().from(surveyFileRemovals).where(eq(surveyFileRemovals.id,removalIntent.id));
+    expect(partialRemoval.status).toBe("verification_required");expect(partialRemoval.lockedUntil).toBeNull();
+    const resumedOutcome=await processReviewedRemainingOriginals(createDatabase(),context.organisationId,removalJob.id,context.internalUserId!,{id:removalIntent.id,manifestVersion:storageClaim.manifest.manifestVersion,reason:"Manager reviewed the remaining fictional delivery original.",confirmed:true},fixtureStorage);
+    expect(resumedOutcome).toEqual({completed:false,verificationRequired:true,processed:25});
+    expect(fixtureStorage.objects.size).toBe(1);
+    const [pausedBatch]=await db.select().from(surveyFileRemovals).where(eq(surveyFileRemovals.id,removalIntent.id));
+    expect(pausedBatch.status).toBe("verification_required");expect(pausedBatch.lockedUntil).toBeNull();expect(pausedBatch.error).toBe("additional_originals_require_review");
+    const pausedAudits=await db.select().from(auditEvents).where(and(eq(auditEvents.resourceId,removalIntent.id),eq(auditEvents.action,"job.original_removal_batch_paused")));
+    expect(pausedAudits).toHaveLength(1);expect(pausedAudits[0].actorUserId).toBe(context.internalUserId);expect(pausedAudits[0].metadata).toMatchObject({processed:25,remainingOriginalCount:1});
+    const [lateBatchHold]=await db.insert(jobRetentionHolds).values({organisationId:context.organisationId,jobId:removalJob.id,kind:"legal",reason:"Fictional new legal hold between original removal batches.",reviewedByUserId:context.internalUserId!}).returning();
+    const heldStorageRead=vi.spyOn(fixtureStorage,"get");const deletesBeforeHold=deleteSpy.mock.calls.length;
+    await expect(processReviewedRemainingOriginals(createDatabase(),context.organisationId,removalJob.id,context.internalUserId!,{id:removalIntent.id,manifestVersion:storageClaim.manifest.manifestVersion,reason:"Attempt remaining original processing while a legal hold applies.",confirmed:true},fixtureStorage)).rejects.toThrow("file changed");
+    expect(heldStorageRead).not.toHaveBeenCalled();expect(deleteSpy).toHaveBeenCalledTimes(deletesBeforeHold);expect(fixtureStorage.objects.size).toBe(1);heldStorageRead.mockRestore();
+    const [stillPaused]=await db.select().from(surveyFileRemovals).where(eq(surveyFileRemovals.id,removalIntent.id));
+    expect(stillPaused.status).toBe("verification_required");expect(stillPaused.leaseToken).toBe(pausedBatch.leaseToken);
+    await db.delete(jobRetentionHolds).where(eq(jobRetentionHolds.id,lateBatchHold.id));
+    expect(await processReviewedRemainingOriginals(createDatabase(),context.organisationId,removalJob.id,context.internalUserId!,{id:removalIntent.id,manifestVersion:storageClaim.manifest.manifestVersion,reason:"Manager reviewed the final untouched fictional batch original.",confirmed:true},fixtureStorage)).toEqual({completed:true,verificationRequired:false,processed:1});
+    expect(deleteSpy).toHaveBeenCalledTimes(27);
+    expect(deleteSpy.mock.calls.map(call=>call[0]).sort()).toEqual([removalOriginal.storageKey,deliveryOriginal.blobPathname,...batchDocuments.map(document=>document.blobPathname)].sort());
+    expect(fixtureStorage.objects.size).toBe(0);
+    const [completedRemoval]=await db.select().from(surveyFileRemovals).where(eq(surveyFileRemovals.id,removalIntent.id));expect(completedRemoval.status).toBe("completed");expect(completedRemoval.completedAt).not.toBeNull();
+    for(const disposition of ["questionnaire","media","media_metadata"])for(const legalHold of [true,false]) {
+      const fixture=db.transaction(async tx=>{
+        const [isolatedJob]=await tx.insert(jobs).values({...removalJob,id:crypto.randomUUID(),reference:`MANIFEST-ONLY-HOLD-${disposition}-${legalHold}`}).returning();
+        const questionnaireId=crypto.randomUUID(),documentId=crypto.randomUUID();
+        const [isolatedQuestionnaire]=await tx.insert(preinspectionDocuments).values({...removalOriginal,id:questionnaireId,jobId:isolatedJob.id,requestId:crypto.randomUUID(),storageKey:`organisations/${context.organisationId}/preinspection/${isolatedJob.id}/${questionnaireId}/original`}).returning();
+        const [isolatedDocument]=await tx.insert(organisationDocuments).values({...deliveryOriginal,id:documentId,legalHold,blobPathname:`organisations/${context.organisationId}/documents/${documentId}/original`}).returning();
+        expect(isolatedDocument.jobId).toBeNull();expect(isolatedDocument.reportVersionId).toBeNull();
+        expect(await tx.select().from(reportDeliveries).where(eq(reportDeliveries.documentId,documentId))).toHaveLength(0);
+        const [isolatedSurvey]=await tx.insert(surveys).values({...removalSurvey.survey,id:crypto.randomUUID(),jobId:isolatedJob.id}).returning();
+        const mediaId=crypto.randomUUID();
+        const [isolatedMedia]=await tx.insert(mediaAssets).values({...removalMedia,id:mediaId,surveyId:isolatedSurvey.id,clientGeneratedId:crypto.randomUUID(),storageKey:`organisations/${context.organisationId}/surveys/${isolatedSurvey.id}/${mediaId}/original`}).returning();
+        const [isolatedAnalysis]=await tx.insert(mediaAnalyses).values({...removalAnalysis,id:crypto.randomUUID(),mediaId,surveyId:isolatedSurvey.id}).returning();
+        const reviewVersion="a".repeat(64);
+        const manifest=createSurveyFileRemovalManifest({organisationId:context.organisationId,jobId:isolatedJob.id,reviewVersion,policyVersion:"survey-file-1-year-v2",objects:[
+          {kind:"questionnaire",id:questionnaireId,storagePath:isolatedQuestionnaire.storageKey,checksum:isolatedQuestionnaire.checksum,sizeBytes:isolatedQuestionnaire.sizeBytes},
+          {kind:"document",id:documentId,storagePath:isolatedDocument.blobPathname,checksum:isolatedDocument.checksum,sizeBytes:isolatedDocument.sizeBytes},
+          {kind:"media",id:mediaId,surveyId:isolatedSurvey.id,derivation:"original",storagePath:isolatedMedia.storageKey,checksum:isolatedMedia.sha256,sizeBytes:isolatedMedia.byteSize},
+        ]});
+        const [review]=await tx.insert(auditEvents).values({organisationId:context.organisationId,actorUserId:context.internalUserId!,action:"job.retention_file_reviewed",resourceType:"job",resourceId:isolatedJob.id,metadata:{reviewVersion,confirmed:true,noUnresolvedComplaintOrClaim:true}}).returning();
+        const [intent]=await tx.insert(surveyFileRemovals).values({organisationId:context.organisationId,jobId:isolatedJob.id,requestId:crypto.randomUUID(),requestedByUserId:context.internalUserId!,reviewId:review.id,reviewVersion,requestFingerprint:"b".repeat(64),manifestVersion:manifest.manifestVersion,manifest,reason:"Synthetic removal evidence for isolated database guard testing."}).returning();
+        const leaseToken=crypto.randomUUID();
+        await tx.update(surveyFileRemovals).set({status:"dispatched",leaseToken,lockedUntil:new Date(Date.now()+300000),attempts:1}).where(eq(surveyFileRemovals.id,intent.id));
+        const clock=await tx.execute(sql`select clock_timestamp() as verified_at`);
+        const verifiedAt=new Date(String(clock.rows[0].verified_at));
+        await tx.update(surveyFileRemovals).set({status:"completed",completedAt:verifiedAt,progress:Object.fromEntries(manifest.objects.map(object=>[`${object.kind}:${object.id}`,{state:"removed",attemptId:leaseToken,removedAt:verifiedAt.toISOString()}]))}).where(eq(surveyFileRemovals.id,intent.id));
+        await tx.insert(auditEvents).values({organisationId:context.organisationId,actorUserId:context.internalUserId!,action:"job.questionnaire_analysis_disposed",resourceType:"preinspection_document",resourceId:questionnaireId,metadata:{removalId:intent.id,originalChecksum:isolatedQuestionnaire.checksum}});
+        if(disposition==="questionnaire")await tx.update(preinspectionDocuments).set({analysis:{retentionRemoved:true}}).where(eq(preinspectionDocuments.id,questionnaireId));
+        else if(disposition==="media_metadata") {
+          await tx.insert(auditEvents).values({organisationId:context.organisationId,actorUserId:context.internalUserId!,action:"job.media_metadata_disposed",resourceType:"media_asset",resourceId:mediaId,metadata:{removalId:intent.id,confirmed:true}});
+          await tx.update(mediaAssets).set({captureContext:{retentionRemoved:true},originalFilename:null}).where(eq(mediaAssets.id,mediaId));
+        }
+        else {
+          await tx.insert(auditEvents).values({organisationId:context.organisationId,actorUserId:context.internalUserId!,action:"job.media_analysis_disposed",resourceType:"media_analysis",resourceId:isolatedAnalysis.id,metadata:{removalId:intent.id,mediaId}});
+          await tx.update(mediaAnalyses).set({result:{retentionRemoved:true}}).where(eq(mediaAnalyses.id,isolatedAnalysis.id));
+        }
+        throw new Error("Rollback unheld manifest-only guard control");
+      });
+      if(legalHold && disposition==="media_metadata")await expect(fixture).rejects.toThrow();
+      else if(legalHold)await expect(fixture).rejects.toMatchObject({cause:{message:disposition==="questionnaire"?"A record bound to a file under original removal cannot be added, changed, moved or deleted":"Media belonging to a file under removal cannot be changed or extended"}});
+      else await expect(fixture).rejects.toThrow("Rollback unheld manifest-only guard control");
+    }
+    await expect(withTenant(createDatabase(),context.organisationId,async tx=>{
+      await tx.update(organisationDocuments).set({legalHold:true}).where(eq(organisationDocuments.id,deliveryOriginal.id));
+      await tx.insert(auditEvents).values({organisationId:context.organisationId,actorUserId:context.internalUserId!,action:"job.questionnaire_analysis_disposed",resourceType:"preinspection_document",resourceId:removalOriginal.id,metadata:{removalId:removalIntent.id,originalChecksum:removalOriginal.checksum}});
+      await tx.update(preinspectionDocuments).set({analysis:{retentionRemoved:true}}).where(eq(preinspectionDocuments.id,removalOriginal.id));
+    })).rejects.toMatchObject({cause:{message:"A record bound to a file under original removal cannot be added, changed, moved or deleted"}});
+    const retryRead=vi.spyOn(fixtureStorage,"get");
+    expect(await processSurveyFileOriginal(createDatabase(),context.organisationId,removalJob.id,storageClaim,`questionnaire:${removalOriginal.id}`,fixtureStorage)).toEqual({removed:true,verificationRequired:false});
+    expect(retryRead).not.toHaveBeenCalled();expect(deleteSpy).toHaveBeenCalledTimes(27);retryRead.mockRestore();
+    const [dispositionHold]=await db.insert(jobRetentionHolds).values({organisationId:context.organisationId,jobId:removalJob.id,kind:"legal",reason:"Fictional legal hold blocks extracted content disposition.",reviewedByUserId:context.internalUserId!}).returning();
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeQuestionnaireAnalysis(tx,context.organisationId,removalJob.id,context.internalUserId!,removalOriginal.id))).rejects.toThrow("protected");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeMediaAnalysis(tx,context.organisationId,removalJob.id,context.internalUserId!,removalAnalysis.id))).rejects.toThrow("protected");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeMediaMetadata(tx,context.organisationId,removalJob.id,context.internalUserId!,removalMedia.id,executionDecision))).rejects.toThrow("protected");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeEvidenceAnnotation(tx,context.organisationId,removalJob.id,context.internalUserId!,removalLink.id,executionDecision))).rejects.toThrow("protected");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeAdviserTask(tx,context.organisationId,removalJob.id,context.internalUserId!,removalTask.id,{id:removalIntent.id,manifestVersion:storageClaim.manifest.manifestVersion,reason:"Reviewed fictional adviser task cleanup.",confirmed:true}))).rejects.toThrow("protected");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeFieldProposal(tx,context.organisationId,removalJob.id,context.internalUserId!,removalProposal.id,{id:removalIntent.id,manifestVersion:storageClaim.manifest.manifestVersion,reason:"Reviewed fictional proposal cleanup.",confirmed:true}))).rejects.toThrow("protected");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeReportContent(tx,context.organisationId,removalJob.id,context.internalUserId!,removalReport.id,{id:removalIntent.id,manifestVersion:storageClaim.manifest.manifestVersion,reason:"Reviewed fictional report content cleanup.",confirmed:true}))).rejects.toThrow("protected");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeRecordedFieldValue(tx,context.organisationId,removalJob.id,context.internalUserId!,removalValue.id,executionDecision))).rejects.toThrow("protected");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeObservationContent(tx,context.organisationId,removalJob.id,context.internalUserId!,removalObservation.id,executionDecision))).rejects.toThrow("protected");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeElementContent(tx,context.organisationId,removalJob.id,context.internalUserId!,removalElements[0].id,executionDecision))).rejects.toThrow("protected");
+    await db.delete(jobRetentionHolds).where(eq(jobRetentionHolds.id,dispositionHold.id));
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeQuestionnaireAnalysis(tx,context.organisationId,removalJob.id,context.internalUserId!,removalOriginal.id,{id:removalIntent.id,manifestVersion:"0".repeat(64),reason:"Reviewed analysis cleanup with a stale removal manifest.",confirmed:true}))).rejects.toThrow("decision changed");
+    const cleanupDecision={id:removalIntent.id,manifestVersion:completedRemoval.manifestVersion,reason:"Manager confirmed cleanup of the verified fictional questionnaire analysis.",confirmed:true as const};
+    expect(await withTenant(createDatabase(),context.organisationId,tx=>disposeQuestionnaireAnalysis(tx,context.organisationId,removalJob.id,context.internalUserId!,removalOriginal.id,cleanupDecision))).toEqual({disposed:true,duplicate:false});
+    expect(await withTenant(createDatabase(),context.organisationId,tx=>disposeQuestionnaireAnalysis(tx,context.organisationId,removalJob.id,context.internalUserId!,removalOriginal.id,{...cleanupDecision,reason:"A network retry must retain the original cleanup reason."}))).toEqual({disposed:true,duplicate:true});
+    const [disposedOriginal]=await db.select().from(preinspectionDocuments).where(eq(preinspectionDocuments.id,removalOriginal.id));expect(disposedOriginal.analysis).toEqual({retentionRemoved:true});expect(disposedOriginal.checksum).toBe(removalOriginal.checksum);
+    const dispositionEvents=await db.select().from(auditEvents).where(and(eq(auditEvents.organisationId,context.organisationId),eq(auditEvents.resourceId,removalOriginal.id),eq(auditEvents.action,"job.questionnaire_analysis_disposed")));
+    expect(dispositionEvents).toHaveLength(1);
+    expect(await withTenant(createDatabase(),context.organisationId,tx=>disposeMediaAnalysis(tx,context.organisationId,removalJob.id,context.internalUserId!,removalAnalysis.id,cleanupDecision))).toEqual({disposed:true,duplicate:false});
+    expect(await withTenant(createDatabase(),context.organisationId,tx=>disposeMediaAnalysis(tx,context.organisationId,removalJob.id,context.internalUserId!,removalAnalysis.id,cleanupDecision))).toEqual({disposed:true,duplicate:true});
+    const [disposedAnalysis]=await db.select().from(mediaAnalyses).where(eq(mediaAnalyses.id,removalAnalysis.id));expect(disposedAnalysis.result).toEqual({retentionRemoved:true});expect(disposedAnalysis.mediaId).toBe(removalMedia.id);
+    const mediaDisposalEvents=await db.select().from(auditEvents).where(and(eq(auditEvents.organisationId,context.organisationId),eq(auditEvents.resourceId,removalAnalysis.id),eq(auditEvents.action,"job.media_analysis_disposed")));
+    expect(mediaDisposalEvents).toHaveLength(1);expect(mediaDisposalEvents[0].actorUserId).toBe(context.internalUserId);
+    expect(mediaDisposalEvents[0].metadata).toEqual({jobId:removalJob.id,removalId:removalIntent.id,mediaId:removalMedia.id,originalChecksum:removalMedia.sha256,analysisFingerprint:createHash("sha256").update(JSON.stringify(removalAnalysis.result)).digest("hex"),policyVersion:"survey-file-1-year-v2",reason:cleanupDecision.reason,confirmed:true});
+    expect(JSON.stringify(mediaDisposalEvents[0].metadata)).not.toContain("Fictional extracted media text");
+    await expect(withTenant(createDatabase(),foreignOrg.id,tx=>disposeMediaAnalysis(tx,foreignOrg.id,removalJob.id,context.internalUserId!,removalAnalysis.id,cleanupDecision))).rejects.toThrow("permission");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(mediaAnalyses).set({result:{restored:true}}).where(eq(mediaAnalyses.id,removalAnalysis.id)))).rejects.toMatchObject({cause:{message:"Media belonging to a file under removal cannot be changed or extended"}});
+    expect(await withTenant(createDatabase(),context.organisationId,tx=>disposeAdviserTask(tx,context.organisationId,removalJob.id,context.internalUserId!,removalTask.id,cleanupDecision))).toEqual({disposed:true,duplicate:false});
+    expect(await withTenant(createDatabase(),context.organisationId,tx=>disposeAdviserTask(tx,context.organisationId,removalJob.id,context.internalUserId!,removalTask.id,cleanupDecision))).toEqual({disposed:true,duplicate:true});
+    const [disposedTask]=await db.select().from(assistantTasks).where(eq(assistantTasks.id,removalTask.id));
+    expect(disposedTask).toMatchObject({title:"Content removed after retention review",detail:null,resolutionNote:null,evidence:{retentionRemoved:true},status:removalTask.status,resolvedAt:removalTask.resolvedAt,resolvedByUserId:removalTask.resolvedByUserId,surveyId:removalTask.surveyId});
+    const taskDisposalEvents=await db.select().from(auditEvents).where(and(eq(auditEvents.resourceId,removalTask.id),eq(auditEvents.action,"job.adviser_task_disposed")));
+    expect(taskDisposalEvents).toHaveLength(1);expect(taskDisposalEvents[0].actorUserId).toBe(context.internalUserId);expect(taskDisposalEvents[0].metadata).toMatchObject({removalId:removalIntent.id,reason:cleanupDecision.reason,confirmed:true,contentFingerprint:createHash("sha256").update(JSON.stringify({title:removalTask.title,detail:removalTask.detail,evidence:removalTask.evidence,resolutionNote:removalTask.resolutionNote})).digest("hex")});
+    expect(JSON.stringify(taskDisposalEvents)).not.toContain("Fictional private task detail");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(assistantTasks).set({detail:"Restored text"}).where(eq(assistantTasks.id,removalTask.id)))).rejects.toThrow();
+    await expect(withTenant(createDatabase(),foreignOrg.id,tx=>disposeAdviserTask(tx,foreignOrg.id,removalJob.id,context.internalUserId!,removalTask.id,cleanupDecision))).rejects.toThrow("permission");
+    expect(await withTenant(createDatabase(),context.organisationId,tx=>disposeFieldProposal(tx,context.organisationId,removalJob.id,context.internalUserId!,removalProposal.id,cleanupDecision))).toEqual({disposed:true,duplicate:false});
+    expect(await withTenant(createDatabase(),context.organisationId,tx=>disposeFieldProposal(tx,context.organisationId,removalJob.id,context.internalUserId!,removalProposal.id,cleanupDecision))).toEqual({disposed:true,duplicate:true});
+    const [disposedProposal]=await db.select().from(fieldProposals).where(eq(fieldProposals.id,removalProposal.id));
+    expect(disposedProposal).toMatchObject({proposedValue:{retentionRemoved:true},evidenceRefs:[],limitations:[],reviewNote:null,reviewStatus:removalProposal.reviewStatus,reviewedAt:removalProposal.reviewedAt,reviewedByUserId:removalProposal.reviewedByUserId,acceptedValueId:removalProposal.acceptedValueId,inputVersion:removalProposal.inputVersion,originClass:removalProposal.originClass});
+    const proposalDisposalEvents=await db.select().from(auditEvents).where(and(eq(auditEvents.resourceId,removalProposal.id),eq(auditEvents.action,"job.field_proposal_disposed")));
+    expect(proposalDisposalEvents).toHaveLength(1);expect(proposalDisposalEvents[0].actorUserId).toBe(context.internalUserId);expect(proposalDisposalEvents[0].metadata).toMatchObject({removalId:removalIntent.id,reason:cleanupDecision.reason,confirmed:true,contentFingerprint:createHash("sha256").update(JSON.stringify({proposedValue:removalProposal.proposedValue,evidenceRefs:removalProposal.evidenceRefs,limitations:removalProposal.limitations,reviewNote:removalProposal.reviewNote})).digest("hex")});
+    expect(JSON.stringify(proposalDisposalEvents)).not.toContain("Fictional private");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(fieldProposals).set({proposedValue:{restored:true}}).where(eq(fieldProposals.id,removalProposal.id)))).rejects.toThrow();
+    await expect(withTenant(createDatabase(),foreignOrg.id,tx=>disposeFieldProposal(tx,foreignOrg.id,removalJob.id,context.internalUserId!,removalProposal.id,cleanupDecision))).rejects.toThrow("permission");
+    expect(await withTenant(createDatabase(),context.organisationId,tx=>disposeReportContent(tx,context.organisationId,removalJob.id,context.internalUserId!,removalReport.id,cleanupDecision))).toEqual({disposed:true,duplicate:false});
+    expect(await withTenant(createDatabase(),context.organisationId,tx=>disposeReportContent(tx,context.organisationId,removalJob.id,context.internalUserId!,removalReport.id,cleanupDecision))).toEqual({disposed:true,duplicate:true});
+    const [disposedReport]=await db.select().from(reportVersions).where(eq(reportVersions.id,removalReport.id));
+    expect(disposedReport).toMatchObject({content:{retentionRemoved:true},trace:{retentionRemoved:true},contentSha256:removalReport.contentSha256,inputFingerprint:removalReport.inputFingerprint,versionNumber:removalReport.versionNumber,createdByUserId:removalReport.createdByUserId});
+    const [preservedApproval]=await db.select().from(reportApprovals).where(eq(reportApprovals.id,removalApproval.id));
+    expect(preservedApproval).toEqual(removalApproval);
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(reportApprovals).set({note:"Changed after disposal"}).where(eq(reportApprovals.id,removalApproval.id)))).rejects.toThrow();
+    await expect(composeSurveyReport(context,removalSurvey.survey.id)).rejects.toMatchObject({code:"originals_under_removal"});
+    const reportDisposalEvents=await db.select().from(auditEvents).where(and(eq(auditEvents.resourceId,removalReport.id),eq(auditEvents.action,"job.report_content_disposed")));
+    expect(reportDisposalEvents).toHaveLength(1);expect(reportDisposalEvents[0].actorUserId).toBe(context.internalUserId);expect(reportDisposalEvents[0].metadata).toMatchObject({removalId:removalIntent.id,originalContentSha256:removalReport.contentSha256,contentFingerprint:createHash("sha256").update(JSON.stringify({content:removalReport.content,trace:removalReport.trace})).digest("hex"),reason:cleanupDecision.reason,confirmed:true});
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(reportVersions).set({content:{restored:true}}).where(eq(reportVersions.id,removalReport.id)))).rejects.toThrow();
+    await expect(withTenant(createDatabase(),foreignOrg.id,tx=>disposeReportContent(tx,foreignOrg.id,removalJob.id,context.internalUserId!,removalReport.id,cleanupDecision))).rejects.toThrow("permission");
+    expect(await withTenant(createDatabase(),context.organisationId,tx=>approvedReportIsCurrent(tx,context,removalSurvey.survey.id))).toMatchObject({approved:true,current:false,contentRemoved:true,versionNumber:removalReport.versionNumber});
+    await expect(approveReportVersion(context,removalSurvey.survey.id,removalReport.id,{confirm:true})).rejects.toMatchObject({code:"report_content_removed"});
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeRecordedFieldValue(tx,context.organisationId,removalJob.id,context.internalUserId!,removalValue.id,{...cleanupDecision,manifestVersion:"0".repeat(64)}))).rejects.toThrow("decision changed");
+    await expect(withTenant(createDatabase(),foreignOrg.id,tx=>disposeRecordedFieldValue(tx,foreignOrg.id,removalJob.id,context.internalUserId!,removalValue.id,cleanupDecision))).rejects.toThrow("permission");
+    expect(await withTenant(createDatabase(),context.organisationId,tx=>disposeRecordedFieldValue(tx,context.organisationId,removalJob.id,context.internalUserId!,removalValue.id,cleanupDecision))).toEqual({disposed:true,duplicate:false});
+    expect(await withTenant(createDatabase(),context.organisationId,tx=>disposeRecordedFieldValue(tx,context.organisationId,removalJob.id,context.internalUserId!,removalValue.id,cleanupDecision))).toEqual({disposed:true,duplicate:true});
+    const [disposedValue]=await db.select().from(surveyFieldValues).where(eq(surveyFieldValues.id,removalValue.id));
+    expect(disposedValue).toEqual({...removalValue,value:{retentionRemoved:true},sourceRef:null,correctionReason:null});
+    const valueDisposalEvents=await db.select().from(auditEvents).where(and(eq(auditEvents.resourceId,removalValue.id),eq(auditEvents.action,"job.recorded_field_value_disposed")));
+    expect(valueDisposalEvents).toHaveLength(1);expect(valueDisposalEvents[0].actorUserId).toBe(context.internalUserId);expect(valueDisposalEvents[0].metadata).toMatchObject({removalId:removalIntent.id,confirmed:true,contentFingerprint:createHash("sha256").update(JSON.stringify({value:removalValue.value,sourceRef:removalValue.sourceRef,correctionReason:removalValue.correctionReason})).digest("hex")});
+    expect(JSON.stringify(valueDisposalEvents)).not.toContain("Fictional private");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(surveyFieldValues).set({value:{restored:true}}).where(eq(surveyFieldValues.id,removalValue.id)))).rejects.toThrow();
+    const [preservedAcceptedProposal]=await db.select().from(fieldProposals).where(eq(fieldProposals.id,acceptedRemovalProposal.id));
+    expect(preservedAcceptedProposal).toEqual(acceptedRemovalProposal);
+    expect(preservedAcceptedProposal.acceptedValueId).toBe(disposedValue.id);
+    expect(await withTenant(createDatabase(),context.organisationId,tx=>disposeFieldProposal(tx,context.organisationId,removalJob.id,context.internalUserId!,acceptedRemovalProposal.id,cleanupDecision))).toEqual({disposed:true,duplicate:false});
+    const [disposedAcceptedProposal]=await db.select().from(fieldProposals).where(eq(fieldProposals.id,acceptedRemovalProposal.id));
+    expect(disposedAcceptedProposal).toEqual({...acceptedRemovalProposal,proposedValue:{retentionRemoved:true},evidenceRefs:[],limitations:[],reviewNote:null});
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeObservationContent(tx,context.organisationId,removalJob.id,context.internalUserId!,removalObservation.id,{...cleanupDecision,manifestVersion:"0".repeat(64)}))).rejects.toThrow("decision changed");
+    await expect(withTenant(createDatabase(),foreignOrg.id,tx=>disposeObservationContent(tx,foreignOrg.id,removalJob.id,context.internalUserId!,removalObservation.id,cleanupDecision))).rejects.toThrow("permission");
+    expect(await withTenant(createDatabase(),context.organisationId,tx=>disposeObservationContent(tx,context.organisationId,removalJob.id,context.internalUserId!,removalObservation.id,cleanupDecision))).toEqual({disposed:true,duplicate:false});
+    expect(await withTenant(createDatabase(),context.organisationId,tx=>disposeObservationContent(tx,context.organisationId,removalJob.id,context.internalUserId!,removalObservation.id,cleanupDecision))).toEqual({disposed:true,duplicate:true});
+    const [disposedObservation]=await db.select().from(observations).where(eq(observations.id,removalObservation.id));
+    expect(disposedObservation).toEqual({...removalObservation,text:"Content removed after retention review",structured:{retentionRemoved:true},locationLabel:null,sourceRef:null});
+    const observationDisposalEvents=await db.select().from(auditEvents).where(and(eq(auditEvents.resourceId,removalObservation.id),eq(auditEvents.action,"job.observation_content_disposed")));
+    expect(observationDisposalEvents).toHaveLength(1);expect(observationDisposalEvents[0].actorUserId).toBe(context.internalUserId);expect(JSON.stringify(observationDisposalEvents)).not.toContain("Fictional private");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(observations).set({text:"Restored observation"}).where(eq(observations.id,removalObservation.id)))).rejects.toThrow();
+    for(const previous of [...valueReplayFixtures,...observationReplayFixtures]) {
+      const [ledger]=await db.select().from(syncOperations).where(eq(syncOperations.id,previous.id));
+      expect(ledger).toEqual({...previous,result:{id:previous.result.id,retentionRemoved:true}});
+      await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(syncOperations).set({result:previous.result}).where(eq(syncOperations.id,previous.id)))).rejects.toThrow();
+      await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.delete(syncOperations).where(eq(syncOperations.id,previous.id)))).rejects.toThrow();
+    }
+    const safeReplays=await applySyncOperations(context,removalSurvey.survey.id,[
+      {type:"set_field",operationId:valueReplayFixtures[0].operationId,fieldPath:removalValue.fieldPath,value:{state:"provided",value:"Attempted replay"},baseValueId:removalValue.id},
+      {type:"revise_observation",operationId:observationReplayFixtures[1].operationId,observationId:removalObservation.id,text:"Attempted replay",baseVersion:removalObservation.version},
+    ]);
+    expect(safeReplays).toEqual([
+      {operationId:valueReplayFixtures[0].operationId,status:"duplicate",record:{id:removalValue.id,retentionRemoved:true}},
+      {operationId:observationReplayFixtures[1].operationId,status:"duplicate",record:{id:removalObservation.id,retentionRemoved:true}},
+    ]);
+    for(const element of removalElements) {
+      await expect(withTenant(createDatabase(),foreignOrg.id,tx=>disposeElementContent(tx,foreignOrg.id,removalJob.id,context.internalUserId!,element.id,cleanupDecision))).rejects.toThrow("permission");
+      await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeElementContent(tx,context.organisationId,removalJob.id,context.internalUserId!,element.id,{...cleanupDecision,manifestVersion:"0".repeat(64)}))).rejects.toThrow("decision changed");
+      expect(await withTenant(createDatabase(),context.organisationId,tx=>disposeElementContent(tx,context.organisationId,removalJob.id,context.internalUserId!,element.id,cleanupDecision))).toEqual({disposed:true,duplicate:false});
+      expect(await withTenant(createDatabase(),context.organisationId,tx=>disposeElementContent(tx,context.organisationId,removalJob.id,context.internalUserId!,element.id,cleanupDecision))).toEqual({disposed:true,duplicate:true});
+      const [removed]=await db.select().from(surveyElements).where(eq(surveyElements.id,element.id));
+      expect(removed).toEqual({...element,locationLabel:`retention-removed:${element.id}`,limitationReason:"Content removed after retention review"});
+      await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(surveyElements).set({locationLabel:element.locationLabel}).where(eq(surveyElements.id,element.id)))).rejects.toThrow();
+      const fixture=elementReplayFixtures.find(row=>row.result.id===element.id)!;
+      const [ledger]=await db.select().from(syncOperations).where(eq(syncOperations.id,fixture.id));
+      expect(ledger).toEqual({...fixture,result:{id:element.id,retentionRemoved:true}});
+      await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(syncOperations).set({result:fixture.result}).where(eq(syncOperations.id,fixture.id)))).rejects.toThrow();
+      const events=await db.select().from(auditEvents).where(and(eq(auditEvents.resourceId,element.id),eq(auditEvents.action,"job.element_content_disposed")));
+      expect(events).toHaveLength(1);expect(JSON.stringify(events)).not.toContain("Fictional private");
+    }
+    const elementReplays=await applySyncOperations(context,removalSurvey.survey.id,[{type:"set_element",operationId:elementReplayFixtures[0].operationId,element:{sectionKey:"outside",elementKey:"roof",locationLabel:"Fictional private element location 0"},inspectionStatus:null,limitationReason:"Attempted restoration",baseVersion:removalElements[0].version}]);
+    expect(elementReplays).toEqual([{operationId:elementReplayFixtures[0].operationId,status:"duplicate",record:{id:removalElements[0].id,retentionRemoved:true}}]);
+    await expect(withTenant(createDatabase(),foreignOrg.id,tx=>disposeMediaMetadata(tx,foreignOrg.id,removalJob.id,context.internalUserId!,removalMedia.id,cleanupDecision))).rejects.toThrow("permission");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeMediaMetadata(tx,context.organisationId,removalJob.id,context.internalUserId!,removalMedia.id,{...cleanupDecision,manifestVersion:"0".repeat(64)}))).rejects.toThrow("decision changed");
+    const [foreignOriginal]=await db.insert(mediaAssets).values({...removalMedia,id:crypto.randomUUID(),surveyId:null,clientGeneratedId:crypto.randomUUID(),storageKey:"fictional-unrelated-original"}).returning();
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeMediaMetadata(tx,context.organisationId,removalJob.id,context.internalUserId!,foreignOriginal.id,cleanupDecision))).rejects.toThrow("not been verified");
+    expect(await withTenant(createDatabase(),context.organisationId,tx=>disposeMediaMetadata(tx,context.organisationId,removalJob.id,context.internalUserId!,removalMedia.id,cleanupDecision))).toEqual({disposed:true,duplicate:false});
+    expect(await withTenant(createDatabase(),context.organisationId,tx=>disposeMediaMetadata(tx,context.organisationId,removalJob.id,context.internalUserId!,removalMedia.id,cleanupDecision))).toEqual({disposed:true,duplicate:true});
+    const [metadataRemoved]=await db.select().from(mediaAssets).where(eq(mediaAssets.id,removalMedia.id));
+    expect(metadataRemoved).toEqual({...removalMedia,captureContext:{retentionRemoved:true},originalFilename:null});
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(mediaAssets).set({captureContext:removalMedia.captureContext}).where(eq(mediaAssets.id,removalMedia.id)))).rejects.toThrow();
+    const metadataEvents=await db.select().from(auditEvents).where(and(eq(auditEvents.resourceId,removalMedia.id),eq(auditEvents.action,"job.media_metadata_disposed")));
+    expect(metadataEvents).toHaveLength(1);expect(JSON.stringify(metadataEvents)).not.toContain("Fictional private");
+    await expect(withTenant(createDatabase(),foreignOrg.id,tx=>disposeEvidenceAnnotation(tx,foreignOrg.id,removalJob.id,context.internalUserId!,removalLink.id,cleanupDecision))).rejects.toThrow("permission");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeEvidenceAnnotation(tx,context.organisationId,removalJob.id,context.internalUserId!,removalLink.id,{...cleanupDecision,manifestVersion:"0".repeat(64)}))).rejects.toThrow("decision changed");
+    const [unrelatedAnnotation]=await db.insert(evidenceLinks).values({...removalLink,id:crypto.randomUUID(),surveyId:otherSurvey.survey.id,evidenceType:"observation",evidenceId:crypto.randomUUID(),clientGeneratedId:crypto.randomUUID()}).returning();
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeEvidenceAnnotation(tx,context.organisationId,removalJob.id,context.internalUserId!,unrelatedAnnotation.id,cleanupDecision))).rejects.toThrow("unavailable");
+    expect(await withTenant(createDatabase(),context.organisationId,tx=>disposeEvidenceAnnotation(tx,context.organisationId,removalJob.id,context.internalUserId!,removalLink.id,cleanupDecision))).toEqual({disposed:true,duplicate:false});
+    expect(await withTenant(createDatabase(),context.organisationId,tx=>disposeEvidenceAnnotation(tx,context.organisationId,removalJob.id,context.internalUserId!,removalLink.id,cleanupDecision))).toEqual({disposed:true,duplicate:true});
+    const [annotationRemoved]=await db.select().from(evidenceLinks).where(eq(evidenceLinks.id,removalLink.id));
+    expect(annotationRemoved).toEqual({...removalLink,note:null,region:{retentionRemoved:true}});
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(evidenceLinks).set({note:removalLink.note}).where(eq(evidenceLinks.id,removalLink.id)))).rejects.toThrow();
+    const annotationEvents=await db.select().from(auditEvents).where(and(eq(auditEvents.resourceId,removalLink.id),eq(auditEvents.action,"job.evidence_annotation_disposed")));
+    expect(annotationEvents).toHaveLength(1);expect(JSON.stringify(annotationEvents)).not.toContain("Fictional private");
+    const removedSync=await applySyncOperations(context,removalSurvey.survey.id,[
+      {type:"set_field",operationId:"op_retained_answer_restore",fieldPath:removalValue.fieldPath,value:{state:"provided",value:"Attempted restoration"},baseValueId:removalValue.id},
+      {type:"revise_observation",operationId:"op_retained_observation_restore",observationId:removalObservation.id,text:"Attempted restoration",baseVersion:removalObservation.version},
+      {type:"withdraw_observation",operationId:"op_retained_observation_withdraw",observationId:removalObservation.id,reason:"Attempt to change removed history",baseVersion:removalObservation.version},
+    ]);
+    expect(removedSync).toHaveLength(3);
+    expect(removedSync.every(result=>result.status==="rejected" && result.message.includes("removed after retention review"))).toBe(true);
+    const removedReports=await loadSurveyReports(context,removalSurvey.survey.id);
+    expect(removedReports?.latest).toBeNull();expect(removedReports?.versions.find(version=>version.id===removalReport.id)).toMatchObject({contentRemoved:true,current:false});
+    const disposedRegister=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,removalJob.id));
+    expect(disposedRegister!.mediaMetadata.find(media=>media.id===removalMedia.id)).toEqual({id:removalMedia.id,kind:"photo",metadataDisposed:true});
+    expect(disposedRegister!.evidenceAnnotations.find(link=>link.id===removalLink.id)).toEqual({id:removalLink.id,evidenceType:"media",contentDisposed:true});
+    expect(disposedRegister!.assessment.eligibleForManagerReview).toBe(true);
+    expect(disposedRegister!.recordedObservations.find(observation=>observation.id===removalObservation.id)).toEqual({id:removalObservation.id,kind:removalObservation.kind,contentDisposed:true});
+    expect(disposedRegister!.recordedValues.find(value=>value.id===removalValue.id)).toEqual({id:removalValue.id,fieldPath:removalValue.fieldPath,contentDisposed:true});
+    expect(disposedRegister!.reportVersions.find(report=>report.id===removalReport.id)?.contentDisposed).toBe(true);
+    expect(disposedRegister!.fieldProposals.find(proposal=>proposal.id===removalProposal.id)?.contentDisposed).toBe(true);
+    expect(disposedRegister!.adviserTasks.find(task=>task.id===removalTask.id)?.contentDisposed).toBe(true);
+    expect(disposedRegister!.mediaAnalyses.find(analysis=>analysis.id===removalAnalysis.id)?.analysisDisposed).toBe(true);
+    expect(disposedRegister!.questionnaireDocuments.find(document=>document.id===removalOriginal.id)?.analysisDisposed).toBe(true);
+    expect(dispositionEvents[0].metadata).toEqual({jobId:removalJob.id,removalId:removalIntent.id,originalChecksum:removalOriginal.checksum,analysisFingerprint:createHash("sha256").update(JSON.stringify(removalOriginal.analysis)).digest("hex"),policyVersion:"survey-file-1-year-v2",reason:cleanupDecision.reason,confirmed:true});
+    expect(dispositionEvents[0].actorUserId).toBe(context.internalUserId);
+    expect(JSON.stringify(dispositionEvents[0].metadata)).not.toContain("Fictional extracted text");
+    await expect(withTenant(createDatabase(),foreignOrg.id,tx=>disposeQuestionnaireAnalysis(tx,foreignOrg.id,removalJob.id,context.internalUserId!,removalOriginal.id))).rejects.toThrow("permission");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(preinspectionDocuments).set({analysis:{restored:true}}).where(eq(preinspectionDocuments.id,removalOriginal.id)))).rejects.toMatchObject({cause:{message:"A record bound to a file under original removal cannot be added, changed, moved or deleted"}});
+    expect(await withTenant(createDatabase(),context.organisationId,tx=>verifiedSurveyFileOriginalRemoval(tx,context.organisationId,"questionnaire",removalOriginal.id))).not.toBeNull();
+    expect(await withTenant(createDatabase(),foreignOrg.id,tx=>verifiedSurveyFileOriginalRemoval(tx,foreignOrg.id,"questionnaire",removalOriginal.id))).toBeNull();
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>downloadPreinspectionDocument(tx,{organisationId:context.organisationId,jobId:removalJob.id,propertyId:retentionJob.propertyId,actorUserId:context.internalUserId!,source:"staff_transcribed_client",valuation:false},removalOriginal.id))).rejects.toMatchObject({status:410,code:"original_removed"});
+    const removedRegister=await withTenant(createDatabase(),context.organisationId,tx=>listPreinspectionDocuments(tx,{organisationId:context.organisationId,jobId:removalJob.id,propertyId:retentionJob.propertyId,actorUserId:context.internalUserId!,source:"staff_transcribed_client",valuation:false}));
+    expect(removedRegister[0].originalRemovedAt).not.toBeNull();expect(removedRegister[0].analysis).toBeNull();
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>confirmDocumentWorks(tx,{organisationId:context.organisationId,jobId:removalJob.id,propertyId:retentionJob.propertyId,actorUserId:context.internalUserId!,source:"staff_transcribed_client",valuation:false},context,removalOriginal.id,{worksKind:"extension",checksum:removalOriginal.checksum,reason:"Reviewed original association after retention removal.",confirm:true}))).rejects.toMatchObject({status:410,code:"original_removed"});
+    expect(noExternal).not.toHaveBeenCalled();vi.unstubAllGlobals();
+  },120000);
+  it("allows only one concurrent customer claim for the same surveyor slot",async()=>{
+    const created=await Promise.all(["First","Second"].map(firstName=>createPublicQuote({organisationId:context.organisationId,actorUserId:context.internalUserId!,requestId:crypto.randomUUID(),firstName,email:`${firstName.toLowerCase()}@example.test`,answers:{purpose:"survey-only",propertyAge:"post-1990",propertyType:"house"}})));
+    const request=(index:number,path:string,body?:unknown)=>new Request(`http://surveynt.test/api/v1/public/quotes/${created[index].quote.id}${path}`,{method:body?"POST":"GET",headers:{"content-type":"application/json","x-quote-token":created[index].token},...(body?{body:JSON.stringify(body)}:{})});
+    const routes=created.map(value=>({params:Promise.resolve({id:value.quote.id as string})}));
+    await Promise.all(created.map(value=>acceptQuoteAddress(value.quote.id as string,value.token,{line1:"2 Fictional Demo Street",city:"Bristol",postcode:"BS1 1AA"})));
+    await Promise.all(created.map((_,index)=>checkout(request(index,"/checkout",{purpose:"deposit"}),routes[index])));
+    const available=(await (await slots(request(0,"/appointments"),routes[0])).json()).data;
+    expect(available.length).toBeGreaterThan(0);
+    const results=await Promise.all(created.map((_,index)=>book(request(index,"/appointments",{startsAt:available[0].startsAt}),routes[index])));
+    expect(results.map(value=>value.status).sort()).toEqual([200,409]);
+    const successful=results.find(value=>value.ok)!;
+    expect((await successful.json()).data.surveyorId).toBe(context.internalUserId);
+  },120000);
+});

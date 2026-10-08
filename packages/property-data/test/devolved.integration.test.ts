@@ -59,7 +59,7 @@ describe.skipIf(!integrationEnabled)("country-specific sources", () => {
     expect(outcome).toMatchObject({ status: "active", recordCount: 3, validation: { withoutUprn: 1, rejected: 0 } });
     const columns = await importer.execute(sql`select column_name from information_schema.columns where table_schema = 'reference' and table_name = 'scottish_epc_certificates'`);
     expect((columns as unknown as { rows: { column_name: string }[] }).rows.map((row) => row.column_name)).not.toEqual(expect.arrayContaining(["address1", "postcode"]));
-    const invalid = await importer.execute(sql`select lodgement_date, current_rating from scottish_epc_certificates where certificate_key = '0100-0001-0004'`);
+    const invalid = await importer.execute(sql`select lodgement_date, current_rating from reference.scottish_epc_certificates where certificate_key = '0100-0001-0004'`);
     expect((invalid as unknown as { rows: unknown[] }).rows[0]).toEqual({ lodgement_date: null, current_rating: null });
 
     const context = { now: new Date(), env: {}, scottishEpc: databaseScottishEpcQuery(database.connect(database.appUrl)) };

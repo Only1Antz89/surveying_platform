@@ -1,0 +1,23 @@
+export type CapabilityState="Available"|"Demo"|"Setup required"|"Pending approval"|"Unavailable"|"Sync error";
+export type Capability={key:string;label:string;state:CapabilityState;detail:string;action:string;connectHref?:string;coverage?:string[];versions?:{version:string;layer:string;records:number;activatedAt:string|null}[];sync?:{status:string;records:number;startedAt:string;capacityReviewPassed:boolean}};
+export function integrationReadiness(demo:boolean,env:Record<string,string|undefined>=process.env):Capability[]{
+  const ready=(keys:string[])=>keys.every(k=>Boolean(env[k]));
+  return [
+    {key:"hmlr",label:"Land extents",state:demo?"Demo":"Setup required",detail:"Indicative registered freehold extents, not definitive boundaries. National conversion requires approximately 50 GB of scratch storage and a capacity review.",action:"Review dataset capacity and active coverage"},
+    {key:"epc",label:"Energy performance",state:demo?"Demo":"Setup required",detail:"EPC access needs credentials, licence acceptance and approved data-protection handling. No record found is distinct from not checked.",action:"Review EPC access requirements"},
+    {key:"quotes",label:"Secure customer quotes",state:demo?"Demo":ready(["QUOTE_TOKEN_SECRET"])?"Available":"Setup required",detail:"Scoped, revocable customer links. Live activation requires a securely configured signing secret and practice enablement.",action:"Configure customer quote access"},
+    {key:"payments",label:"Client payments",state:demo?"Demo":ready(["STRIPE_CLIENT_PAYMENTS_KEY"])?"Pending approval":"Setup required",detail:"Hosted deposits, balances and refunds. Live collection remains gated by legal, accounting, VAT and client-money approval. Firm settlements are recorded manually.",action:"Review payment configuration and approvals"},
+    {key:"google",label:"Google Calendar",state:demo?"Demo":ready(["GOOGLE_CALENDAR_CLIENT_ID","GOOGLE_CALENDAR_CLIENT_SECRET","CALENDAR_TOKEN_ENCRYPTION_KEY"])?"Available":"Setup required",detail:"Personal OAuth connection, encrypted credentials, busy periods and reviewable conflicts.",action:"Connect or reconnect your calendar"},
+    {key:"microsoft",label:"Microsoft 365",state:demo?"Demo":ready(["MICROSOFT_CALENDAR_CLIENT_ID","MICROSOFT_CALENDAR_CLIENT_SECRET","CALENDAR_TOKEN_ENCRYPTION_KEY"])?"Available":"Setup required",detail:"Personal Outlook calendar connection with sync health and conflict review.",action:"Connect or reconnect your calendar"},
+    {key:"routing",label:"Daily route planning",state:demo?"Demo":ready(["ROUTING_PROVIDER_URL","ROUTING_PROVIDER_ATTRIBUTION"])?"Available":"Setup required",detail:"Appointment order and navigation remain available. Direct-distance fallbacks are visibly approximate, not drive-time estimates.",action:"Configure the production routing provider"},
+  ];
+}
+
+export type CalendarCapabilityConnection={status:string;lastError:string|null;webhookChannelId:string|null;webhookExpiresAt:Date|null};
+export function calendarCapabilityState(configured:boolean,connections:CalendarCapabilityConnection[],now=Date.now()):CapabilityState{
+ if(!configured)return "Setup required";
+ const active=connections.filter(row=>row.status==="active");
+ if(active.some(row=>row.lastError||!row.webhookChannelId||!row.webhookExpiresAt||row.webhookExpiresAt.getTime()<=now))return "Sync error";
+ if(active.length)return "Available";
+ return connections.some(row=>["error","revoked","expired"].includes(row.status))?"Sync error":"Setup required";
+}

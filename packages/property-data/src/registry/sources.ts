@@ -3,7 +3,7 @@ import type { InformationClass, LicenceSnapshot } from "../contract";
 
 // Machine-readable mirror of docs/property-intelligence/source-register.md.
 // `registerStatus` records desk verification only. Runtime enablement is
-// decided by data_sources (operator-controlled, default disabled).
+// decided by reference.data_sources (operator-controlled, default disabled).
 
 export const registerStatuses = ["verified", "pending", "blocked"] as const;
 export type RegisterStatus = (typeof registerStatuses)[number];

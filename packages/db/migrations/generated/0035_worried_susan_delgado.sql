@@ -1,0 +1,2 @@
+ALTER TABLE "field_proposals" DROP CONSTRAINT "field_proposals_origin_chk";--> statement-breakpoint
+ALTER TABLE "field_proposals" ADD CONSTRAINT "field_proposals_origin_chk" CHECK (origin_class in ('external_record', 'job_record', 'customer_statement', 'prior_survey', 'document_extraction', 'image_analysis', 'model_draft'));

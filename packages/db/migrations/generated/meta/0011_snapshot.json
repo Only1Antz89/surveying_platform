@@ -1,6 +1,6 @@
 {
-  "id": "518225ff-b7bc-491a-8f04-18eb38db72d2",
-  "prevId": "14aa7436-085b-4e25-bc58-307cd603321e",
+  "id": "e842fbe8-ee45-48c4-bed7-375819135aab",
+  "prevId": "9376270b-fb56-49e8-8701-f1c4dbd14e5a",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2095,103 +2095,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "access_method": {
-          "name": "access_method",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "register_status": {
-          "name": "register_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "checked_at": {
-          "name": "checked_at",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "definition": {
-          "name": "definition",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "licence_snapshot": {
-          "name": "licence_snapshot",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::jsonb"
-        },
-        "verified_by": {
-          "name": "verified_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "verification_notes": {
-          "name": "verification_notes",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_success_at": {
-          "name": "last_success_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_failure_at": {
-          "name": "last_failure_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_failure_code": {
-          "name": "last_failure_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_probe_at": {
-          "name": "last_probe_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_probe_status": {
-          "name": "last_probe_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_probe_message": {
-          "name": "last_probe_message",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_release_check_at": {
-          "name": "last_release_check_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_release_check_by": {
-          "name": "last_release_check_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_release_check_note": {
-          "name": "last_release_check_note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -2212,12 +2115,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "data_sources_register_status_check": {
-          "name": "data_sources_register_status_check",
-          "value": "register_status is null or register_status in ('verified', 'pending', 'blocked')"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.dataset_syncs": {
@@ -2428,49 +2326,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "layer": {
-          "name": "layer",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
-        },
-        "source_crs": {
-          "name": "source_crs",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "extent": {
-          "name": "extent",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "imported_by": {
-          "name": "imported_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "previous_active_id": {
-          "name": "previous_active_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "completed_at": {
-          "name": "completed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "retired_at": {
-          "name": "retired_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -2487,17 +2342,11 @@
         }
       },
       "indexes": {
-        "dataset_versions_source_layer_version_uidx": {
-          "name": "dataset_versions_source_layer_version_uidx",
+        "dataset_versions_source_version_uidx": {
+          "name": "dataset_versions_source_version_uidx",
           "columns": [
             {
               "expression": "source_key",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "layer",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -6830,6 +6679,93 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "reference.os_open_uprn": {
+      "name": "os_open_uprn",
+      "schema": "reference",
+      "columns": {
+        "dataset_sync_id": {
+          "name": "dataset_sync_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "uprn": {
+          "name": "uprn",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "geom": {
+          "name": "geom",
+          "type": "geometry(point)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_x": {
+          "name": "source_x",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_y": {
+          "name": "source_y",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "os_open_uprn_geog_gix": {
+          "name": "os_open_uprn_geog_gix",
+          "columns": [
+            {
+              "expression": "(\"geom\"::geography)",
+              "isExpression": true,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "gist",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "os_open_uprn_dataset_sync_id_dataset_syncs_id_fk": {
+          "name": "os_open_uprn_dataset_sync_id_dataset_syncs_id_fk",
+          "tableFrom": "os_open_uprn",
+          "columnsFrom": [
+            "dataset_sync_id"
+          ],
+          "tableTo": "dataset_syncs",
+          "schemaTo": "reference",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {
+        "os_open_uprn_pk": {
+          "name": "os_open_uprn_pk",
+          "columns": [
+            "dataset_sync_id",
+            "uprn"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "os_open_uprn_format_chk": {
+          "name": "os_open_uprn_format_chk",
+          "value": "uprn ~ '^[0-9]{1,12}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.os_uprn_points": {
       "name": "os_uprn_points",
       "schema": "",
@@ -6893,21 +6829,6 @@
             {
               "expression": "location",
               "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "with": {},
-          "method": "gist",
-          "concurrently": false
-        },
-        "os_uprn_points_location_geog_gix": {
-          "name": "os_uprn_points_location_geog_gix",
-          "columns": [
-            {
-              "expression": "(\"location\"::geography)",
-              "isExpression": true,
               "asc": true,
               "nulls": "last"
             }
@@ -7417,12 +7338,12 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.price_paid_transactions": {
+    "reference.price_paid_transactions": {
       "name": "price_paid_transactions",
-      "schema": "",
+      "schema": "reference",
       "columns": {
-        "dataset_version_id": {
-          "name": "dataset_version_id",
+        "dataset_sync_id": {
+          "name": "dataset_sync_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
@@ -7472,13 +7393,14 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "price_paid_transactions_dataset_version_id_dataset_versions_id_fk": {
-          "name": "price_paid_transactions_dataset_version_id_dataset_versions_id_fk",
+        "price_paid_transactions_dataset_sync_id_dataset_syncs_id_fk": {
+          "name": "price_paid_transactions_dataset_sync_id_dataset_syncs_id_fk",
           "tableFrom": "price_paid_transactions",
           "columnsFrom": [
-            "dataset_version_id"
+            "dataset_sync_id"
           ],
-          "tableTo": "dataset_versions",
+          "tableTo": "dataset_syncs",
+          "schemaTo": "reference",
           "columnsTo": [
             "id"
           ],
@@ -7490,7 +7412,7 @@
         "price_paid_transactions_pk": {
           "name": "price_paid_transactions_pk",
           "columns": [
-            "dataset_version_id",
+            "dataset_sync_id",
             "transaction_id"
           ]
         }
@@ -7521,12 +7443,12 @@
       },
       "isRLSEnabled": false
     },
-    "public.price_paid_uprn_links": {
+    "reference.price_paid_uprn_links": {
       "name": "price_paid_uprn_links",
-      "schema": "",
+      "schema": "reference",
       "columns": {
-        "dataset_version_id": {
-          "name": "dataset_version_id",
+        "dataset_sync_id": {
+          "name": "dataset_sync_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
@@ -7549,7 +7471,7 @@
           "name": "price_paid_uprn_links_uprn_idx",
           "columns": [
             {
-              "expression": "dataset_version_id",
+              "expression": "dataset_sync_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -7568,13 +7490,14 @@
         }
       },
       "foreignKeys": {
-        "price_paid_uprn_links_dataset_version_id_dataset_versions_id_fk": {
-          "name": "price_paid_uprn_links_dataset_version_id_dataset_versions_id_fk",
+        "price_paid_uprn_links_dataset_sync_id_dataset_syncs_id_fk": {
+          "name": "price_paid_uprn_links_dataset_sync_id_dataset_syncs_id_fk",
           "tableFrom": "price_paid_uprn_links",
           "columnsFrom": [
-            "dataset_version_id"
+            "dataset_sync_id"
           ],
-          "tableTo": "dataset_versions",
+          "tableTo": "dataset_syncs",
+          "schemaTo": "reference",
           "columnsTo": [
             "id"
           ],
@@ -7586,7 +7509,7 @@
         "price_paid_uprn_links_pk": {
           "name": "price_paid_uprn_links_pk",
           "columns": [
-            "dataset_version_id",
+            "dataset_sync_id",
             "transaction_id",
             "uprn"
           ]
@@ -8535,6 +8458,377 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "reference.data_sources": {
+      "name": "data_sources",
+      "schema": "reference",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "organisation": {
+          "name": "organisation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category": {
+          "name": "category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "documentation_url": {
+          "name": "documentation_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "access_method": {
+          "name": "access_method",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "coverage": {
+          "name": "coverage",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "licence": {
+          "name": "licence",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "register_status": {
+          "name": "register_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "checked_at": {
+          "name": "checked_at",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "definition": {
+          "name": "definition",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "verified_at": {
+          "name": "verified_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "verified_by": {
+          "name": "verified_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "verification_notes": {
+          "name": "verification_notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_success_at": {
+          "name": "last_success_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_failure_at": {
+          "name": "last_failure_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_failure_code": {
+          "name": "last_failure_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_probe_at": {
+          "name": "last_probe_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_probe_status": {
+          "name": "last_probe_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_probe_message": {
+          "name": "last_probe_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_release_check_at": {
+          "name": "last_release_check_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_release_check_by": {
+          "name": "last_release_check_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_release_check_note": {
+          "name": "last_release_check_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "reference.dataset_syncs": {
+      "name": "dataset_syncs",
+      "schema": "reference",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "source_key": {
+          "name": "source_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "layer": {
+          "name": "layer",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "dataset_version": {
+          "name": "dataset_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_url": {
+          "name": "source_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "checksum": {
+          "name": "checksum",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "licence": {
+          "name": "licence",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "source_crs": {
+          "name": "source_crs",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "extent": {
+          "name": "extent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'staging'"
+        },
+        "record_count": {
+          "name": "record_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "validation": {
+          "name": "validation",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "previous_active_id": {
+          "name": "previous_active_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "imported_by": {
+          "name": "imported_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "activated_at": {
+          "name": "activated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "retired_at": {
+          "name": "retired_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "dataset_syncs_one_active_layer_uidx": {
+          "name": "dataset_syncs_one_active_layer_uidx",
+          "columns": [
+            {
+              "expression": "source_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "layer",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "status = 'active'",
+          "concurrently": false
+        },
+        "dataset_syncs_source_idx": {
+          "name": "dataset_syncs_source_idx",
+          "columns": [
+            {
+              "expression": "source_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "started_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "dataset_syncs_source_key_data_sources_key_fk": {
+          "name": "dataset_syncs_source_key_data_sources_key_fk",
+          "tableFrom": "dataset_syncs",
+          "columnsFrom": [
+            "source_key"
+          ],
+          "tableTo": "data_sources",
+          "schemaTo": "reference",
+          "columnsTo": [
+            "key"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "dataset_syncs_status_chk": {
+          "name": "dataset_syncs_status_chk",
+          "value": "status in ('staging', 'active', 'retired', 'failed')"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.report_approvals": {
       "name": "report_approvals",
       "schema": "",
@@ -8867,12 +9161,12 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.scottish_epc_certificates": {
+    "reference.scottish_epc_certificates": {
       "name": "scottish_epc_certificates",
-      "schema": "",
+      "schema": "reference",
       "columns": {
-        "dataset_version_id": {
-          "name": "dataset_version_id",
+        "dataset_sync_id": {
+          "name": "dataset_sync_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
@@ -8937,7 +9231,7 @@
           "name": "scottish_epc_certificates_uprn_idx",
           "columns": [
             {
-              "expression": "dataset_version_id",
+              "expression": "dataset_sync_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -8956,13 +9250,14 @@
         }
       },
       "foreignKeys": {
-        "scottish_epc_certificates_dataset_version_id_dataset_versions_id_fk": {
-          "name": "scottish_epc_certificates_dataset_version_id_dataset_versions_id_fk",
+        "scottish_epc_certificates_dataset_sync_id_dataset_syncs_id_fk": {
+          "name": "scottish_epc_certificates_dataset_sync_id_dataset_syncs_id_fk",
           "tableFrom": "scottish_epc_certificates",
           "columnsFrom": [
-            "dataset_version_id"
+            "dataset_sync_id"
           ],
-          "tableTo": "dataset_versions",
+          "tableTo": "dataset_syncs",
+          "schemaTo": "reference",
           "columnsTo": [
             "id"
           ],
@@ -8974,7 +9269,7 @@
         "scottish_epc_certificates_pk": {
           "name": "scottish_epc_certificates_pk",
           "columns": [
-            "dataset_version_id",
+            "dataset_sync_id",
             "certificate_key"
           ]
         }
@@ -9382,6 +9677,122 @@
           "value": "status in ('active', 'inactive')"
         }
       },
+      "isRLSEnabled": false
+    },
+    "reference.spatial_features": {
+      "name": "spatial_features",
+      "schema": "reference",
+      "columns": {
+        "dataset_sync_id": {
+          "name": "dataset_sync_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_key": {
+          "name": "source_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "layer": {
+          "name": "layer",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "feature_id": {
+          "name": "feature_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attributes": {
+          "name": "attributes",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "geom": {
+          "name": "geom",
+          "type": "geometry(Geometry, 4326)",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "spatial_features_gix": {
+          "name": "spatial_features_gix",
+          "columns": [
+            {
+              "expression": "geom",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "gist",
+          "concurrently": false
+        },
+        "spatial_features_layer_idx": {
+          "name": "spatial_features_layer_idx",
+          "columns": [
+            {
+              "expression": "source_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "layer",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "spatial_features_dataset_sync_id_dataset_syncs_id_fk": {
+          "name": "spatial_features_dataset_sync_id_dataset_syncs_id_fk",
+          "tableFrom": "spatial_features",
+          "columnsFrom": [
+            "dataset_sync_id"
+          ],
+          "tableTo": "dataset_syncs",
+          "schemaTo": "reference",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {
+        "spatial_features_pk": {
+          "name": "spatial_features_pk",
+          "columns": [
+            "dataset_sync_id",
+            "feature_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.spatial_reference_features": {
@@ -11467,7 +11878,8 @@
   },
   "schemas": {
     "learning_restricted": "learning_restricted",
-    "learning_shared": "learning_shared"
+    "learning_shared": "learning_shared",
+    "reference": "reference"
   },
   "views": {},
   "sequences": {},

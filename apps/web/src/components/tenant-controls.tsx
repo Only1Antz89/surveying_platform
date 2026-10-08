@@ -1,10 +1,12 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { Ban, CheckCircle2, Headphones, ShieldAlert, ShieldCheck, X } from "lucide-react";
 import type { OrganisationStatus } from "@surveynt/domain";
 
 export function TenantControls({ tenantId, initialStatus, canManage, canSupport, canBreakGlass }: { tenantId: string; initialStatus: OrganisationStatus; canManage: boolean; canSupport: boolean; canBreakGlass: boolean }) {
+  const router = useRouter();
   const [status, setStatus] = useState(initialStatus);
   const [targetStatus, setTargetStatus] = useState<"active" | "suspended" | null>(null);
   const [requestingSupport, setRequestingSupport] = useState<"standard" | "breakGlass" | null>(null);
@@ -13,37 +15,46 @@ export function TenantControls({ tenantId, initialStatus, canManage, canSupport,
   const [error, setError] = useState<string | null>(null);
 
   async function changeStatus(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!targetStatus) return;
-    setSaving(true);
-    setError(null);
-    const form = new FormData(event.currentTarget);
-    const response = await fetch(`/api/platform/tenants/${tenantId}/status`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ status: targetStatus, reason: form.get("reason") }),
-    });
-    const payload = await response.json();
-    setSaving(false);
-    if (!response.ok) {
-      setError(payload?.error?.message ?? "The tenant status could not be changed.");
-      return;
-    }
-    setStatus(payload.data.status);
-    setMessage(payload.data.status === "suspended" ? "Tenant access suspended and audited." : "Tenant access restored and audited.");
-    setTargetStatus(null);
+    try {
+      event.preventDefault();
+      if (!targetStatus) return;
+      setSaving(true);
+      setError(null);
+      const form = new FormData(event.currentTarget);
+      const response = await fetch(`/api/platform/tenants/${tenantId}/status`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status: targetStatus, reason: form.get("reason") }),
+      });
+      const payload = await response.json();
+      setSaving(false);
+      if (!response.ok) {
+        setError(payload?.error?.message ?? "The tenant status could not be changed.");
+        return;
+      }
+      setStatus(payload.data.status);
+      setMessage(payload.data.status === "suspended" ? "Tenant access suspended and audited." : "Tenant access restored and audited.");
+      setTargetStatus(null);
+      router.refresh();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "The platform request failed. Please retry.");
+    } finally { setSaving(false); }
   }
 
   async function requestSupport(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setSaving(true); setError(null);
-    const form = new FormData(event.currentTarget);
-    const breakGlass = requestingSupport === "breakGlass";
-    const response = await fetch(`/api/platform/tenants/${tenantId}/support-sessions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ticketReference: form.get("ticketReference"), reason: form.get("reason"), permission: breakGlass ? "write" : form.get("permission"), breakGlass }) });
-    const payload = await response.json(); setSaving(false);
-    if (!response.ok) return setError(payload?.error?.message ?? "The support session could not be requested.");
-    setRequestingSupport(null);
-    if (payload.data.url) window.location.assign(payload.data.url);
-    else setMessage("Write access requested. It remains unavailable until a tenant owner approves it.");
+    try {
+      event.preventDefault(); setSaving(true); setError(null);
+      const form = new FormData(event.currentTarget);
+      const breakGlass = requestingSupport === "breakGlass";
+      const response = await fetch(`/api/platform/tenants/${tenantId}/support-sessions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ticketReference: form.get("ticketReference"), reason: form.get("reason"), permission: breakGlass ? "write" : form.get("permission"), breakGlass }) });
+      const payload = await response.json(); setSaving(false);
+      if (!response.ok) return setError(payload?.error?.message ?? "The support session could not be requested.");
+      setRequestingSupport(null);
+      if (payload.data.url) window.location.assign(payload.data.url);
+      else setMessage("Write access requested. It remains unavailable until a tenant owner approves it.");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "The platform request failed. Please retry.");
+    } finally { setSaving(false); }
   }
 
   return <>

@@ -4,6 +4,7 @@ import { FormEvent, useMemo, useState } from "react";
 import { Archive, ContactRound, Download, Pencil, Plus, Star, Trash2, Search, X } from "lucide-react";
 import { StatusDot } from "@surveynt/ui";
 import type { Client } from "@/lib/demo-data";
+import "./client-record.css";
 
 type ApiClient = { id: string; kind: "individual" | "company"; displayName: string; email: string | null; phone: string | null; version: number };
 type ClientContact = { id: string; name: string; email: string | null; phone: string | null; preferredChannel: "email" | "phone" | "sms" | "post"; primary: boolean };
@@ -19,7 +20,7 @@ const toClient = (client: ApiClient): Client => ({
   version: client.version,
 });
 
-export function ClientRegister({ clients: initialClients, canEdit = true }: { clients: Client[]; canEdit?: boolean }) {
+export function ClientRegister({ clients: initialClients, canEdit = true, apiBase = "/api/v1/clients", organisationSlug }: { clients: Client[]; canEdit?: boolean; apiBase?: string; organisationSlug?: string }) {
   const [clients, setClients] = useState(initialClients);
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState("All clients");
@@ -32,91 +33,152 @@ export function ClientRegister({ clients: initialClients, canEdit = true }: { cl
   const visible = useMemo(() => clients.filter((client) => `${client.name} ${client.email}`.toLowerCase().includes(query.toLowerCase()) && (kind === "All clients" || client.kind === kind)), [clients, query, kind]);
   const csv = `name,type,email,phone,properties,last activity\n${visible.map((client) => [client.name, client.kind, client.email, client.phone, client.properties, client.lastActivity].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n")}`;
 
+  function fetchClient(url: string, options: RequestInit = {}) {
+    const headers = new Headers(options.headers);
+    if (organisationSlug) headers.set("x-demo-organisation-slug", organisationSlug);
+    return fetch(url, { ...options, headers });
+  }
+
   async function openClient(client: Client) {
-    setError(null); setLoadingRecord(true); setEditing(null);
-    const response = await fetch(`/api/v1/clients/${client.id}`);
-    const payload = await response.json(); setLoadingRecord(false);
-    if (!response.ok) return setError(payload?.error?.message ?? "The client record could not be opened.");
-    setContacts(payload.data.contacts as ClientContact[]);
-    setEditing(client);
+    try {
+      setError(null); setLoadingRecord(true); setEditing(null);
+      const response = await fetchClient(`${apiBase}/${client.id}`);
+      const payload = await response.json(); setLoadingRecord(false);
+      if (!response.ok) return setError(payload?.error?.message ?? "The client record could not be opened.");
+      setContacts(payload.data.contacts as ClientContact[]);
+      setEditing({ ...client, ...toClient(payload.data.client), properties: client.properties });
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "The client request failed. Please retry.");
+    } finally {
+      setSaving(false);
+      setLoadingRecord(false);
+    }
   }
 
   async function createClient(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSaving(true);
-    setError(null);
-    const form = new FormData(event.currentTarget);
-    const response = await fetch("/api/v1/clients", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        kind: form.get("kind"),
-        displayName: form.get("displayName"),
-        email: String(form.get("email") || "") || undefined,
-        phone: String(form.get("phone") || "") || undefined,
-      }),
-    });
-    const payload = await response.json();
-    setSaving(false);
-    if (!response.ok) {
-      setError(payload?.error?.message ?? "The client could not be created.");
-      return;
+    try {
+      if (!canEdit) return;
+      event.preventDefault();
+      setSaving(true);
+      setError(null);
+      const form = new FormData(event.currentTarget);
+      const response = await fetchClient(apiBase, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          kind: form.get("kind"),
+          displayName: form.get("displayName"),
+          email: String(form.get("email") || "") || undefined,
+          phone: String(form.get("phone") || "") || undefined,
+        }),
+      });
+      const payload = await response.json();
+      setSaving(false);
+      if (!response.ok) {
+        setError(payload?.error?.message ?? "The client could not be created.");
+        return;
+      }
+      setClients((current) => [toClient(payload.data), ...current]);
+      setCreating(false);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "The client request failed. Please retry.");
+    } finally {
+      setSaving(false);
+      setLoadingRecord(false);
     }
-    setClients((current) => [toClient(payload.data), ...current]);
-    setCreating(false);
   }
 
   async function updateClient(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!editing) return;
-    setSaving(true); setError(null);
-    const form = new FormData(event.currentTarget);
-    const response = await fetch(`/api/v1/clients/${editing.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ displayName: form.get("displayName"), email: String(form.get("email") || "") || null, phone: String(form.get("phone") || "") || null, version: editing.version ?? 1 }) });
-    const payload = await response.json(); setSaving(false);
-    if (!response.ok) return setError(payload?.error?.message ?? "The client could not be updated.");
-    setClients((current) => current.map((client) => client.id === editing.id ? { ...client, name: payload.data.displayName, email: payload.data.email ?? "—", phone: payload.data.phone ?? "—", lastActivity: "Just now", version: payload.data.version } : client));
-    setEditing((current) => current ? { ...current, name: payload.data.displayName, email: payload.data.email ?? "—", phone: payload.data.phone ?? "—", lastActivity: "Just now", version: payload.data.version } : current);
+    try {
+      if (!canEdit) return;
+      event.preventDefault();
+      if (!editing) return;
+      setSaving(true); setError(null);
+      const form = new FormData(event.currentTarget);
+      const response = await fetchClient(`${apiBase}/${editing.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ displayName: form.get("displayName"), email: String(form.get("email") || "") || null, phone: String(form.get("phone") || "") || null, version: editing.version ?? 1 }) });
+      const payload = await response.json(); setSaving(false);
+      if (!response.ok) return setError(payload?.error?.message ?? "The client could not be updated.");
+      setClients((current) => current.map((client) => client.id === editing.id ? { ...client, name: payload.data.displayName, email: payload.data.email ?? "—", phone: payload.data.phone ?? "—", lastActivity: "Just now", version: payload.data.version } : client));
+      setEditing((current) => current ? { ...current, name: payload.data.displayName, email: payload.data.email ?? "—", phone: payload.data.phone ?? "—", lastActivity: "Just now", version: payload.data.version } : current);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "The client request failed. Please retry.");
+    } finally {
+      setSaving(false);
+      setLoadingRecord(false);
+    }
   }
 
   async function archiveClient(client: Client) {
-    if (!window.confirm(`Archive ${client.name}? Existing jobs will retain their client reference.`)) return;
-    setError(null);
-    const response = await fetch(`/api/v1/clients/${client.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ archived: true, version: client.version ?? 1 }) });
-    const payload = await response.json();
-    if (!response.ok) return setError(payload?.error?.message ?? "The client could not be archived.");
-    setClients((current) => current.filter((item) => item.id !== client.id));
+    try {
+      if (!canEdit) return;
+      if (!window.confirm(`Archive ${client.name}? Existing jobs will retain their client reference.`)) return;
+      setError(null);
+      const response = await fetchClient(`${apiBase}/${client.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ archived: true, version: client.version ?? 1 }) });
+      const payload = await response.json();
+      if (!response.ok) return setError(payload?.error?.message ?? "The client could not be archived.");
+      setClients((current) => current.filter((item) => item.id !== client.id));
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "The client request failed. Please retry.");
+    } finally {
+      setSaving(false);
+      setLoadingRecord(false);
+    }
   }
 
   async function addContact(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!editing) return;
-    setSaving(true); setError(null);
-    const formElement = event.currentTarget;
-    const form = new FormData(formElement);
-    const response = await fetch(`/api/v1/clients/${editing.id}/contacts`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: form.get("name"), email: String(form.get("email") || "") || null, phone: String(form.get("phone") || "") || null, preferredChannel: form.get("preferredChannel"), primary: form.get("primary") === "on" }) });
-    const payload = await response.json(); setSaving(false);
-    if (!response.ok) return setError(payload?.error?.message ?? "The contact could not be added.");
-    const created = payload.data as ClientContact;
-    setContacts((current) => [created, ...current.map((contact) => created.primary ? { ...contact, primary: false } : contact)]);
-    formElement.reset();
+    try {
+      if (!canEdit) return;
+      event.preventDefault();
+      if (!editing) return;
+      setSaving(true); setError(null);
+      const formElement = event.currentTarget;
+      const form = new FormData(formElement);
+      const response = await fetchClient(`${apiBase}/${editing.id}/contacts`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: form.get("name"), email: String(form.get("email") || "") || null, phone: String(form.get("phone") || "") || null, preferredChannel: form.get("preferredChannel"), primary: form.get("primary") === "on" }) });
+      const payload = await response.json(); setSaving(false);
+      if (!response.ok) return setError(payload?.error?.message ?? "The contact could not be added.");
+      const created = payload.data as ClientContact;
+      setContacts((current) => [created, ...current.map((contact) => created.primary ? { ...contact, primary: false } : contact)]);
+      formElement.reset();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "The client request failed. Please retry.");
+    } finally {
+      setSaving(false);
+      setLoadingRecord(false);
+    }
   }
 
   async function updateContact(contact: ClientContact, changes: Partial<Pick<ClientContact, "preferredChannel" | "primary">>) {
-    if (!editing) return;
-    setError(null);
-    const response = await fetch(`/api/v1/clients/${editing.id}/contacts/${contact.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(changes) });
-    const payload = await response.json();
-    if (!response.ok) return setError(payload?.error?.message ?? "The contact could not be updated.");
-    setContacts((current) => current.map((item) => item.id === contact.id ? { ...item, ...changes } : changes.primary ? { ...item, primary: false } : item));
+    try {
+      if (!canEdit) return;
+      if (!editing) return;
+      setError(null);
+      const response = await fetchClient(`${apiBase}/${editing.id}/contacts/${contact.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(changes) });
+      const payload = await response.json();
+      if (!response.ok) return setError(payload?.error?.message ?? "The contact could not be updated.");
+      setContacts((current) => current.map((item) => item.id === contact.id ? { ...item, ...changes } : changes.primary ? { ...item, primary: false } : item));
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "The client request failed. Please retry.");
+    } finally {
+      setSaving(false);
+      setLoadingRecord(false);
+    }
   }
 
   async function deleteContact(contact: ClientContact) {
-    if (!editing || !window.confirm(`Remove ${contact.name} from this client record?`)) return;
-    setError(null);
-    const response = await fetch(`/api/v1/clients/${editing.id}/contacts/${contact.id}`, { method: "DELETE" });
-    const payload = await response.json();
-    if (!response.ok) return setError(payload?.error?.message ?? "The contact could not be removed.");
-    setContacts((current) => current.filter((item) => item.id !== contact.id));
+    try {
+      if (!canEdit) return;
+      if (!editing || !window.confirm(`Remove ${contact.name} from this client record?`)) return;
+      setError(null);
+      const response = await fetchClient(`${apiBase}/${editing.id}/contacts/${contact.id}`, { method: "DELETE" });
+      const payload = await response.json();
+      if (!response.ok) return setError(payload?.error?.message ?? "The contact could not be removed.");
+      setContacts((current) => current.filter((item) => item.id !== contact.id));
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "The client request failed. Please retry.");
+    } finally {
+      setSaving(false);
+      setLoadingRecord(false);
+    }
   }
 
   return <>
@@ -148,7 +210,7 @@ export function ClientRegister({ clients: initialClients, canEdit = true }: { cl
         <div><form onSubmit={updateClient}><div className="form-section"><h2>Client details</h2><p>The primary details used in registers and correspondence.</p><div className="form-grid"><div className="field full"><label htmlFor="edit-client-name">Display name</label><input id="edit-client-name" name="displayName" className="input" defaultValue={editing.name} required minLength={2} maxLength={160} disabled={!canEdit} /></div><div className="field"><label htmlFor="edit-client-email">General email</label><input id="edit-client-email" name="email" className="input" type="email" defaultValue={editing.email === "—" ? "" : editing.email} disabled={!canEdit} /></div><div className="field"><label htmlFor="edit-client-phone">General phone</label><input id="edit-client-phone" name="phone" className="input" maxLength={40} defaultValue={editing.phone === "—" ? "" : editing.phone} disabled={!canEdit} /></div></div>{error ? <p className="form-error" role="alert">{error}</p> : null}</div>{canEdit ? <div className="modal-actions"><button className="button button-primary" disabled={saving}><Pencil size={14} />{saving ? "Saving…" : "Save client details"}</button></div> : null}</form></div>
         <aside className="client-contacts" aria-label="Client contacts"><div className="client-contacts-heading"><div><h3>Contacts</h3><p>{contacts.length} {contacts.length === 1 ? "person" : "people"} linked</p></div><ContactRound size={17} /></div>
           <div className="contact-list">{contacts.length ? contacts.map((contact) => <article className="contact-card" key={contact.id}><div className="contact-card-title"><div><strong>{contact.name}</strong>{contact.primary ? <span><Star size={11} />Primary</span> : null}</div>{canEdit ? <button className="icon-button" aria-label={`Remove ${contact.name}`} onClick={() => deleteContact(contact)}><Trash2 size={14} /></button> : null}</div><dl><div><dt>Email</dt><dd>{contact.email || "—"}</dd></div><div><dt>Phone</dt><dd>{contact.phone || "—"}</dd></div></dl><div className="contact-preference"><label htmlFor={`channel-${contact.id}`}>Preferred contact</label><select id={`channel-${contact.id}`} className="select" value={contact.preferredChannel} disabled={!canEdit} onChange={(event) => updateContact(contact, { preferredChannel: event.target.value as ClientContact["preferredChannel"] })}><option value="email">Email</option><option value="phone">Phone call</option><option value="sms">SMS</option><option value="post">Post</option></select>{canEdit && !contact.primary ? <button className="button button-quiet" onClick={() => updateContact(contact, { primary: true })}><Star size={13} />Make primary</button> : null}</div></article>) : <div className="empty-state compact"><strong>No contacts yet</strong><span>Add the first named contact below.</span></div>}</div>
-          {canEdit ? <form className="contact-add-form" onSubmit={addContact}><h3>Add contact</h3><div className="field"><label htmlFor="contact-name">Name</label><input id="contact-name" name="name" className="input" required minLength={2} maxLength={160} /></div><div className="form-grid"><div className="field"><label htmlFor="contact-email">Email</label><input id="contact-email" name="email" className="input" type="email" /></div><div className="field"><label htmlFor="contact-phone">Phone</label><input id="contact-phone" name="phone" className="input" maxLength={40} /></div></div><div className="form-grid"><div className="field"><label htmlFor="contact-channel">Preferred contact</label><select id="contact-channel" name="preferredChannel" className="input" defaultValue="email"><option value="email">Email</option><option value="phone">Phone call</option><option value="sms">SMS</option><option value="post">Post</option></select></div><label className="check-field"><input name="primary" type="checkbox" />Primary contact</label></div><button className="button button-secondary" disabled={saving}><Plus size={14} />{saving ? "Adding…" : "Add contact"}</button></form> : null}
+{canEdit ? <details className="contact-add-panel"><summary><Plus size={16}/>Add a contact</summary><form className="contact-add-form" onSubmit={addContact}><h3>Add contact</h3><div className="field"><label htmlFor="contact-name">Name</label><input id="contact-name" name="name" className="input" required minLength={2} maxLength={160} /></div><div className="form-grid"><div className="field"><label htmlFor="contact-email">Email</label><input id="contact-email" name="email" className="input" type="email" /></div><div className="field"><label htmlFor="contact-phone">Phone</label><input id="contact-phone" name="phone" className="input" maxLength={40} /></div></div><div className="form-grid"><div className="field"><label htmlFor="contact-channel">Preferred contact</label><select id="contact-channel" name="preferredChannel" className="input" defaultValue="email"><option value="email">Email</option><option value="phone">Phone call</option><option value="sms">SMS</option><option value="post">Post</option></select></div><label className="check-field"><input name="primary" type="checkbox" />Primary contact</label></div><button className="button button-secondary" disabled={saving}><Plus size={14} />{saving ? "Adding…" : "Add contact"}</button></form></details> : null}
         </aside>
       </div><div className="modal-actions"><button type="button" className="button button-secondary" onClick={() => setEditing(null)}>Close</button></div>
     </section></div> : null}

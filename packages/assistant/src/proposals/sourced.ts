@@ -1,6 +1,7 @@
 import { canonicalJson, resolveField, validateFieldValue } from "../forms/validate";
 import type { FieldValue, FormTemplate } from "../forms/types";
 import type { DiscrepancyDraft, EvidenceRef, ProposalDraft } from "./types";
+import type { PreinspectionAnswers } from "../questionnaire";
 
 // Deterministic, source-grounded proposals. No model is involved: every
 // proposed value is copied or mapped from a cited record, and fields only
@@ -17,6 +18,9 @@ export type SnapshotEvidence = {
   data: Record<string, unknown>;
   retrievedAt: string;
   sourceUpdatedAt: string | null;
+  coverage?: string;
+  confidence?: string;
+  matchMethod?: string;
 };
 
 export type CurrentValue = { id: string; value: FieldValue };
@@ -26,6 +30,10 @@ export type SourcedInput = {
   snapshots: SnapshotEvidence[];
   currentValues: Map<string, CurrentValue>;
   job: { id: string; reference: string; targetDate: string | null };
+  weather?: { contextId: string; inspectionDate: string; summary: string; retrievedAt: string; attribution: string; url: string };
+  questionnaire?: { id: string; version: number; submittedAt: string; answers: PreinspectionAnswers; propertyFingerprint?: string };
+  documents?: { id: string; name: string; context: string; worksKind: "extension" | "conversion"; completionDate: string; page: number; excerpt: string }[];
+  identity?: { practitioner?: { id: string; name: string | null; ricsNumber: string | null; fingerprint: string }; firm?: { id: string; companyName?: string; address?: string; email?: string; phone?: string; fingerprint: string } };
 };
 
 async function sha(value: unknown) {
@@ -55,6 +63,38 @@ function snapshotRef(snapshot: SnapshotEvidence, label: string): EvidenceRef {
 function candidates(input: SourcedInput): { candidates: Candidate[]; conflicts: DiscrepancyDraft[] } {
   const found: Candidate[] = [];
   const conflicts: DiscrepancyDraft[] = [];
+  if (input.template.version === "1.2.0") for (const document of input.documents ?? []) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(document.completionDate)) continue;
+    found.push({ fieldPath: `c.details.${document.worksKind === "extension" ? "extended_year" : "converted_year"}`, value: { state: "provided", value: `Document states: ${document.completionDate.slice(0, 4)}` }, sourceKeys: ["confirmed_completion_document"], origin: "document_extraction", evidence: [{ type: "document_span", id: document.id, context: document.context, date: document.completionDate, label: `${document.name}, page ${document.page}: ${document.excerpt}` }], limitations: ["Explicit works-completion date from an uploaded document with surveyor-confirmed property/works association. Check the original and date before applying; not proof of legal compliance or present condition."] });
+  }
+  if (input.template.version === "1.2.0" && input.identity) {
+    const add = (path: string, value: unknown, type: "practitioner_profile" | "firm_report_identity", id: string, context: string) => {
+      if (typeof value !== "string" || !value.trim()) return;
+      found.push({ fieldPath: path, value: { state: "provided", value }, sourceKeys: [type], origin: "practice_record", evidence: [{ type, id, context, label: type === "practitioner_profile" ? "Recording practitioner's personal report identity" : "Approved firm report identity" }], limitations: ["Review the reusable identity before applying. RICS membership numbers are self-declared, not independently verified. Qualifications, signature and declaration remain manual."] });
+    };
+    const { practitioner, firm } = input.identity;
+    for (const section of ["a", "declaration"]) {
+      if (practitioner) { add(`${section}.details.surveyor_name`, practitioner.name, "practitioner_profile", practitioner.id, practitioner.fingerprint); add(`${section}.details.rics_number`, practitioner.ricsNumber, "practitioner_profile", practitioner.id, practitioner.fingerprint); }
+      if (firm) add(`${section}.details.company_name`, firm.companyName, "firm_report_identity", firm.id, firm.fingerprint);
+    }
+    if (firm) { add("declaration.details.company_address", firm.address, "firm_report_identity", firm.id, firm.fingerprint); add("declaration.details.contact_details", [firm.email, firm.phone].filter(Boolean).join(" · "), "firm_report_identity", firm.id, firm.fingerprint); }
+  }
+  if (input.questionnaire && input.template.version === "1.2.0") {
+    const submission = input.questionnaire;
+    const evidence: EvidenceRef[] = [{ type: "customer_submission", id: submission.id, label: `Customer questionnaire version ${submission.version} — unverified statement`, date: submission.submittedAt, ...(submission.propertyFingerprint ? { context: submission.propertyFingerprint } : {}) }];
+    const add = (fieldPath: string, value: unknown) => {
+      if (typeof value === "string" && value.trim()) found.push({ fieldPath, value: { state: "provided", value: `Client reports: ${value.trim()}` }, evidence, sourceKeys: ["customer_questionnaire"], origin: "customer_statement", limitations: ["Customer statement, not an inspection observation. Verify before using in the report.", "Reported dates do not prove completion, legal compliance, ownership or safety."] });
+    };
+    add("a.details.access_arrangements", submission.answers.access);
+    add("a.details.client_brief", submission.answers.concerns);
+    add("c.details.property_type", submission.answers.propertyType);
+    add("c.details.accommodation", submission.answers.accommodation);
+    add("c.details.flat_information", [submission.answers.floor ? `Floor: ${submission.answers.floor}` : null, submission.answers.sharedFacilities].filter(Boolean).join("; "));
+    add("c.details.grounds", [submission.answers.garages, submission.answers.outbuildings, submission.answers.parking, submission.answers.boundaries].filter(Boolean).join("; "));
+    for (const [field, value] of [["built_year", submission.answers.approximateBuildYear], ["extended_year", submission.answers.extensionCompletionYear], ["converted_year", submission.answers.conversionCompletionYear]] as const) if (value !== undefined) add(`c.details.${field}`, String(value));
+    add("valuation.details.tenure", submission.answers.reportedTenure);
+    if (submission.answers.agreedPurchasePriceMinor !== undefined) add("valuation.details.agreed_price", `GBP ${(submission.answers.agreedPurchasePriceMinor / 100).toFixed(2)} agreed purchase price; not a professional market valuation`);
+  }
   const latestEpc = input.snapshots.find((snapshot) => snapshot.category === "energy_certificate" && snapshot.status === "matched" && snapshot.data.latest === true);
   if (latestEpc) {
     const lodged = typeof latestEpc.data.lodgementDate === "string" ? latestEpc.data.lodgementDate : null;
@@ -67,7 +107,46 @@ function candidates(input: SourcedInput): { candidates: Candidate[]; conflicts: 
     epcField("about.property.built_form", latestEpc.data.builtFormKey);
     epcField("about.property.construction_period", latestEpc.data.constructionPeriodKey);
     epcField("about.property.energy_rating", latestEpc.data.currentRating);
+    epcField("c.details.property_type", [latestEpc.data.builtForm, latestEpc.data.propertyType].filter(value => typeof value === "string" && value.trim()).join(" ") || null);
+    epcField("c.details.built_year", latestEpc.data.constructionAgeBand);
+    const historical = (fieldPath: string, value: unknown) => {
+      if (typeof value === "string" && value.trim()) epcField(fieldPath, `Historical EPC description: ${value}. Verify during inspection.`);
+    };
+    epcField("c.details.energy_rating", latestEpc.data.currentRating);
+    historical("c.details.construction", [latestEpc.data.walls, latestEpc.data.floor].filter(value => typeof value === "string" && value.trim()).join("; "));
+    historical("c.details.central_heating", latestEpc.data.heating);
+    historical("d.d4.construction", latestEpc.data.walls);
+    historical("d.d5.construction", latestEpc.data.windows);
+    historical("e.e4.construction", latestEpc.data.floor);
+    historical("f.f4.construction", latestEpc.data.heating);
+    historical("f.f5.construction", latestEpc.data.hotWater);
+    historical("energy.details.insulation", [latestEpc.data.roof, latestEpc.data.walls, latestEpc.data.floor].filter(value => typeof value === "string" && value.trim()).join("; "));
+    historical("energy.details.heating_energy", [latestEpc.data.heating, latestEpc.data.hotWater].filter(value => typeof value === "string" && value.trim()).join("; "));
+    historical("energy.details.energy_efficiency", [typeof latestEpc.data.currentRating === "string" ? `Current band ${latestEpc.data.currentRating}` : null, typeof latestEpc.data.potentialRating === "string" ? `Potential band ${latestEpc.data.potentialRating}` : null].filter(Boolean).join("; "));
+    const area = latestEpc.data.totalFloorAreaM2;
+    if (typeof area === "number" && Number.isFinite(area) && area > 0) epcField("c.details.accommodation", `Certificate-reported total floor area: ${area} m². Not a surveyed measurement or room layout; confirm accommodation during inspection.`);
   }
+
+  const environmentCategories = ["conservation_area", "listed_building_nhle", "listed_building", "scheduled_monument", "scheduled_monument_nhle", "registered_park_garden", "registered_park_garden_nhle", "registered_battlefield_nhle", "world_heritage_site", "world_heritage_site_nhle", "article_4_direction", "tree_preservation", "green_belt", "sssi", "ancient_woodland", "national_park", "national_landscape", "planning_flood_zone_2", "planning_flood_zone_3"];
+  const environment = input.snapshots.filter(snapshot => ["planning_data", "historic_england_nhle", "ea_flood_zones", "ne_designations"].includes(snapshot.sourceKey) && snapshot.status === "matched" && snapshot.data.ended !== true && environmentCategories.includes(snapshot.category)).slice(0, 20);
+  if (environment.length) found.push({
+    fieldPath: "c.details.local_environment", origin: "external_record", sourceKeys: environment.map(snapshot => snapshot.sourceKey),
+    value: { state: "provided", value: `External designation context at the recorded location: ${environment.map(snapshot => `${snapshot.category.replace(/_/g, " ")}${typeof snapshot.data.name === "string" ? ` — ${snapshot.data.name}` : ""}`).join("; ")}. Indicative context only; confirm boundaries and add inspection observations. Flood zones are planning layers, not a property-specific flood-risk assessment.` },
+    evidence: environment.map(snapshot => snapshotRef(snapshot, `${snapshot.sourceKey}: ${snapshot.category.replace(/_/g, " ")}`)),
+    limitations: ["This is not a complete description of the local environment, noise, traffic, ground conditions or safety.", "Absence of other records is not proof of absence. Coverage varies; confirm with the responsible authority.", ...environment.map(snapshot => `${snapshot.category}: coverage ${snapshot.coverage ?? "unknown"}; matching ${snapshot.matchMethod ?? "unknown"}; confidence ${snapshot.confidence ?? "unknown"}.`)],
+  });
+  const actualDate = input.currentValues.get("a.details.inspection_date")?.value;
+  const geography = input.snapshots.find(snapshot => snapshot.sourceKey === "postcodes_io" && snapshot.category === "postcode_geography" && snapshot.status === "matched");
+  if (geography) {
+    const description = [["Local authority", geography.data.adminDistrict], ["Region", geography.data.region], ["Ward", geography.data.adminWard]].filter(([, value]) => typeof value === "string" && value.trim()).map(([label, value]) => `${label}: ${value}`).join("; ");
+    if (description) found.push({ fieldPath: "c.details.location", value: { state: "provided", value: `Approximate postcode administrative geography: ${description}. Not a property-specific classification; confirm locally.` }, evidence: [snapshotRef(geography, "Postcodes.io postcode geography — approximate")], sourceKeys: ["postcodes_io"], origin: "external_record", limitations: ["Postcode classifications and boundaries do not establish the individual property's location, character or facilities.", "Source update date may be unavailable; retain the retrieval date and attribution."] });
+  }
+  if (input.weather && actualDate?.state === "provided" && actualDate.value === input.weather.inspectionDate) found.push({
+    fieldPath: "a.details.weather", sourceKeys: ["inspection_weather"], origin: "external_record",
+    value: { state: "provided", value: input.weather.summary },
+    evidence: [{ type: "weather_record", id: input.weather.contextId, label: `${input.weather.attribution}; retrieved ${input.weather.retrievedAt}`, date: input.weather.inspectionDate, url: input.weather.url }],
+    limitations: ["Day-wide modelled historical weather, not observed conditions at the inspection time or property. Confirm the actual conditions yourself.", "Gridded estimates can differ from local conditions. Manual entry remains available."],
+  });
 
   const listedMatches = heritageListed.flatMap((source) => input.snapshots.filter((snapshot) => snapshot.sourceKey === source.sourceKey && snapshot.category === source.category && snapshot.status === "matched").map((snapshot) => ({ source, snapshot })));
   const listedChecked = heritageListed.flatMap((source) => input.snapshots.filter((snapshot) => snapshot.sourceKey === source.sourceKey && snapshot.category === source.category && snapshot.status === "no_match").map((snapshot) => ({ source, snapshot })));
@@ -119,7 +198,7 @@ export async function generateSourcedProposals(input: SourcedInput): Promise<{ p
       continue;
     }
     const baseValueId = current?.id ?? null;
-    const inputVersion = await sha({ evidence: candidate.evidence.map((item) => item.id).sort(), baseValueId });
+    const inputVersion = await sha({ evidence: candidate.evidence.map((item) => ({ id: item.id, context: item.context ?? null })).sort((a, b) => a.id.localeCompare(b.id)), baseValueId });
     proposals.push({
       fieldPath: resolved.path,
       proposedValue: validation.value,

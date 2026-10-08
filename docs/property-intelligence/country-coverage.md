@@ -7,7 +7,7 @@ A ✓ means the source covers the country. A source is used only after an operat
 | Source | Publisher | Register | ENG | WLS | SCT | NIR | Used for |
 |---|---|---|---|---|---|---|---|
 | `os_open_uprn` OS Open UPRN | Ordnance Survey | pending | ✓ | ✓ | ✓ | — | address and UPRN identity |
-| `postcodes_io` Postcodes.io | Ideal Postcodes (open source) using ONS data | pending | ✓ | ✓ | ✓ | — | address and UPRN identity |
+| `postcodes_io` Postcodes.io | Ideal Postcodes (open source) using ONS data | pending | ✓ | ✓ | ✓ | — | enrichment |
 | `nominatim` Nominatim (OpenStreetMap) | OpenStreetMap Foundation or self-hosted operator | pending | ✓ | ✓ | ✓ | ✓ | address and UPRN identity |
 | `planning_data` Planning Data | Ministry of Housing, Communities and Local Government | pending | ✓ | — | — | — | enrichment |
 | `epc_england_wales` Energy Performance of Buildings data | Ministry of Housing, Communities and Local Government | pending | ✓ | ✓ | — | — | enrichment |

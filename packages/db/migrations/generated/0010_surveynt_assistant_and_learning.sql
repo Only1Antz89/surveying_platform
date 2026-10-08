@@ -2,6 +2,8 @@ CREATE SCHEMA "learning_restricted";
 --> statement-breakpoint
 CREATE SCHEMA "learning_shared";
 --> statement-breakpoint
+CREATE SCHEMA "reference";
+--> statement-breakpoint
 CREATE TYPE "public"."inspection_status" AS ENUM('inspected', 'partially_inspected', 'not_inspected', 'inaccessible', 'not_applicable');
 --> statement-breakpoint
 CREATE TYPE "public"."media_kind" AS ENUM('photo', 'document');
@@ -465,8 +467,18 @@ CREATE TABLE "organisation_ai_settings" (
 	CONSTRAINT "organisation_ai_settings_disclosure_chk" CHECK (not ai_features_enabled or (disclosure_text is not null and disclosure_version > 0))
 );
 --> statement-breakpoint
-CREATE TABLE "price_paid_transactions" (
-	"dataset_version_id" uuid NOT NULL,
+CREATE TABLE "reference"."os_open_uprn" (
+	"dataset_sync_id" uuid NOT NULL,
+	"uprn" text NOT NULL,
+	"geom" geometry(point) NOT NULL,
+	"source_x" double precision,
+	"source_y" double precision,
+	CONSTRAINT "os_open_uprn_pk" PRIMARY KEY("dataset_sync_id","uprn"),
+	CONSTRAINT "os_open_uprn_format_chk" CHECK (uprn ~ '^[0-9]{1,12}$')
+);
+--> statement-breakpoint
+CREATE TABLE "reference"."price_paid_transactions" (
+	"dataset_sync_id" uuid NOT NULL,
 	"transaction_id" text NOT NULL,
 	"price" integer NOT NULL,
 	"transfer_date" date NOT NULL,
@@ -474,7 +486,7 @@ CREATE TABLE "price_paid_transactions" (
 	"new_build" boolean NOT NULL,
 	"tenure" text NOT NULL,
 	"ppd_category" text NOT NULL,
-	CONSTRAINT "price_paid_transactions_pk" PRIMARY KEY("dataset_version_id","transaction_id"),
+	CONSTRAINT "price_paid_transactions_pk" PRIMARY KEY("dataset_sync_id","transaction_id"),
 	CONSTRAINT "price_paid_transactions_id_chk" CHECK (transaction_id ~ '^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$'),
 	CONSTRAINT "price_paid_transactions_price_chk" CHECK (price > 0),
 	CONSTRAINT "price_paid_transactions_type_chk" CHECK (property_type in ('D', 'S', 'T', 'F', 'O')),
@@ -482,11 +494,11 @@ CREATE TABLE "price_paid_transactions" (
 	CONSTRAINT "price_paid_transactions_category_chk" CHECK (ppd_category in ('A', 'B'))
 );
 --> statement-breakpoint
-CREATE TABLE "price_paid_uprn_links" (
-	"dataset_version_id" uuid NOT NULL,
+CREATE TABLE "reference"."price_paid_uprn_links" (
+	"dataset_sync_id" uuid NOT NULL,
 	"transaction_id" text NOT NULL,
 	"uprn" text NOT NULL,
-	CONSTRAINT "price_paid_uprn_links_pk" PRIMARY KEY("dataset_version_id","transaction_id","uprn"),
+	CONSTRAINT "price_paid_uprn_links_pk" PRIMARY KEY("dataset_sync_id","transaction_id","uprn"),
 	CONSTRAINT "price_paid_uprn_links_id_chk" CHECK (transaction_id ~ '^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$'),
 	CONSTRAINT "price_paid_uprn_links_uprn_chk" CHECK (uprn ~ '^[0-9]{1,12}$')
 );
@@ -515,6 +527,58 @@ CREATE TABLE "provider_response_cache" (
 	"response" jsonb NOT NULL,
 	"retrieved_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"expires_at" timestamp with time zone NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "reference"."data_sources" (
+	"key" text PRIMARY KEY NOT NULL,
+	"name" text NOT NULL,
+	"organisation" text NOT NULL,
+	"category" text NOT NULL,
+	"documentation_url" text NOT NULL,
+	"access_method" text NOT NULL,
+	"coverage" text[] DEFAULT '{}'::text[] NOT NULL,
+	"licence" jsonb NOT NULL,
+	"register_status" text NOT NULL,
+	"checked_at" date,
+	"definition" jsonb NOT NULL,
+	"enabled" boolean DEFAULT false NOT NULL,
+	"verified_at" timestamp with time zone,
+	"verified_by" text,
+	"verification_notes" text,
+	"last_success_at" timestamp with time zone,
+	"last_failure_at" timestamp with time zone,
+	"last_failure_code" text,
+	"last_probe_at" timestamp with time zone,
+	"last_probe_status" text,
+	"last_probe_message" text,
+	"last_release_check_at" timestamp with time zone,
+	"last_release_check_by" text,
+	"last_release_check_note" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "reference"."dataset_syncs" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"source_key" text NOT NULL,
+	"layer" text DEFAULT '' NOT NULL,
+	"dataset_version" text NOT NULL,
+	"source_url" text,
+	"checksum" text,
+	"licence" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"source_crs" text,
+	"extent" text,
+	"status" text DEFAULT 'staging' NOT NULL,
+	"record_count" integer DEFAULT 0 NOT NULL,
+	"validation" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"error" text,
+	"previous_active_id" uuid,
+	"imported_by" text,
+	"started_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"completed_at" timestamp with time zone,
+	"activated_at" timestamp with time zone,
+	"retired_at" timestamp with time zone,
+	CONSTRAINT "dataset_syncs_status_chk" CHECK (status in ('staging', 'active', 'retired', 'failed'))
 );
 --> statement-breakpoint
 CREATE TABLE "report_approvals" (
@@ -550,8 +614,8 @@ CREATE TABLE "report_versions" (
 	CONSTRAINT "report_versions_org_id_uidx" UNIQUE("organisation_id","id")
 );
 --> statement-breakpoint
-CREATE TABLE "scottish_epc_certificates" (
-	"dataset_version_id" uuid NOT NULL,
+CREATE TABLE "reference"."scottish_epc_certificates" (
+	"dataset_sync_id" uuid NOT NULL,
 	"certificate_key" text NOT NULL,
 	"uprn" text NOT NULL,
 	"lodgement_date" date,
@@ -561,7 +625,7 @@ CREATE TABLE "scottish_epc_certificates" (
 	"built_form" text,
 	"construction_age_band" text,
 	"total_floor_area_m2" double precision,
-	CONSTRAINT "scottish_epc_certificates_pk" PRIMARY KEY("dataset_version_id","certificate_key"),
+	CONSTRAINT "scottish_epc_certificates_pk" PRIMARY KEY("dataset_sync_id","certificate_key"),
 	CONSTRAINT "scottish_epc_certificates_uprn_chk" CHECK (uprn ~ '^[0-9]{1,12}$'),
 	CONSTRAINT "scottish_epc_certificates_rating_chk" CHECK ((current_rating is null or current_rating ~ '^[A-G]$') and (potential_rating is null or potential_rating ~ '^[A-G]$'))
 );
@@ -605,6 +669,17 @@ CREATE TABLE "learning_shared"."releases" (
 	"activated_at" timestamp with time zone,
 	CONSTRAINT "releases_version_unique" UNIQUE("version"),
 	CONSTRAINT "shared_releases_status_chk" CHECK (status in ('active', 'inactive'))
+);
+--> statement-breakpoint
+CREATE TABLE "reference"."spatial_features" (
+	"dataset_sync_id" uuid NOT NULL,
+	"source_key" text NOT NULL,
+	"layer" text NOT NULL,
+	"feature_id" text NOT NULL,
+	"name" text,
+	"attributes" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"geom" geometry(Geometry, 4326) NOT NULL,
+	CONSTRAINT "spatial_features_pk" PRIMARY KEY("dataset_sync_id","feature_id")
 );
 --> statement-breakpoint
 CREATE TABLE "survey_elements" (
@@ -707,55 +782,7 @@ CREATE TABLE "wording_clauses" (
 	CONSTRAINT "wording_clauses_approval_chk" CHECK (status = 'draft' or (approved_by_user_id is not null and approved_at is not null))
 );
 --> statement-breakpoint
-DROP INDEX "dataset_versions_source_version_uidx";
---> statement-breakpoint
 ALTER TABLE "background_jobs" ADD COLUMN "locked_until" timestamp with time zone;
---> statement-breakpoint
-ALTER TABLE "data_sources" ADD COLUMN "access_method" text;
---> statement-breakpoint
-ALTER TABLE "data_sources" ADD COLUMN "register_status" text;
---> statement-breakpoint
-ALTER TABLE "data_sources" ADD COLUMN "checked_at" date;
---> statement-breakpoint
-ALTER TABLE "data_sources" ADD COLUMN "definition" jsonb;
---> statement-breakpoint
-ALTER TABLE "data_sources" ADD COLUMN "licence_snapshot" jsonb DEFAULT '{}'::jsonb NOT NULL;
---> statement-breakpoint
-ALTER TABLE "data_sources" ADD COLUMN "verified_by" text;
---> statement-breakpoint
-ALTER TABLE "data_sources" ADD COLUMN "verification_notes" text;
---> statement-breakpoint
-ALTER TABLE "data_sources" ADD COLUMN "last_success_at" timestamp with time zone;
---> statement-breakpoint
-ALTER TABLE "data_sources" ADD COLUMN "last_failure_at" timestamp with time zone;
---> statement-breakpoint
-ALTER TABLE "data_sources" ADD COLUMN "last_failure_code" text;
---> statement-breakpoint
-ALTER TABLE "data_sources" ADD COLUMN "last_probe_at" timestamp with time zone;
---> statement-breakpoint
-ALTER TABLE "data_sources" ADD COLUMN "last_probe_status" text;
---> statement-breakpoint
-ALTER TABLE "data_sources" ADD COLUMN "last_probe_message" text;
---> statement-breakpoint
-ALTER TABLE "data_sources" ADD COLUMN "last_release_check_at" timestamp with time zone;
---> statement-breakpoint
-ALTER TABLE "data_sources" ADD COLUMN "last_release_check_by" text;
---> statement-breakpoint
-ALTER TABLE "data_sources" ADD COLUMN "last_release_check_note" text;
---> statement-breakpoint
-ALTER TABLE "dataset_versions" ADD COLUMN "layer" text DEFAULT '' NOT NULL;
---> statement-breakpoint
-ALTER TABLE "dataset_versions" ADD COLUMN "source_crs" text;
---> statement-breakpoint
-ALTER TABLE "dataset_versions" ADD COLUMN "extent" text;
---> statement-breakpoint
-ALTER TABLE "dataset_versions" ADD COLUMN "imported_by" text;
---> statement-breakpoint
-ALTER TABLE "dataset_versions" ADD COLUMN "previous_active_id" uuid;
---> statement-breakpoint
-ALTER TABLE "dataset_versions" ADD COLUMN "completed_at" timestamp with time zone;
---> statement-breakpoint
-ALTER TABLE "dataset_versions" ADD COLUMN "retired_at" timestamp with time zone;
 --> statement-breakpoint
 ALTER TABLE "enrichment_runs" ADD COLUMN "input_fingerprint" text DEFAULT '' NOT NULL;
 --> statement-breakpoint
@@ -891,15 +918,19 @@ ALTER TABLE "organisation_ai_settings" ADD CONSTRAINT "organisation_ai_settings_
 --> statement-breakpoint
 ALTER TABLE "organisation_ai_settings" ADD CONSTRAINT "organisation_ai_settings_updated_by_user_id_users_id_fk" FOREIGN KEY ("updated_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;
 --> statement-breakpoint
-ALTER TABLE "price_paid_transactions" ADD CONSTRAINT "price_paid_transactions_dataset_version_id_dataset_versions_id_fk" FOREIGN KEY ("dataset_version_id") REFERENCES "public"."dataset_versions"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "reference"."os_open_uprn" ADD CONSTRAINT "os_open_uprn_dataset_sync_id_dataset_syncs_id_fk" FOREIGN KEY ("dataset_sync_id") REFERENCES "reference"."dataset_syncs"("id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint
-ALTER TABLE "price_paid_uprn_links" ADD CONSTRAINT "price_paid_uprn_links_dataset_version_id_dataset_versions_id_fk" FOREIGN KEY ("dataset_version_id") REFERENCES "public"."dataset_versions"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "reference"."price_paid_transactions" ADD CONSTRAINT "price_paid_transactions_dataset_sync_id_dataset_syncs_id_fk" FOREIGN KEY ("dataset_sync_id") REFERENCES "reference"."dataset_syncs"("id") ON DELETE cascade ON UPDATE no action;
+--> statement-breakpoint
+ALTER TABLE "reference"."price_paid_uprn_links" ADD CONSTRAINT "price_paid_uprn_links_dataset_sync_id_dataset_syncs_id_fk" FOREIGN KEY ("dataset_sync_id") REFERENCES "reference"."dataset_syncs"("id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint
 ALTER TABLE "property_identity_events" ADD CONSTRAINT "property_identity_events_organisation_id_organisations_id_fk" FOREIGN KEY ("organisation_id") REFERENCES "public"."organisations"("id") ON DELETE restrict ON UPDATE no action;
 --> statement-breakpoint
 ALTER TABLE "property_identity_events" ADD CONSTRAINT "property_identity_events_actor_user_id_users_id_fk" FOREIGN KEY ("actor_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;
 --> statement-breakpoint
 ALTER TABLE "property_identity_events" ADD CONSTRAINT "property_identity_events_property_fk" FOREIGN KEY ("organisation_id","property_id") REFERENCES "public"."properties"("organisation_id","id") ON DELETE restrict ON UPDATE no action;
+--> statement-breakpoint
+ALTER TABLE "reference"."dataset_syncs" ADD CONSTRAINT "dataset_syncs_source_key_data_sources_key_fk" FOREIGN KEY ("source_key") REFERENCES "reference"."data_sources"("key") ON DELETE restrict ON UPDATE no action;
 --> statement-breakpoint
 ALTER TABLE "report_approvals" ADD CONSTRAINT "report_approvals_organisation_id_organisations_id_fk" FOREIGN KEY ("organisation_id") REFERENCES "public"."organisations"("id") ON DELETE restrict ON UPDATE no action;
 --> statement-breakpoint
@@ -915,9 +946,11 @@ ALTER TABLE "report_versions" ADD CONSTRAINT "report_versions_survey_fk" FOREIGN
 --> statement-breakpoint
 ALTER TABLE "report_versions" ADD CONSTRAINT "report_versions_job_fk" FOREIGN KEY ("organisation_id","job_id") REFERENCES "public"."jobs"("organisation_id","id") ON DELETE restrict ON UPDATE no action;
 --> statement-breakpoint
-ALTER TABLE "scottish_epc_certificates" ADD CONSTRAINT "scottish_epc_certificates_dataset_version_id_dataset_versions_id_fk" FOREIGN KEY ("dataset_version_id") REFERENCES "public"."dataset_versions"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "reference"."scottish_epc_certificates" ADD CONSTRAINT "scottish_epc_certificates_dataset_sync_id_dataset_syncs_id_fk" FOREIGN KEY ("dataset_sync_id") REFERENCES "reference"."dataset_syncs"("id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint
 ALTER TABLE "learning_shared"."cases" ADD CONSTRAINT "cases_release_id_releases_id_fk" FOREIGN KEY ("release_id") REFERENCES "learning_shared"."releases"("id") ON DELETE cascade ON UPDATE no action;
+--> statement-breakpoint
+ALTER TABLE "reference"."spatial_features" ADD CONSTRAINT "spatial_features_dataset_sync_id_dataset_syncs_id_fk" FOREIGN KEY ("dataset_sync_id") REFERENCES "reference"."dataset_syncs"("id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint
 ALTER TABLE "survey_elements" ADD CONSTRAINT "survey_elements_organisation_id_organisations_id_fk" FOREIGN KEY ("organisation_id") REFERENCES "public"."organisations"("id") ON DELETE restrict ON UPDATE no action;
 --> statement-breakpoint
@@ -1015,7 +1048,9 @@ CREATE UNIQUE INDEX "observations_client_id_uidx" ON "observations" USING btree 
 --> statement-breakpoint
 CREATE INDEX "observations_survey_idx" ON "observations" USING btree ("survey_id","status");
 --> statement-breakpoint
-CREATE INDEX "price_paid_uprn_links_uprn_idx" ON "price_paid_uprn_links" USING btree ("dataset_version_id","uprn");
+CREATE INDEX "os_open_uprn_geog_gix" ON "reference"."os_open_uprn" USING gist (("geom"::geography));
+--> statement-breakpoint
+CREATE INDEX "price_paid_uprn_links_uprn_idx" ON "reference"."price_paid_uprn_links" USING btree ("dataset_sync_id","uprn");
 --> statement-breakpoint
 CREATE INDEX "property_identity_events_property_idx" ON "property_identity_events" USING btree ("property_id","created_at");
 --> statement-breakpoint
@@ -1025,15 +1060,23 @@ CREATE INDEX "provider_response_cache_expiry_idx" ON "provider_response_cache" U
 --> statement-breakpoint
 CREATE INDEX "provider_response_cache_source_idx" ON "provider_response_cache" USING btree ("source_key");
 --> statement-breakpoint
+CREATE UNIQUE INDEX "dataset_syncs_one_active_layer_uidx" ON "reference"."dataset_syncs" USING btree ("source_key","layer") WHERE status = 'active';
+--> statement-breakpoint
+CREATE INDEX "dataset_syncs_source_idx" ON "reference"."dataset_syncs" USING btree ("source_key","started_at");
+--> statement-breakpoint
 CREATE UNIQUE INDEX "report_approvals_version_uidx" ON "report_approvals" USING btree ("report_version_id");
 --> statement-breakpoint
 CREATE UNIQUE INDEX "report_versions_survey_version_uidx" ON "report_versions" USING btree ("survey_id","version_number");
 --> statement-breakpoint
-CREATE INDEX "scottish_epc_certificates_uprn_idx" ON "scottish_epc_certificates" USING btree ("dataset_version_id","uprn");
+CREATE INDEX "scottish_epc_certificates_uprn_idx" ON "reference"."scottish_epc_certificates" USING btree ("dataset_sync_id","uprn");
 --> statement-breakpoint
 CREATE INDEX "shared_cases_release_element_idx" ON "learning_shared"."cases" USING btree ("release_id","element_key","jurisdiction");
 --> statement-breakpoint
 CREATE INDEX "shared_cases_search_idx" ON "learning_shared"."cases" USING gin ("search");
+--> statement-breakpoint
+CREATE INDEX "spatial_features_gix" ON "reference"."spatial_features" USING gist ("geom");
+--> statement-breakpoint
+CREATE INDEX "spatial_features_layer_idx" ON "reference"."spatial_features" USING btree ("source_key","layer");
 --> statement-breakpoint
 CREATE UNIQUE INDEX "survey_elements_location_uidx" ON "survey_elements" USING btree ("survey_id","section_key","element_key","location_label");
 --> statement-breakpoint
@@ -1063,12 +1106,6 @@ ALTER TABLE "property_intelligence_snapshots" ADD CONSTRAINT "property_intellige
 --> statement-breakpoint
 ALTER TABLE "property_intelligence_snapshots" ADD CONSTRAINT "property_intelligence_snapshots_run_fk" FOREIGN KEY ("organisation_id","enrichment_run_id") REFERENCES "public"."enrichment_runs"("organisation_id","id") ON DELETE restrict ON UPDATE no action;
 --> statement-breakpoint
-CREATE UNIQUE INDEX "dataset_versions_source_layer_version_uidx" ON "dataset_versions" USING btree ("source_key","layer","version");
---> statement-breakpoint
-CREATE INDEX "os_uprn_points_location_geog_gix" ON "os_uprn_points" USING gist (("location"::geography));
---> statement-breakpoint
 CREATE INDEX "property_intelligence_snapshots_property_idx" ON "property_intelligence_snapshots" USING btree ("property_id","source_key","category","retrieved_at");
 --> statement-breakpoint
 CREATE INDEX "property_intelligence_snapshots_run_idx" ON "property_intelligence_snapshots" USING btree ("enrichment_run_id");
---> statement-breakpoint
-ALTER TABLE "data_sources" ADD CONSTRAINT "data_sources_register_status_check" CHECK (register_status is null or register_status in ('verified', 'pending', 'blocked'));

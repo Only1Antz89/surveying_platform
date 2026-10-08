@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { auditEvents, clients, dataSources, organisations, platformStaff, properties } from "@surveynt/db";
+import { auditEvents, clients, organisations, platformStaff, properties } from "@surveynt/db";
 import { createTestDatabase, integrationEnabled, stopRelay, type TestDatabase } from "@surveynt/db/testing";
 import { historicEnglandProvider } from "@surveynt/property-data";
 import { importSpatialLayer, syncSourceRegistry } from "@surveynt/property-data/importers";
@@ -72,8 +72,6 @@ describe.skipIf(!integrationEnabled)("data source administration", () => {
   });
 
   it("runs the daily sweep without probing disabled or policy-restricted sources", async () => {
-    // The England release seeds Planning Data as enabled; switch it off so no source here is enabled and probeable.
-    await database.connect(database.adminUrl).update(dataSources).set({ enabled: false }).where(eq(dataSources.key, "planning_data"));
     expect(await runDataSourceSweep()).toEqual({ probed: 0, stale: [] });
   });
 });

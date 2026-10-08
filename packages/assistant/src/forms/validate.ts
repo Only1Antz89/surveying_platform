@@ -1,5 +1,8 @@
 import { conditionRatings, fieldValueSchema, formTemplateSchema, type ElementDefinition, type FieldClass, type FieldDefinition, type FieldValue, type FormTemplate, type InspectionStatus, type SectionDefinition, type ServiceLevel } from "./types";
 import { residentialTemplateV1 } from "./residential-v1";
+import { homeSurveyTemplates } from "./home-survey-v1";
+import { homeSurveyTemplatesV1_1 } from "./home-survey-v1_1";
+import { homeSurveyTemplatesV1_2 } from "./home-survey-v1_2";
 
 export type FieldPath = `${string}.${string}.${string}`;
 
@@ -118,7 +121,7 @@ export function parseTemplate(definition: unknown) {
   return formTemplateSchema.safeParse(definition);
 }
 
-export const builtInTemplates: readonly FormTemplate[] = [residentialTemplateV1];
+export const builtInTemplates: readonly FormTemplate[] = [residentialTemplateV1, ...homeSurveyTemplatesV1_1, ...homeSurveyTemplates, ...homeSurveyTemplatesV1_2];
 
 export function getBuiltInTemplate(key: string, version: string) {
   return builtInTemplates.find((template) => template.key === key && template.version === version) ?? null;

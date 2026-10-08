@@ -5,7 +5,7 @@ import { FileCheck2, FileText, RefreshCw } from "lucide-react";
 import { StatusDot } from "@surveynt/ui";
 import { REPORT_SIGN_OFF_STATEMENT, type ComposedReport, type ReportBlock } from "@surveynt/assistant";
 
-type VersionSummary = { id: string; versionNumber: number; createdAt: string; current: boolean; approval: { approvedAt: string; approverRole: string; note: string | null } | null };
+type VersionSummary = { id: string; versionNumber: number; createdAt: string; current: boolean; contentRemoved?: boolean; approval: { approvedAt: string; approverRole: string; note: string | null } | null };
 type ReportState = { surveyStatus: string; versions: VersionSummary[]; latest: { id: string; versionNumber: number; content: ComposedReport } | null };
 
 const sourceLabels: Record<string, string> = { field_value: "Field", observation: "Observation", clause: "Approved wording", media: "Photo", element: "Inspection status" };
@@ -35,7 +35,8 @@ export function ReportPanel({ surveyId, canEdit, canJudge, online, demo, onChang
     if (!payload) return;
     setState(payload.data);
     // Keep an unsaved (demo) preview when nothing is stored yet.
-    if (payload.data.latest) setPreview(payload.data.latest.content);
+    if (payload.data.versions[0]?.contentRemoved) setPreview(null);
+    else if (payload.data.latest) setPreview(payload.data.latest.content);
   };
   const load = async () => { if (online) apply(await fetchState().catch(() => null)); };
 
@@ -85,16 +86,16 @@ export function ReportPanel({ surveyId, canEdit, canJudge, online, demo, onChang
 
   return <section className="panel report-panel" aria-labelledby="report-heading">
     <div className="panel-header"><div><h2 id="report-heading">Report</h2><p>Assembled from recorded values, current observations and your firm&apos;s approved wording only. Nothing is generated.</p></div>
-      {canEdit && !approved ? <button type="button" className="button button-secondary" disabled={!online || busy} onClick={() => void compose()}><RefreshCw size={14} />{latest ? "Compose new version" : "Compose draft"}</button> : null}
+      {canEdit && !approved && !latest?.contentRemoved ? <button type="button" className="button button-secondary" disabled={!online || busy} onClick={() => void compose()}><RefreshCw size={14} />{latest ? "Compose new version" : "Compose draft"}</button> : null}
     </div>
     {!online ? <p className="identity-warning intel-inline">Composing and signing off need a connection.</p> : null}
     {message ? <div className={message.tone === "error" ? "form-error report-message" : "form-success report-message"} role="status">{message.text}{message.items?.length ? <ul>{message.items.map((item) => <li key={item.id}>{item.title}</li>)}</ul> : null}</div> : null}
     {state?.versions.length ? <ul className="report-versions">{state.versions.slice(0, 5).map((version) => <li key={version.id}>
       <FileText size={14} aria-hidden="true" /><span>Version {version.versionNumber} · {new Date(version.createdAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</span>
       {version.approval ? <StatusDot tone="green">Signed off</StatusDot> : <StatusDot tone="amber">Draft</StatusDot>}
-      {!version.current ? <StatusDot tone="slate">Out of date</StatusDot> : null}
+      {version.contentRemoved ? <StatusDot tone="slate">Content removed</StatusDot> : !version.current ? <StatusDot tone="slate">Out of date</StatusDot> : null}
     </li>)}</ul> : null}
-    {approved ? <div className="report-signed"><p><FileCheck2 size={15} aria-hidden="true" /> Signed off. Capture is closed for this survey.</p>{canJudge ? <button type="button" className="button button-quiet" disabled={busy || !online} onClick={() => void reopen()}>Reopen for changes</button> : null}</div> : null}
+    {approved ? <div className="report-signed"><p><FileCheck2 size={15} aria-hidden="true" /> Signed off. Capture is closed for this survey.</p>{canJudge && !latest?.contentRemoved ? <button type="button" className="button button-quiet" disabled={busy || !online} onClick={() => void reopen()}>Reopen for changes</button> : null}</div> : null}
     {preview ? <article className="report-preview" aria-label="Report preview">
       <header><h3>{preview.title}</h3><p>{preview.property.line1}{preview.property.city ? `, ${preview.property.city}` : ""} · {preview.jobReference} · template {preview.templateVersion}</p></header>
       {preview.ratingSummary.length ? <div className="report-ratings">{preview.ratingSummary.map((group) => <div key={group.rating}><strong>{group.label}</strong><span>{group.elements.map((element) => element.title).join(", ")}</span></div>)}</div> : null}
@@ -104,12 +105,12 @@ export function ReportPanel({ surveyId, canEdit, canJudge, online, demo, onChang
       </section> : null)}
       {preview.recommendations.length ? <section><h4>Recommendations</h4>{preview.recommendations.map((block) => <Block key={block.id} block={block} />)}</section> : null}
       {preview.omissions.length ? <section className="report-omissions"><h4>Left out of this version</h4><ul>{preview.omissions.map((item) => <li key={item}>{item}</li>)}</ul></section> : null}
-    </article> : <p className="form-help assistant-empty">No report composed yet.</p>}
+    </article> : <p className="form-help assistant-empty">{latest?.contentRemoved ? "Report content was removed after retention review. Version and approval records remain." : "No report composed yet."}</p>}
     {canSignOff && latest ? <div className="report-signoff">
       <label className="check-field"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /> {REPORT_SIGN_OFF_STATEMENT}</label>
       <input className="input" value={note} onChange={(event) => setNote(event.target.value)} maxLength={1000} placeholder="Note (optional)" aria-label="Sign-off note" />
       <button type="button" className="button button-primary" disabled={!confirmed || busy} onClick={() => void signOff(latest)}><FileCheck2 size={14} />Sign off version {latest.versionNumber}</button>
     </div> : null}
-    {latest && !latest.current && !approved ? <p className="identity-warning intel-inline">The survey or approved wording changed after version {latest.versionNumber} was composed. Compose a new version to sign off.</p> : null}
+    {latest && !latest.contentRemoved && !latest.current && !approved ? <p className="identity-warning intel-inline">The survey or approved wording changed after version {latest.versionNumber} was composed. Compose a new version to sign off.</p> : null}
   </section>;
 }

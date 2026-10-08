@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
-import { clients, dataSources, datasetVersions, organisations, properties, propertyIdentityEvents } from "@surveynt/db";
+import { clients, referenceDataSources, referenceDatasetSyncs, organisations, properties, propertyIdentityEvents } from "@surveynt/db";
 import { createTestDatabase, integrationEnabled, stopRelay, type TestDatabase } from "@surveynt/db/testing";
 import { activateSync, findUprnCandidates, getActiveSync, getSourceState, rollbackSource, syncSourceRegistry, uprnExists } from "../src/db/reference";
 import { importOsOpenUprn } from "../src/importers/os-open-uprn";
@@ -46,7 +46,7 @@ describe.skipIf(!integrationEnabled)("reference data and property identity", () 
   it("registers every source disabled by default", async () => {
     const app = database.connect(database.appUrl);
     expect(await getSourceState(app, "os_open_uprn")).toEqual({ enabled: false, registered: true });
-    const blocked = await app.select().from(dataSources).where(eq(dataSources.key, "bgs_geology_50k"));
+    const blocked = await app.select().from(referenceDataSources).where(eq(referenceDataSources.key, "bgs_geology_50k"));
     expect(blocked[0].enabled).toBe(false);
   });
 
@@ -81,19 +81,15 @@ describe.skipIf(!integrationEnabled)("reference data and property identity", () 
 
   it("keeps the tenant runtime read-only on reference data", async () => {
     const app = database.connect(database.appUrl);
-    await expectDenied(app.execute(sql`insert into os_uprn_points (dataset_version_id, uprn, location) values (${firstSync}, '1', st_setsrid(st_makepoint(-2, 51), 4326))`));
-    // Reference tables have a read-only policy for every role: the tenant role's writes are refused
-    // (inserts) or match no rows (updates), so nothing changes.
-    expect(await app.update(dataSources).set({ enabled: true }).where(eq(dataSources.key, "os_open_uprn")).returning()).toEqual([]);
-    expect(await app.update(datasetVersions).set({ active: false, retiredAt: new Date() }).where(eq(datasetVersions.id, firstSync)).returning()).toEqual([]);
-    const [still] = await database.connect(database.adminUrl).select({ active: datasetVersions.active }).from(datasetVersions).where(eq(datasetVersions.id, firstSync));
-    expect(still.active).toBe(true);
+    await expectDenied(app.execute(sql`insert into reference.os_open_uprn (dataset_sync_id, uprn, geom) values (${firstSync}, '1', st_setsrid(st_makepoint(-2, 51), 4326))`));
+    await expectDenied(app.update(referenceDataSources).set({ enabled: true }).where(eq(referenceDataSources.key, "os_open_uprn")));
+    await expectDenied(app.update(referenceDatasetSyncs).set({ status: "retired" }).where(eq(referenceDatasetSyncs.id, firstSync)));
   });
 
   it("keeps the importer away from tenant records", async () => {
     const importer = database.connect(database.importerUrl);
     await expectDenied(importer.select().from(properties));
-    await expectDenied(importer.update(dataSources).set({ enabled: true }).where(eq(dataSources.key, "os_open_uprn")));
+    await expectDenied(importer.update(referenceDataSources).set({ enabled: true }).where(eq(referenceDataSources.key, "os_open_uprn")));
   });
 
   it("leaves the active version untouched when an import fails", async () => {
@@ -105,8 +101,7 @@ describe.skipIf(!integrationEnabled)("reference data and property identity", () 
     expect(outcome.status).toBe("failed");
     expect(outcome.error).toMatch(/Unexpected header/);
     expect((await getActiveSync(importer, "os_open_uprn"))?.id).toBe(firstSync);
-    // A failed import is removed with its rows (the job log keeps the reason), so it cannot be activated.
-    await expect(activateSync(importer, outcome.syncId)).rejects.toThrow(/not found/);
+    await expect(activateSync(importer, outcome.syncId)).rejects.toThrow(/completed, validated/);
   });
 
   it("supports activation of a newer version and rollback to the previous one", async () => {
@@ -118,7 +113,7 @@ describe.skipIf(!integrationEnabled)("reference data and property identity", () 
     const restored = await rollbackSource(importer, "os_open_uprn");
     expect(restored.id).toBe(firstSync);
     expect((await findUprnCandidates(app, { latitude: 53.7996, longitude: -1.5491, radiusMetres: 10 })).candidates).toHaveLength(1);
-    const active = await importer.select().from(datasetVersions).where(eq(datasetVersions.active, true));
+    const active = await importer.select().from(referenceDatasetSyncs).where(eq(referenceDatasetSyncs.status, "active"));
     expect(active).toHaveLength(1);
   });
 

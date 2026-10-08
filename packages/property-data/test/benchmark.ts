@@ -6,7 +6,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { sql } from "drizzle-orm";
-import { dataSources } from "@surveynt/db";
+import { referenceDataSources } from "@surveynt/db";
 import { createTestDatabase, stopRelay } from "@surveynt/db/testing";
 import { databaseHistoryQuery } from "../src/db/history";
 import { findUprnCandidates, syncSourceRegistry } from "../src/db/reference";
@@ -35,7 +35,7 @@ try {
   const importer = database.connect(database.importerUrl);
   const app = database.connect(database.appUrl);
   await syncSourceRegistry(admin);
-  await admin.update(dataSources).set({ enabled: true, verifiedAt: new Date(), verifiedBy: "benchmark" }).where(sql`${dataSources.key} = 'hmlr_ppd_uprn_lookup'`);
+  await admin.update(referenceDataSources).set({ enabled: true, verifiedAt: new Date(), verifiedBy: "benchmark" }).where(sql`${referenceDataSources.key} = 'hmlr_ppd_uprn_lookup'`);
   const directory = await mkdtemp(path.join(tmpdir(), "surveynt-bench-"));
   const results: string[] = [];
 
@@ -91,11 +91,11 @@ try {
   }
   for (const [name, values] of Object.entries(samples)) results.push(`| Query: ${name} | ${QUERIES} queries | p50 ${percentile(values, 50).toFixed(1)} ms | p95 ${percentile(values, 95).toFixed(1)} ms | — |`);
 
-  const sizes = await admin.execute(sql`select relname, pg_size_pretty(pg_total_relation_size(c.oid)) as size from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and relkind = 'r' and relname in ('os_uprn_points', 'spatial_reference_features', 'price_paid_transactions', 'price_paid_uprn_links') order by relname`);
+  const sizes = await admin.execute(sql`select relname, pg_size_pretty(pg_total_relation_size(c.oid)) as size from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'reference' and relkind = 'r' and relname in ('os_open_uprn', 'spatial_features', 'price_paid_transactions', 'price_paid_uprn_links') order by relname`);
   console.log("| Step | Volume | Time | Throughput | Result |\n|---|---|---|---|---|");
   console.log(results.join("\n"));
   console.log("\nTable sizes (all versions kept):");
-  for (const row of (sizes as unknown as { rows: { relname: string; size: string }[] }).rows) console.log(`- ${row.relname}: ${row.size}`);
+  for (const row of (sizes as unknown as { rows: { relname: string; size: string }[] }).rows) console.log(`- reference.${row.relname}: ${row.size}`);
 } finally {
   await database.drop();
   await stopRelay();

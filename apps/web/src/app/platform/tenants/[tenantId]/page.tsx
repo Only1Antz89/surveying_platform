@@ -5,7 +5,7 @@ import { canManageTenants, roleLabels } from "@surveynt/domain";
 import { StatusDot } from "@surveynt/ui";
 import { PageHeader } from "@/components/page-header";
 import { TenantControls } from "@/components/tenant-controls";
-import { requirePlatformAccess } from "@/lib/access";
+import { isClerkConfigured, requirePlatformAccess } from "@/lib/access";
 import { loadTenantDetail } from "@/lib/data";
 
 export const metadata = { title: "Customer account" };
@@ -20,6 +20,7 @@ export default async function TenantPage({ params }: { params: Promise<{ tenantI
   return <main className="page">
     <Link className="panel-link" href="/platform/tenants"><ArrowLeft size={13} style={{ verticalAlign: "middle", marginRight: 6 }} />All customer accounts</Link>
     <PageHeader eyebrow={tenant.id} title={tenant.name} description={`${tenant.owner} · ${detail.region} · Created ${detail.createdAt}`} actions={<StatusDot tone={tenant.status === "active" ? "green" : tenant.status === "suspended" ? "red" : "amber"}>{tenant.status}</StatusDot>} />
+    {!isClerkConfigured() && tenant.slug ? <p><Link className="button button-secondary" href={`/app/${tenant.slug}/clients`}>Open local demo client workspace</Link></p> : null}
     <div className="dashboard-grid"><div className="stack">
       <section className="panel"><div className="panel-header"><div><h2>Account controls</h2><p>High-impact actions require a reason and are permanently audited.</p></div><ShieldCheck size={17} color="#3b82f6" /></div><div className="panel-body"><TenantControls tenantId={tenant.id} initialStatus={tenant.status} canManage={canManageTenants(operator.role)} canSupport={operator.role === "super_admin" || operator.role === "support"} canBreakGlass={operator.role === "super_admin"} /></div></section>
       <section className="panel"><div className="panel-header"><div><h2>Members</h2><p>{detail.members.filter((member) => member.active).length} active members · {detail.invitations.length} pending invitations</p></div></div>{detail.members.length ? <div className="data-table-wrap"><table className="data-table"><thead><tr><th>Name</th><th>Role</th><th>Status</th></tr></thead><tbody>{detail.members.map((member) => <tr key={member.id}><td data-label="Name"><strong>{member.name}</strong><span className="cell-sub">{member.email}</span></td><td data-label="Role">{roleLabels[member.role]}</td><td data-label="Status"><StatusDot tone={member.active ? "green" : "slate"}>{member.active ? "Active" : "Inactive"}</StatusDot></td></tr>)}</tbody></table></div> : <div className="empty-state compact"><strong>No members</strong><span>This tenant has no synchronised organisation members.</span></div>}</section>

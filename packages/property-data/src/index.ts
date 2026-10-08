@@ -4,6 +4,7 @@ export * from "./matching/identity";
 export * from "./registry/sources";
 export * from "./adapters/postcodes-io";
 export * from "./adapters/nominatim";
+export * from "./adapters/inspection-weather";
 export * from "./providers";
 export * from "./registry/categories";
 export * from "./operations/freshness";

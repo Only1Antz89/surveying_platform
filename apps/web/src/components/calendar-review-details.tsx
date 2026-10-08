@@ -1,0 +1,192 @@
+"use client";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import type { CalendarReviewSummary } from "@/lib/calendar-review-summary";
+import { AlertCircle, Calendar, CheckCircle2 } from "lucide-react";
+
+export function CalendarReviewDetails(review: CalendarReviewSummary & { jobId: string }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const uncertain = review.jobType === "replace_webhook" && review.phase === "dispatched";
+  const initialReady = review.jobType === "register_webhook" && review.phase === "ready" && Boolean(review.registrationAttemptId);
+  const initialGoogle = review.jobType === "register_webhook" && review.provider === "google" && review.phase === "dispatched";
+  const initialMicrosoft = review.jobType === "register_webhook" && review.provider === "microsoft" && review.phase === "dispatched" && Boolean(review.registrationAttemptId);
+  const [outcome, setOutcome] = useState(initialGoogle || initialMicrosoft ? "registration_confirmed" : uncertain ? "replacement_confirmed" : "retry");
+
+  async function submit(form: FormData) {
+    setBusy(true);
+    setMessage("");
+    try {
+      const date = form.get("expiresAt");
+      const response = await fetch(`/api/platform/background-jobs/${review.jobId}/calendar-review`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          reviewVersion: review.reviewVersion,
+          outcome,
+          verifiedAttemptId: form.get("verifiedAttemptId") || undefined,
+          verifiedChannelId:
+            (initialMicrosoft && outcome === "registration_not_created") || (initialReady && !review.channelId)
+              ? review.registrationAttemptId
+              : form.get("verifiedChannelId"),
+          resourceId: form.get("resourceId") || undefined,
+          expiresAt: date ? new Date(String(date)).toISOString() : undefined,
+          evidence: form.get("evidence"),
+          confirmed: form.get("confirmed") === "on",
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error?.message ?? "Calendar review could not be recorded.");
+      setMessage(
+        payload.meta?.persisted === false
+          ? "Preview only: review was not saved."
+          : outcome === "registration_not_created"
+          ? "Non-creation recorded. The calendar owner can reconnect."
+          : "Calendar provider review recorded."
+      );
+      router.refresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Reload before retrying this review.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const isSuccess = message.includes("recorded") || message.includes("Preview only");
+
+  return (
+    <details className="accordion-card">
+      <summary className="accordion-summary">
+        <span className="flex items-center gap-2">
+          <Calendar size={15} />
+          <span>Review calendar provider evidence</span>
+        </span>
+      </summary>
+      <div style={{ paddingTop: "14px" }}>
+        <dl className="detail-grid" style={{ padding: "0 0 14px", margin: 0 }}>
+          <div className="detail">
+            <dt>Provider</dt>
+            <dd>{review.provider ?? "Unavailable"}</dd>
+          </div>
+          <div className="detail">
+            <dt>Recorded channel</dt>
+            <dd>{review.channelId ?? "Unavailable"}</dd>
+          </div>
+          {review.replacementChannelId ? (
+            <div className="detail">
+              <dt>Replacement attempt channel</dt>
+              <dd>{review.replacementChannelId}</dd>
+            </div>
+          ) : null}
+          {review.registrationAttemptId ? (
+            <div className="detail">
+              <dt>Registration attempt</dt>
+              <dd>{review.registrationAttemptId}</dd>
+            </div>
+          ) : null}
+          <div className="detail">
+            <dt>Recorded phase</dt>
+            <dd>{review.phase}</dd>
+          </div>
+          <div className="detail">
+            <dt>Attempts</dt>
+            <dd>{review.attempts}</dd>
+          </div>
+        </dl>
+        <p className="cell-sub" style={{ margin: "0 0 14px", lineHeight: 1.5 }}>
+          A lost creation response does not prove that a channel was rejected. Check the exact recorded attempt against provider evidence.
+        </p>
+        {review.jobType === "register_webhook" && review.phase !== "confirmed" && !initialGoogle && !initialMicrosoft && !initialReady ? (
+          <p className="form-info">Initial registration requires verified provider recovery. Review the recorded attempt before reconnecting.</p>
+        ) : review.phase === "unavailable" ? (
+          <p className="form-error">Encrypted evidence is unavailable. Review the stored credentials and encryption keys before continuing.</p>
+        ) : (
+          <form action={submit} className="form-grid">
+            <label className="field full">
+              <span>Verified provider outcome</span>
+              <select value={outcome} onChange={(event) => setOutcome(event.target.value)} className="select" style={{ width: "100%" }}>
+                {initialGoogle || initialMicrosoft ? (
+                  <>
+                    <option value="registration_confirmed">Verify and adopt the initial provider subscription</option>
+                    <option value="registration_not_created">Provider evidence confirms no creation; close this attempt</option>
+                  </>
+                ) : uncertain ? (
+                  <>
+                    <option value="replacement_confirmed">Provider created this replacement channel</option>
+                    <option value="replacement_not_created">Provider evidence confirms no creation; retry this channel</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="retry">
+                      {initialReady
+                        ? "Retry the recorded pre-dispatch registration"
+                        : review.jobType === "register_webhook"
+                        ? "Retry adoption of the recorded confirmed response"
+                        : "Reviewed retry of the recorded operation"}
+                    </option>
+                    {review.jobType === "stop_webhook" ? (
+                      <>
+                        <option value="removed">Provider evidence confirms channel removal or absence</option>
+                        {review.provider === "google" ? (
+                          <option value="cleanup_identity_verified">Verify missing Google resource identity and retry cleanup</option>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </>
+                )}
+              </select>
+            </label>
+            {!(initialMicrosoft && outcome === "registration_not_created" || initialReady && !review.channelId) ? (
+              <label className="field full">
+                <span>{initialMicrosoft ? "Proposed Microsoft subscription identifier" : "Enter the exact channel identifier you verified"}</span>
+                <input name="verifiedChannelId" maxLength={2048} required />
+              </label>
+            ) : null}
+            {initialMicrosoft || initialReady || outcome === "registration_not_created" ? (
+              <label className="field full">
+                <span>Enter the recorded registration attempt identifier</span>
+                <input name="verifiedAttemptId" maxLength={36} required />
+              </label>
+            ) : null}
+            {outcome === "replacement_confirmed" || outcome === "registration_confirmed" && !initialMicrosoft || outcome === "cleanup_identity_verified" ? (
+              <>
+                <label className="field full">
+                  <span>Confirmed Google resource identifier</span>
+                  <input name="resourceId" maxLength={2048} required />
+                </label>
+                {outcome === "replacement_confirmed" || outcome === "registration_confirmed" ? (
+                  <label className="field full">
+                    <span>Confirmed provider expiry (your local time)</span>
+                    <input name="expiresAt" type="datetime-local" required />
+                  </label>
+                ) : null}
+              </>
+            ) : null}
+            <label className="field full">
+              <span>Provider evidence reference and findings (exclude credentials)</span>
+              <textarea name="evidence" minLength={15} maxLength={2000} rows={3} required placeholder="Record verification evidence..." />
+            </label>
+            <div className="field full">
+              <label className="checkbox-row">
+                <input name="confirmed" type="checkbox" required />
+                <span>I verified this outcome against provider evidence.</span>
+              </label>
+            </div>
+            <div className="field full action-row">
+              <button className="button button-secondary" disabled={busy}>
+                {busy ? "Recording…" : "Record reviewed outcome"}
+              </button>
+            </div>
+          </form>
+        )}
+        {message ? (
+          <p className={isSuccess ? "form-success" : "form-error"} role="status" style={{ marginTop: "12px" }}>
+            {isSuccess ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+            <span>{message}</span>
+          </p>
+        ) : null}
+      </div>
+    </details>
+  );
+}

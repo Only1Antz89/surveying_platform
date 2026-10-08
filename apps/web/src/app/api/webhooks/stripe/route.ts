@@ -1,8 +1,10 @@
+import { refreshInvoiceBalance } from "@/lib/invoice-balance";
 import { createHash } from "node:crypto";
 import Stripe from "stripe";
-import { createDatabase, onboardingSteps, organisations, subscriptionEvents, subscriptions, webhookEvents } from "@surveynt/db";
+import { auditEvents, clientPayments, createDatabase, invoices, onboardingSteps, organisations, settlementLedger, subscriptionEvents, subscriptions, webhookEvents } from "@surveynt/db";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { queueSubscriptionEmail } from "@/lib/email-queue";
+import { convertPaidQuote, settleBalancePayment } from "@/lib/firm-operations";
 
 export const runtime = "nodejs";
 
@@ -60,7 +62,7 @@ async function synchroniseSubscription(
   }).onConflictDoNothing();
 
   if (status === "trialing" || status === "active") {
-    await db.update(organisations).set({ status: "active", suspendedReason: null, updatedAt: new Date() }).where(eq(organisations.id, organisationId));
+    await db.update(organisations).set({ status: "active", suspendedReason: null, updatedAt: new Date() }).where(and(eq(organisations.id, organisationId), eq(organisations.status, "provisioning")));
     await db.insert(onboardingSteps).values({ organisationId, key: "billing", completedAt: new Date() }).onConflictDoUpdate({ target: [onboardingSteps.organisationId, onboardingSteps.key], set: { completedAt: new Date(), updatedAt: new Date() } });
   }
   if (status === "trialing" && saved.trialEndsAt) {
@@ -69,6 +71,39 @@ async function synchroniseSubscription(
   if (status === "past_due" || status === "unpaid") {
     await queueSubscriptionEmail({ organisationId, subscriptionId: saved.id, type: "payment_issue_notice", deduplicationKey: `payment-issue:${event.id}`, status, graceEndsAt: saved.graceEndsAt });
   }
+}
+
+async function verifiedClientPayment(db: ReturnType<typeof createDatabase>, session: Stripe.Checkout.Session, purpose: "deposit" | "balance") {
+  const paymentId = session.metadata?.surveyntPaymentId;
+  if (!paymentId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(paymentId)) throw new Error("Checkout payment identity is invalid.");
+  const [stored] = await db.select({ payment: clientPayments, demo: organisations.isDemo }).from(clientPayments).innerJoin(organisations, eq(organisations.id, clientPayments.organisationId)).where(eq(clientPayments.id, paymentId)).limit(1);
+  const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id ?? null;
+  const payment = stored?.payment;
+  if (!payment || stored.demo || session.mode !== "payment" || payment.purpose !== purpose
+    || session.amount_total !== payment.amountMinor || session.currency?.toUpperCase() !== payment.currency.toUpperCase()
+    || session.metadata?.surveyntOrganisationId !== payment.organisationId || session.metadata?.surveyntQuoteId !== payment.quoteId
+    || !paymentIntentId || (payment.stripeCheckoutSessionId && payment.stripeCheckoutSessionId !== session.id)
+    || (payment.stripePaymentIntentId && payment.stripePaymentIntentId !== paymentIntentId)) throw new Error("Checkout does not match the stored client payment.");
+  return { paymentId, checkoutSessionId: session.id, paymentIntentId };
+}
+
+async function recordExpiredCheckout(db: ReturnType<typeof createDatabase>, session: Stripe.Checkout.Session) {
+  const id = session.metadata?.surveyntPaymentId;
+  if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) throw new Error("Expired Checkout payment identity is invalid.");
+  const [stored] = await db.select({ payment: clientPayments, demo: organisations.isDemo }).from(clientPayments).innerJoin(organisations, eq(organisations.id,clientPayments.organisationId)).where(eq(clientPayments.id,id)).limit(1);
+  if (!stored || stored.demo) throw new Error("Expired Checkout payment is missing.");
+  await db.transaction(async tx => {
+    await tx.select({ id: invoices.id }).from(invoices).where(eq(invoices.id,stored.payment.invoiceId)).for("update");
+    const [payment] = await tx.select().from(clientPayments).where(eq(clientPayments.id,id)).for("update");
+    // Ignore expiry for a superseded session; it cannot cancel its newer replacement.
+    if (payment.succeededAt || payment.status !== "pending" || payment.stripeCheckoutSessionId && payment.stripeCheckoutSessionId !== session.id) return;
+    if (session.mode !== "payment" || session.status !== "expired" || session.payment_status === "paid"
+      || !["deposit","balance"].includes(payment.purpose) || session.amount_total !== payment.amountMinor || session.currency?.toUpperCase() !== payment.currency.toUpperCase()
+      || session.metadata?.surveyntOrganisationId !== payment.organisationId || session.metadata?.surveyntQuoteId !== payment.quoteId
+      || session.metadata?.surveyntPaymentKind !== `client_${payment.purpose}`) throw new Error("Expired Checkout does not match the stored payment.");
+    await tx.update(clientPayments).set({ status: "failed", stripeCheckoutSessionId: session.id, updatedAt: new Date() }).where(eq(clientPayments.id,id));
+    await tx.insert(auditEvents).values({ organisationId: payment.organisationId, action: "client_payment.checkout_expired", resourceType: "client_payment", resourceId: id, metadata: { checkoutSessionId: session.id, fundsTransferred: false } });
+  });
 }
 
 export async function POST(request: Request) {
@@ -95,12 +130,43 @@ export async function POST(request: Request) {
   try {
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
-      const organisationId = session.client_reference_id ?? session.metadata?.surveyntOrganisationId ?? session.metadata?.fieldnoteOrganisationId;
-      const customerId = typeof session.customer === "string" ? session.customer : session.customer?.id;
-      const subscriptionId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
-      if (organisationId && customerId) {
-        await db.update(subscriptions).set({ stripeSubscriptionId: subscriptionId, status: "trialing", seats: Number(session.metadata?.seats ?? 1), updatedAt: new Date() }).where(eq(subscriptions.organisationId, organisationId));
-        if (subscriptionId) await synchroniseSubscription(db, stripe, subscriptionId, event);
+      if (session.metadata?.surveyntPaymentKind === "client_deposit" && session.payment_status === "paid") {
+        await convertPaidQuote(await verifiedClientPayment(db, session, "deposit"));
+      } else if (session.metadata?.surveyntPaymentKind === "client_balance" && session.payment_status === "paid") {
+        await settleBalancePayment(await verifiedClientPayment(db, session, "balance"));
+      } else if (session.mode === "subscription" && session.subscription) {
+        const organisationId = session.client_reference_id ?? session.metadata?.surveyntOrganisationId ?? session.metadata?.fieldnoteOrganisationId;
+        const customerId = typeof session.customer === "string" ? session.customer : session.customer?.id;
+        const subscriptionId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
+        if (organisationId && customerId) {
+          await db.update(subscriptions).set({ stripeSubscriptionId: subscriptionId, status: "trialing", seats: Number(session.metadata?.seats ?? 1), updatedAt: new Date() }).where(eq(subscriptions.organisationId, organisationId));
+          if (subscriptionId) await synchroniseSubscription(db, stripe, subscriptionId, event);
+        }
+      }
+    }
+    if (event.type === "checkout.session.expired" && ["client_deposit","client_balance"].includes(event.data.object.metadata?.surveyntPaymentKind ?? "")) await recordExpiredCheckout(db,event.data.object);
+    if (event.type === "charge.refunded") {
+      const charge = event.data.object;
+      const paymentIntentId = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id;
+      if (paymentIntentId) {
+        const [payment] = await db.select().from(clientPayments).where(eq(clientPayments.stripePaymentIntentId, paymentIntentId)).limit(1);
+        if (payment) {
+          await db.transaction(async (tx) => {
+            // Lock the invoice first: refunds to different payments must share one aggregation boundary.
+            const [invoice] = await tx.select().from(invoices).where(eq(invoices.id, payment.invoiceId)).for("update");
+            const [current] = await tx.select().from(clientPayments).where(eq(clientPayments.id, payment.id)).for("update");
+            if (!current || !invoice) throw new Error("Refund payment invoice is missing.");
+            const refundedMinor = Math.min(current.amountMinor, charge.amount_refunded);
+            const delta = refundedMinor - current.refundedMinor;
+            // Old Stripe events cannot regress a newer refund or create another liability adjustment.
+            if (delta <= 0) return;
+            const status = refundedMinor >= current.amountMinor ? "refunded" as const : "partially_refunded" as const;
+            await tx.update(clientPayments).set({ refundedMinor, status, updatedAt: new Date() }).where(eq(clientPayments.id, payment.id));
+            await refreshInvoiceBalance(tx,invoice);
+            if (delta > 0) await tx.insert(settlementLedger).values({ organisationId: payment.organisationId, paymentId: payment.id, entryType: "refund_liability_adjustment", currency: payment.currency, amountMinor: -delta, metadata: { stripeChargeId: charge.id, stripeEventId: event.id } });
+            await tx.insert(auditEvents).values({ organisationId: payment.organisationId, action: "client_payment.refunded", resourceType: "client_payment", resourceId: payment.id, metadata: { refundedMinor, status, stripeEventId: event.id } });
+          });
+        }
       }
     }
     if (event.type === "customer.subscription.created" || event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted") {

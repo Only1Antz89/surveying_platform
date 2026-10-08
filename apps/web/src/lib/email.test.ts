@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { renderEmail, sendEmail } from "./email";
+import { EmailDeliveryError, renderEmail, sendEmail } from "./email";
 import { trialDaysRemaining } from "./email-queue";
 
 const originalKey = process.env.SMTP2GO_API_KEY;
@@ -68,4 +68,21 @@ describe("SMTP2GO delivery", () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify({ data: { succeeded: 0, failed: 1, failures: [{}] } }), { status: 200 }));
     await expect(sendEmail({ to: ["owner@example.com"], subject: "Test", text: "Plain", html: "<p>Plain</p>" }, fetcher as typeof fetch)).rejects.toThrow("did not confirm");
   });
+  it("keeps connection loss and partial acceptance distinct from verified rejection", async () => {
+    process.env.SMTP2GO_API_KEY = "api-test"; process.env.SMTP2GO_SENDER = "notifications@example.com";
+    const message={to:["owner@example.com"],subject:"Test",text:"Plain",html:"<p>Plain</p>"};
+    for (const fetcher of [vi.fn(async()=>{throw new Error("Connection lost");}),vi.fn(async()=>new Response(JSON.stringify({data:{succeeded:1,failed:1}}),{status:200}))]) {
+      try { await sendEmail(message,fetcher as typeof fetch); throw new Error("Expected uncertainty"); } catch (error) { expect(error).toBeInstanceOf(EmailDeliveryError); expect((error as EmailDeliveryError).rejected).toBe(false); }
+    }
+    const fetcher=vi.fn(async()=>new Response(JSON.stringify({data:{succeeded:0,failed:1}}),{status:200}));
+    await expect(sendEmail(message,fetcher as typeof fetch)).rejects.toMatchObject({rejected:true});
+  });
+  it("adds provider correlation headers and bounds the network wait",async()=>{
+    process.env.SMTP2GO_API_KEY="api-test";process.env.SMTP2GO_SENDER="notifications@example.com";
+    const fetcher=vi.fn(async()=>new Response(JSON.stringify({data:{succeeded:1,failed:0,email_id:"mail-test"}}),{status:200}));
+    await sendEmail({to:["owner@example.com"],subject:"Test",text:"Plain",html:"Plain"},fetcher as typeof fetch,{jobId:"job-test",attemptId:"attempt-test"});
+    const options=(fetcher.mock.calls as unknown as [string,RequestInit][])[0][1];
+    expect(options.signal).toBeInstanceOf(AbortSignal);expect(JSON.parse(String(options.body)).custom_headers).toEqual([{header:"X-Surveynt-Job-Id",value:"job-test"},{header:"X-Surveynt-Attempt-Id",value:"attempt-test"}]);
+  });
+
 });

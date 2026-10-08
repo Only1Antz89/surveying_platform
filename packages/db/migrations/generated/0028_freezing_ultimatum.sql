@@ -1,0 +1,2 @@
+ALTER TABLE "customer_quotes" ADD COLUMN "public_request_id" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "customer_quotes_org_request_uidx" ON "customer_quotes" USING btree ("organisation_id","public_request_id");

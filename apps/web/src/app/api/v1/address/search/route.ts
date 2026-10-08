@@ -1,3 +1,4 @@
+import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { canMutateOperations } from "@surveynt/domain";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { ok, problem } from "@/lib/api";
@@ -9,6 +10,8 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  const accessDenial = await workspaceApiGuard(request, context);
+  if (accessDenial) return accessDenial;
   if (!canWriteWorkspace(context)) return problem(402, "workspace_read_only", "Restore billing before changing workspace records.");
   if (!canMutateOperations(context.role)) return problem(403, "forbidden", "Your role cannot create or edit property records.");
   const query = new URL(request.url).searchParams.get("q") ?? "";

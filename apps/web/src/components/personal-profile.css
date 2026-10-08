@@ -1,0 +1,23 @@
+.personal-profile { display:grid; gap:24px; }
+.personal-profile-heading { display:flex; align-items:center; gap:14px; }
+.personal-profile-heading h2,.personal-profile h3 { margin:0; }
+.personal-profile-heading p { margin:6px 0 0; }
+.personal-profile-icon { display:grid; place-items:center; flex-shrink:0; width:48px; height:48px; border-radius:12px; color:var(--blue); background:var(--blue-soft); }
+.personal-profile .personal-profile-demo { margin:0; padding:12px 16px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); font-size:.8125rem; }
+.personal-profile-fields { border:0; padding:0; margin:0; min-width:0; display:grid; gap:24px; }
+.personal-profile-photo { display:flex; align-items:center; gap:24px; border:1px solid var(--border); padding:20px; border-radius:12px; }
+.personal-profile-avatar { display:grid; place-items:center; flex-shrink:0; width:88px; height:88px; overflow:hidden; border-radius:50%; background:var(--blue-soft); color:var(--blue); font-size:1.5rem; font-weight:600; }
+.personal-profile-avatar img { object-fit:cover; width:88px; height:88px; }
+.personal-profile h3 { display:flex; align-items:center; gap:8px; font-size:1rem; }
+.personal-profile-upload { min-width:0; flex:1; }
+.personal-profile-upload p { margin:8px 0 14px; }
+.personal-profile-upload input { max-width:100%; width:100%; min-width:0; }
+.personal-profile-upload input::file-selector-button { border:0; padding:6px 10px; background:var(--blue-soft); color:var(--blue); border-radius:4px; margin-right:10px; cursor:pointer; }
+.personal-profile-details { border:1px solid var(--border); border-radius:12px; padding:20px; }
+.personal-profile-details p { margin-bottom:0; }
+.personal-profile-details .form-grid { gap:16px; }
+.personal-profile-details input { width:100%; min-width:0; }
+.personal-profile-actions { display:flex; justify-content:space-between; gap:16px; align-items:center; }
+.personal-profile-actions p { margin:0; }
+@media(max-width:1100px) { .personal-profile-photo { flex-wrap:wrap; }.personal-profile-upload { flex-basis:100%; } }
+@media(max-width:600px) { .personal-profile-photo,.personal-profile-details { padding:16px; }.personal-profile-actions { align-items:stretch; flex-direction:column; } }

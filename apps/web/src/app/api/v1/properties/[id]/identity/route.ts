@@ -1,3 +1,4 @@
+import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { z } from "zod";
 import { and, desc, eq } from "drizzle-orm";
 import { canConfirmPropertyIdentity, canMutateOperations, ukCountries } from "@surveynt/domain";
@@ -21,6 +22,8 @@ const identityAction = z.discriminatedUnion("action", [
 export async function GET(request: Request, route: RouteContext<"/api/v1/properties/[id]/identity">) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  const accessDenial = await workspaceApiGuard(request, context);
+  if (accessDenial) return accessDenial;
   const { id } = await route.params;
   if (context.demo) return ok({ identity: null, events: [] }, { demo: true });
   if (!z.uuid().safeParse(id).success) return problem(404, "property_not_found", "The property could not be found.");
@@ -42,11 +45,13 @@ export async function GET(request: Request, route: RouteContext<"/api/v1/propert
 export async function PUT(request: Request, route: RouteContext<"/api/v1/properties/[id]/identity">) {
   const context = await apiContext(request);
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
+  const accessDenial = await workspaceApiGuard(request, context);
+  if (accessDenial) return accessDenial;
   if (!canWriteWorkspace(context)) return problem(402, "workspace_read_only", "Restore billing before changing workspace records.");
   if (!canMutateOperations(context.role)) return problem(403, "forbidden", "Your role cannot change property records.");
   const parsed = await parseBody(request, identityAction);
   if (!parsed.success) return problem(400, "invalid_request", "The identity change is invalid.", parsed.error.flatten());
-  if ((parsed.data.action === "confirm_uprn" || parsed.data.action === "clear_uprn") && !canConfirmPropertyIdentity(context.role)) return problem(403, "forbidden", "Only owners, administrators and surveyors can confirm or clear a UPRN.");
+  if ((parsed.data.action === "confirm_uprn" || parsed.data.action === "clear_uprn") && !canConfirmPropertyIdentity(context.role, context.canRecordSurvey)) return problem(403, "forbidden", "Only owners, administrators and surveyors can confirm or clear a UPRN.");
   const { id } = await route.params;
   if (context.demo) return ok({ id, action: parsed.data.action, version: parsed.data.version + 1 }, { demo: true, persisted: false });
   if (!z.uuid().safeParse(id).success) return problem(404, "property_not_found", "The property could not be found.");

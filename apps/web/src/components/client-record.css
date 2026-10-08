@@ -1,0 +1,32 @@
+.client-record-modal { width:min(1040px,100%); background:var(--surface); color:var(--ink); }
+.client-record-modal .modal-header { padding:24px; background:var(--surface); }
+.client-record-modal .modal-header h2 { margin-top:8px; font-size:1.3rem; font-weight:650; }
+.client-record-modal .modal-header p { font-size:.875rem; line-height:1.6; max-width:580px; }
+.client-record-modal .eyebrow { color:var(--blue); font-size:.75rem; }
+.client-record-layout { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+.client-record-layout .form-section { padding:24px; background:var(--surface); border-bottom:0; }
+.client-record-layout .form-section h2,.client-record-modal .client-contacts h3 { font-size:1rem; font-weight:600; }
+.client-record-layout .form-section p,.client-record-modal .client-contacts-heading p { font-size:.8125rem; color:var(--muted); line-height:1.6; }
+.client-record-modal .form-grid { gap:16px; }
+.client-record-modal .field label { font-size:.8125rem; font-weight:500; }
+.client-record-modal input,.client-record-modal select { width:100%; min-width:0; }
+.client-record-modal .modal-actions { border-top:1px solid var(--border); padding:18px 24px; background:var(--surface); }
+.client-record-modal .client-contacts { padding:24px; background:var(--surface-2); }
+.client-record-modal .contact-card { padding:18px; border-radius:10px; }
+.client-record-modal .contact-card-title strong { font-size:.9375rem; }
+.client-record-modal .contact-card-title span { font-size:.6875rem; text-transform:none; letter-spacing:0; background:var(--blue-soft); padding:3px 7px; border-radius:4px; }
+.client-record-modal .contact-card dt { font-size:.6875rem; letter-spacing:0; text-transform:none; }
+.client-record-modal .contact-card dd { font-size:.8125rem; color:var(--ink); line-height:1.5; }
+.client-record-modal .contact-preference { display:grid; grid-template-columns:1fr minmax(110px,1fr); align-items:center; gap:10px; }
+.client-record-modal .contact-preference label { font-size:.75rem; text-transform:none; letter-spacing:0; }
+.client-record-modal .contact-preference .button { grid-column:1/-1; }
+.contact-add-panel { border:1px solid var(--border); background:var(--surface); border-radius:10px; margin-top:16px; }
+.contact-add-panel summary { display:flex; align-items:center; gap:8px; list-style:none; cursor:pointer; padding:16px; color:var(--blue); font-size:.875rem; font-weight:600; min-height:48px; }
+.contact-add-panel summary::-webkit-details-marker { display:none; }
+.contact-add-panel summary::after { content:"+"; margin-left:auto; font-size:1.2rem; font-weight:400; }
+.contact-add-panel[open] summary::after { content:"−"; }
+.client-record-modal .contact-add-form { padding:0 18px 18px; margin:0; border:0; gap:16px; }
+.contact-add-panel .contact-add-form h3 { display:none; }
+.client-record-modal .check-field { font-size:.8125rem; text-transform:none; }
+.client-record-modal .check-field input { width:18px; height:18px; }
+@media(max-width:760px) { .client-record-layout { grid-template-columns:1fr; }.client-record-layout>div { border-right:0; }.client-record-modal .client-contacts { border-top:1px solid var(--border); }.client-record-modal .modal-header,.client-record-layout .form-section,.client-record-modal .client-contacts { padding:20px; }.client-record-modal .form-grid { grid-template-columns:1fr; } }

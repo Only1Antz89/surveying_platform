@@ -1,4 +1,4 @@
-import { processIntelligenceQueue } from "@/lib/property-intelligence";
+import { processIntelligenceQueue } from "@/lib/intelligence";
 import { isWorkerAuthorised } from "./worker-auth";
 
 export const runtime = "nodejs";

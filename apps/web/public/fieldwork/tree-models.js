@@ -1,0 +1,14 @@
+import * as THREE from './vendor/three.module.js';
+export function addTreeModels(map,features,MercatorCoordinate){
+ if(!features.length)return;
+ const origin=MercatorCoordinate.fromLngLat(features[0].geometry.coordinates),unit=origin.meterInMercatorCoordinateUnits();let visible=true,lastGround=0;
+ const camera=new THREE.Camera(),scene=new THREE.Scene(),groups=[],resources=[];
+ const sphere=new THREE.IcosahedronGeometry(1,2),trunk=new THREE.CylinderGeometry(.13,.22,1,7);sphere.rotateX(Math.PI/2);trunk.rotateX(Math.PI/2);resources.push(sphere,trunk);
+ const brown=new THREE.MeshLambertMaterial({color:0x806954}),greens=[0x456b51,0x56815d,0x6a9169].map(color=>new THREE.MeshLambertMaterial({color,flatShading:true}));resources.push(brown,...greens);
+ const trunkMesh=new THREE.InstancedMesh(trunk,brown,features.length),crowns=greens.map(m=>new THREE.InstancedMesh(sphere,m,features.length));scene.add(trunkMesh,...crowns);for(const mesh of [trunkMesh,...crowns])mesh.frustumCulled=false;
+ scene.add(new THREE.AmbientLight(0xffffff,1.3));const sun=new THREE.DirectionalLight(0xffffff,2);sun.position.set(-30,-60,100);scene.add(sun);
+ const dummy=new THREE.Object3D();for(const f of features){const p=MercatorCoordinate.fromLngLat(f.geometry.coordinates),h=Number(f.properties.height_m)||8;groups.push({point:f.geometry.coordinates,x:(p.x-origin.x)/unit,y:(p.y-origin.y)/unit,h:Math.max(2,Math.min(60,h)),z:0});}
+ function update(){groups.forEach((t,i)=>{const ground=map.getTerrain()?map.queryTerrainElevation(t.point)??0:0;t.z=ground;dummy.position.set(t.x,t.y,ground+t.h*.25);dummy.scale.set(1,1,t.h*.5);dummy.updateMatrix();trunkMesh.setMatrixAt(i,dummy.matrix);const radius=Math.min(4,t.h*.32);[[0,0,.64,1,.8,.37],[-.2,.2,.77,.82,.8,.3],[.15,-.12,.87,.7,.72,.22]].forEach(([dx,dy,z,sx,sy,sz],n)=>{dummy.position.set(t.x+dx*radius,t.y+dy*radius,ground+t.h*z);dummy.scale.set(radius*sx,radius*sy,t.h*sz);dummy.updateMatrix();crowns[n].setMatrixAt(i,dummy.matrix);});});for(const mesh of [trunkMesh,...crowns])mesh.instanceMatrix.needsUpdate=true;}
+ const layer={id:'natural-tree-models',type:'custom',renderingMode:'3d',onAdd(m,gl){this.renderer=new THREE.WebGLRenderer({canvas:m.getCanvas(),context:gl,antialias:true});this.renderer.autoClear=false;update();},render(gl,args){if(!visible||map.getZoom()<15)return;const now=performance.now();if(now-lastGround>1000){lastGround=now;update();}const model=new THREE.Matrix4().makeTranslation(origin.x,origin.y,0).scale(new THREE.Vector3(unit,unit,unit));camera.projectionMatrix.fromArray(args.defaultProjectionData.mainMatrix).multiply(model);this.renderer.resetState();this.renderer.render(scene,camera);},onRemove(){trunkMesh.dispose();crowns.forEach(m=>m.dispose());resources.forEach(r=>r.dispose());this.renderer?.dispose();}};
+ map.addLayer(layer);return{setVisible(v){visible=v;map.triggerRepaint();}};
+}
