@@ -101,3 +101,53 @@ Pages covered (15): landing, start, overview, jobs, job detail, survey workspace
 
 - **Offline recording of findings, end to end.** The local preview owner deliberately has no recording permission, and Clerk is unavailable here. So entering findings offline, then syncing, conflict handling and replay could only be checked through the permission-refusal path above. Server-side replay, conflicts and the removed-content guard are covered by the integration suites (for example the stakeholder journey and migration 0070 tests). A staging run by a surveyor with recording permission is still needed.
 - **Assistive technology and real devices.** No screen reader (NVDA, VoiceOver, TalkBack) or physical phone was available. axe checks names, roles and landmarks, not the spoken experience. Those manual checks remain on the [release checklist](release-checklist.md).
+
+## 3. External integrations
+
+### How each integration was checked
+
+- **Network.** The environment's network policy blocks every provider host except Google APIs: SMTP2GO, Stripe, Microsoft Graph, Vercel Blob, Postcodes.io, Planning Data, Nominatim, OSRM and EPC. Each fails at the proxy (connection refused, HTTP 000), and documentation fetches fail the same way. So no live provider call could be made.
+- **Contracts.** Instead, each client was compared with the provider's current published contract, found through web search (sources below). Its tests were run, and the deployed Vercel project's configuration was read: variable names only, values never decrypted.
+
+### Results
+
+| Integration | Code vs provider contract | Tests | Deployed configuration (Vercel production) | Live status |
+|---|---|---|---|---|
+| **Email (SMTP2GO)** | Matches: `POST https://api.smtp2go.com/v3/email/send` with the `X-Smtp2go-Api-Key` header, `sender`/`to`/`subject`/`text_body`/`html_body`, and `data.succeeded`/`data.failed` checks. A 200 response that reports failures is treated as failed, as SMTP2GO documents. Slow sends that hit the 15-second timeout are marked "acceptance unknown" for review rather than resent, which avoids duplicates. | Email queue and delivery unit tests pass | **Not configured**: no `SMTP2GO_API_KEY` or `SMTP2GO_SENDER`. Email is queued but cannot be delivered | Not live-tested (host blocked; no key) |
+| **Payments (Stripe)** | Webhook checks: raw body, `constructEvent`, default tolerance, event-ID de-duplication, `payment_status === "paid"`. Idempotency keys on Checkout create, expire and refund. **Gap fixed:** Checkout uses dynamic payment methods, so delayed methods such as Bacs Direct Debit complete Checkout *unpaid*. `checkout.session.async_payment_succeeded` was never handled, so those payments would have stayed pending; it now settles through the same verified path. `async_payment_failed` releases the reservation (audited `client_payment.async_payment_failed`). | 9 signed-webhook integration tests pass, including the new delayed-payment case | **Not configured**: no `STRIPE_*`, `QUOTE_TOKEN_SECRET`, or `CLIENT_PAYMENTS_LAUNCH_APPROVED` | Not live-tested (host blocked; no keys; legal/accounting approval pending) |
+| **Calendars (Google, Microsoft)** | Matches. Google: `events/watch` channels with a channel token checked on receipt and expiry parsed. Microsoft: `validationToken` echoed as `text/plain`; `clientState` compared in constant time; `me/events` subscriptions requested for 2.5 days, inside the 4,230-minute limit (longer responses rejected). Reconciliation lists a bounded time window rather than sync tokens, so Google's 410 sync-token expiry does not apply. | Calendar unit and integration suites pass | **Not configured**: no `GOOGLE_*`, `MICROSOFT_*` or `CALENDAR_*` variables | Google endpoints reached unauthenticated: Calendar list and watch return 403 (unregistered caller), userinfo and token return 401. This proves the paths exist; it does not prove a working integration. Microsoft blocked |
+| **Storage (Vercel Blob)** | Matches private storage: `put` with `access: "private"`, no random suffix, no overwrite; `get(..., { access: "private" })` through authenticated routes; `del`. **Improved:** Vercel documents that reads may be cached for up to 60 seconds after a change. Removal verification now reads with `useCache: false`, so a deleted original is not reported as still present. Ordinary downloads keep the cache. | New `storage.test.ts` (3); removal storage tests pass | **Configured**: `BLOB_READ_WRITE_TOKEN` in development, preview and production | Not live-tested from here (host blocked) |
+| **Routing (OSRM-compatible)** | Matches the OSRM route service: `/route/v1/driving/{lon,lat;...}?overview=full&geometries=geojson`, optional bearer token, and route, leg and geometry validation. Without a provider, routes fall back to labelled straight-line estimates | Fieldwork unit tests pass | **Not configured**: no `ROUTING_PROVIDER_*` | Not live-tested |
+| **Property data** | Unchanged and covered by its own register. Postcodes.io and Planning Data were live-verified, and production geocoding and basemap configured, in the 2 October production record. EPC remains `not_configured` | Property-data unit (79) and integration (28) suites pass | **Configured**: `PROPERTY_INTELLIGENCE_ENABLED`, `NOMINATIM_*`, `NEXT_PUBLIC_MAP_*`. No `EPC_*` | Not re-tested from here (hosts blocked) |
+
+### Also found in the deployed configuration
+
+- **Clerk webhooks.** There is no `CLERK_WEBHOOK_SECRET`, so signed Clerk provisioning webhooks (organisation and membership sync) are rejected. Set it before relying on automatic provisioning.
+- **Unused variables.** Legacy `FIELDNOTE_UK_*` database variables are present, but the application does not read them.
+
+### Stripe webhook events the endpoint must be subscribed to
+
+- `checkout.session.completed`
+- `checkout.session.async_payment_succeeded`
+- `checkout.session.async_payment_failed`
+- `checkout.session.expired`
+- `charge.refunded`
+- `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`
+
+### Before live activation
+
+For each provider:
+
+1. Add its credentials in Vercel.
+2. Run the smoke test from a network that can reach it.
+3. Record the outcome here.
+
+The release checklist's approval gates still apply, especially client payments (legal, accounting and client-money approval) and calendars (OAuth app registration and key rotation).
+
+Sources:
+- [SMTP2GO authentication](https://developers.smtp2go.com/reference/authentication), [Send an Email](https://developers.smtp2go.com/docs/send-an-email) and [Response codes](https://developers.smtp2go.com/docs/response-codes)
+- [Stripe idempotent requests](https://docs.stripe.com/api/idempotent_requests) and [Fulfil Checkout orders](https://docs.stripe.com/payments/checkout/fulfill-orders)
+- [Google Calendar push notifications](https://developers.google.com/workspace/calendar/v3/push)
+- [Microsoft Graph subscription resource](https://learn.microsoft.com/graph/api/resources/subscription)
+- [Vercel Blob private storage](https://vercel.com/docs/vercel-blob/private-storage) and [consistent reads changelog](https://vercel.com/changelog/vercel-blob-now-supports-consistent-reads-on-private-storage)
+- [OSRM HTTP API](https://project-osrm.org/docs/v5.24.0/api)

@@ -54,7 +54,7 @@ export async function processDocumentRemovalQueue(limit=10, supplied?:{db:Databa
     if("held" in claim){review++;continue;}
     const {job,document,recovery}=claim;
     try {
-      const existing=await boundedStorageOperation(storage.get(document.blobPathname),object=>{if(object)void object.stream.cancel().catch(()=>undefined);});
+      const existing=await boundedStorageOperation(storage.get(document.blobPathname, { fresh: true }),object=>{if(object)void object.stream.cancel().catch(()=>undefined);});
       if(existing&&recovery)await existing.stream.cancel();
       if(recovery){
         const outcome=existing?"verification_required":"purged";
@@ -64,7 +64,7 @@ export async function processDocumentRemovalQueue(limit=10, supplied?:{db:Databa
       if(!existing){await finish(db,job.id,token,document.id,document.organisationId,"verification_required","Original was already absent before deletion; investigate storage evidence.");review++;continue;}
       try {await verifyDocumentOriginal(existing.stream,document.sizeBytes,document.checksum);} catch(reason){await finish(db,job.id,token,document.id,document.organisationId,"verification_required",reason instanceof Error?reason.message:"Original verification failed.");review++;continue;}
       await boundedStorageOperation(storage.remove(document.blobPathname));
-      const remaining=await boundedStorageOperation(storage.get(document.blobPathname),object=>{if(object)void object.stream.cancel().catch(()=>undefined);});
+      const remaining=await boundedStorageOperation(storage.get(document.blobPathname, { fresh: true }),object=>{if(object)void object.stream.cancel().catch(()=>undefined);});
       if(remaining){await remaining.stream.cancel();throw new Error("Storage still contains the original after deletion.");}
       if(await finish(db,job.id,token,document.id,document.organisationId,"purged",null))removed++;
     }catch(reason){

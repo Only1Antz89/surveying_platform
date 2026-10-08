@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { and, eq } from "drizzle-orm";
-import { clientPayments, customerQuotes, invoices, organisations, subscriptions, onboardingSteps, subscriptionEvents, webhookEvents, type Database } from "@surveynt/db";
+import { auditEvents, clientPayments, customerQuotes, invoices, organisations, subscriptions, onboardingSteps, subscriptionEvents, webhookEvents, type Database } from "@surveynt/db";
 import { createTestDatabase, integrationEnabled, stopRelay, type TestDatabase } from "@surveynt/db/testing";
 const state = vi.hoisted(() => ({ retrieve: vi.fn(), deposit: vi.fn(), balance: vi.fn(), email: vi.fn() }));
 vi.mock("stripe", async importOriginal => {
@@ -112,6 +112,29 @@ describe.skipIf(!integrationEnabled)("signed Stripe routing and platform lifecyc
     const [pending] = await db.select().from(clientPayments).where(eq(clientPayments.id,newer.metadata.surveyntPaymentId));
     expect(pending.status).toBe("pending");
     expect((await deliver(event("checkout.session.expired",{ ...newer,status: "expired",payment_status: "unpaid",amount_total: 1 }))).status).toBe(500);
+  });
+  it("settles delayed payment methods only when Stripe reports the later outcome", async () => {
+    state.deposit.mockClear(); state.balance.mockClear();
+    // Completed but unpaid (for example Bacs Direct Debit): nothing is settled yet.
+    const delayed = await checkout("deposit");
+    expect((await deliver(event("checkout.session.completed", { ...delayed, status: "complete", payment_status: "unpaid" }))).ok).toBe(true);
+    expect(state.deposit).not.toHaveBeenCalled();
+    const succeeded = event("checkout.session.async_payment_succeeded", { ...delayed, status: "complete", payment_status: "paid" });
+    expect((await deliver(succeeded)).ok).toBe(true);
+    expect(state.deposit).toHaveBeenCalledWith({ paymentId: delayed.metadata.surveyntPaymentId, checkoutSessionId: delayed.id, paymentIntentId: delayed.payment_intent });
+    expect((await (await deliver(succeeded)).json()).duplicate).toBe(true);
+    expect(state.deposit).toHaveBeenCalledTimes(1);
+    // A failed delayed payment releases the reservation like an expired Checkout, with its own audit action.
+    const failing = await checkout("balance");
+    expect((await deliver(event("checkout.session.async_payment_failed", { ...failing, status: "complete", payment_status: "unpaid" }))).ok).toBe(true);
+    const [released] = await db.select().from(clientPayments).where(eq(clientPayments.id, failing.metadata.surveyntPaymentId));
+    expect(released.status).toBe("failed");
+    const audits = await db.select().from(auditEvents).where(eq(auditEvents.resourceId, failing.metadata.surveyntPaymentId));
+    expect(audits.map(audit => audit.action)).toContain("client_payment.async_payment_failed");
+    expect(state.balance).not.toHaveBeenCalled();
+    // A mismatched failure is rejected for retry rather than releasing the payment.
+    const mismatched = await checkout("deposit");
+    expect((await deliver(event("checkout.session.async_payment_failed", { ...mismatched, status: "complete", payment_status: "unpaid", amount_total: 1 }))).status).toBe(500);
   });
   it("routes subscription Checkout without granting access to a suspended practice", async () => {
     const { org, subscription } = await practice("suspended");

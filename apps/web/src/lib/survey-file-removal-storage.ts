@@ -16,7 +16,7 @@ export async function processSurveyFileOriginal(db: Database, organisationId: st
   if (recorded) return recorded;
   let failure: "storage_unavailable" | "unexpected_absence" | "original_verification_failed" = "storage_unavailable";
   try {
-    const existing = await boundedStorageOperation(storage.get(object.storagePath), value => { if (value) void value.stream.cancel().catch(() => undefined); });
+    const existing = await boundedStorageOperation(storage.get(object.storagePath, { fresh: true }), value => { if (value) void value.stream.cancel().catch(() => undefined); });
     failure = "unexpected_absence";
     if (!existing) throw new Error("Original unexpectedly absent before verified dispatch.");
     failure = "original_verification_failed";
@@ -30,7 +30,7 @@ export async function processSurveyFileOriginal(db: Database, organisationId: st
   let reason: "uncertain_delete" | "object_still_present" = "uncertain_delete";
   try {
     await boundedStorageOperation(storage.remove(dispatch.object.storagePath));
-    const remaining = await boundedStorageOperation(storage.get(dispatch.object.storagePath), value => { if (value) void value.stream.cancel().catch(() => undefined); });
+    const remaining = await boundedStorageOperation(storage.get(dispatch.object.storagePath, { fresh: true }), value => { if (value) void value.stream.cancel().catch(() => undefined); });
     if (remaining) { await remaining.stream.cancel(); reason = "object_still_present"; throw new Error("Original remains in storage."); }
   } catch {
     await withTenant(db, organisationId, tx => recordSurveyFileOriginalOutcome(tx, organisationId, claim.id, claim.leaseToken, objectKey, { state: "verification_required", reason }));

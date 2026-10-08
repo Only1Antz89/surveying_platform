@@ -87,7 +87,8 @@ async function verifiedClientPayment(db: ReturnType<typeof createDatabase>, sess
   return { paymentId, checkoutSessionId: session.id, paymentIntentId };
 }
 
-async function recordExpiredCheckout(db: ReturnType<typeof createDatabase>, session: Stripe.Checkout.Session) {
+// Delayed payment methods (for example Bacs Direct Debit) complete Checkout unpaid and report the outcome later.
+async function recordExpiredCheckout(db: ReturnType<typeof createDatabase>, session: Stripe.Checkout.Session, outcome: "expired" | "async_failed" = "expired") {
   const id = session.metadata?.surveyntPaymentId;
   if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) throw new Error("Expired Checkout payment identity is invalid.");
   const [stored] = await db.select({ payment: clientPayments, demo: organisations.isDemo }).from(clientPayments).innerJoin(organisations, eq(organisations.id,clientPayments.organisationId)).where(eq(clientPayments.id,id)).limit(1);
@@ -97,12 +98,12 @@ async function recordExpiredCheckout(db: ReturnType<typeof createDatabase>, sess
     const [payment] = await tx.select().from(clientPayments).where(eq(clientPayments.id,id)).for("update");
     // Ignore expiry for a superseded session; it cannot cancel its newer replacement.
     if (payment.succeededAt || payment.status !== "pending" || payment.stripeCheckoutSessionId && payment.stripeCheckoutSessionId !== session.id) return;
-    if (session.mode !== "payment" || session.status !== "expired" || session.payment_status === "paid"
+    if (session.mode !== "payment" || session.status !== (outcome === "expired" ? "expired" : "complete") || session.payment_status === "paid"
       || !["deposit","balance"].includes(payment.purpose) || session.amount_total !== payment.amountMinor || session.currency?.toUpperCase() !== payment.currency.toUpperCase()
       || session.metadata?.surveyntOrganisationId !== payment.organisationId || session.metadata?.surveyntQuoteId !== payment.quoteId
       || session.metadata?.surveyntPaymentKind !== `client_${payment.purpose}`) throw new Error("Expired Checkout does not match the stored payment.");
     await tx.update(clientPayments).set({ status: "failed", stripeCheckoutSessionId: session.id, updatedAt: new Date() }).where(eq(clientPayments.id,id));
-    await tx.insert(auditEvents).values({ organisationId: payment.organisationId, action: "client_payment.checkout_expired", resourceType: "client_payment", resourceId: id, metadata: { checkoutSessionId: session.id, fundsTransferred: false } });
+    await tx.insert(auditEvents).values({ organisationId: payment.organisationId, action: outcome === "expired" ? "client_payment.checkout_expired" : "client_payment.async_payment_failed", resourceType: "client_payment", resourceId: id, metadata: { checkoutSessionId: session.id, fundsTransferred: false } });
   });
 }
 
@@ -128,13 +129,13 @@ export async function POST(request: Request) {
   }
 
   try {
-    if (event.type === "checkout.session.completed") {
+    if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
       const session = event.data.object;
       if (session.metadata?.surveyntPaymentKind === "client_deposit" && session.payment_status === "paid") {
         await convertPaidQuote(await verifiedClientPayment(db, session, "deposit"));
       } else if (session.metadata?.surveyntPaymentKind === "client_balance" && session.payment_status === "paid") {
         await settleBalancePayment(await verifiedClientPayment(db, session, "balance"));
-      } else if (session.mode === "subscription" && session.subscription) {
+      } else if (event.type === "checkout.session.completed" && session.mode === "subscription" && session.subscription) {
         const organisationId = session.client_reference_id ?? session.metadata?.surveyntOrganisationId ?? session.metadata?.fieldnoteOrganisationId;
         const customerId = typeof session.customer === "string" ? session.customer : session.customer?.id;
         const subscriptionId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
@@ -145,6 +146,7 @@ export async function POST(request: Request) {
       }
     }
     if (event.type === "checkout.session.expired" && ["client_deposit","client_balance"].includes(event.data.object.metadata?.surveyntPaymentKind ?? "")) await recordExpiredCheckout(db,event.data.object);
+    if (event.type === "checkout.session.async_payment_failed" && ["client_deposit","client_balance"].includes(event.data.object.metadata?.surveyntPaymentKind ?? "")) await recordExpiredCheckout(db,event.data.object,"async_failed");
     if (event.type === "charge.refunded") {
       const charge = event.data.object;
       const paymentIntentId = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id;
