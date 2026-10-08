@@ -59,7 +59,11 @@ export async function readPreinspection(tx: TenantTransaction, scope: Scope) {
   const submissions = await tx.select({ id: preinspectionSubmissions.id, version: preinspectionSubmissions.version, answers: preinspectionSubmissions.answers, source: preinspectionSubmissions.source, createdAt: preinspectionSubmissions.createdAt }).from(preinspectionSubmissions).where(and(eq(preinspectionSubmissions.organisationId, scope.organisationId), eq(preinspectionSubmissions.jobId, scope.jobId))).orderBy(desc(preinspectionSubmissions.version)).limit(20);
   const [quote] = !draft && !submissions.length ? await tx.select({ answers: customerQuotes.answers }).from(customerQuotes).where(and(eq(customerQuotes.organisationId, scope.organisationId), eq(customerQuotes.jobId, scope.jobId))).limit(1) : [];
   const collected = quote?.answers.websiteFormVersionId ? { ...(typeof quote.answers.reportedPropertyType === "string" ? { propertyType: quote.answers.reportedPropertyType } : {}), ...(typeof quote.answers.concerns === "string" ? { concerns: quote.answers.concerns } : {}), ...(Array.isArray(quote.answers.alterationTypes) && quote.answers.alterationTypes.length ? { alterations: quote.answers.alterationTypes.filter(v => typeof v === "string").join(", ") } : {}) } : {};
-  return { draft: { version: draft?.version ?? 0, answers: draft?.answers ?? submissions[0]?.answers ?? collected }, submission: submissions[0] ?? null, history: submissions, valuation: scope.valuation, label: "Customer statements — not survey findings", demo: true };
+  // Statements removed under the retention policy are reported as removed, never shown as empty answers.
+  const removed = (answers: Record<string, unknown> | undefined) => answers?.retentionRemoved === true && Object.keys(answers).length === 1;
+  const history = submissions.map(row => removed(row.answers) ? { ...row, answers: {}, contentRemoved: true } : { ...row, contentRemoved: false });
+  const contentRemoved = removed(draft?.answers) || (!draft && removed(submissions[0]?.answers));
+  return { draft: { version: draft?.version ?? 0, answers: contentRemoved ? {} : draft?.answers ?? submissions[0]?.answers ?? collected }, submission: history[0] ?? null, history, contentRemoved, valuation: scope.valuation, label: "Customer statements — not survey findings", demo: true };
 }
 
 export async function issuePreinspectionLink(tx: TenantTransaction, scope: Scope, quoteId: string) {

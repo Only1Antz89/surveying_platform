@@ -1,3 +1,8 @@
+import { propagateFileRemovals } from "../src/lib/learning-pipeline";
+import { learningAuditLog, learningCandidates, learningSanitisationRuns } from "@surveynt/db";
+import { disposeQuestionnaireAnswers } from "../src/lib/survey-file-questionnaire-answer-disposition";
+import { readPreinspection } from "../src/lib/preinspection";
+import { preinspectionDrafts, preinspectionSubmissions } from "@surveynt/db";
 import { disposeEvidenceAnnotation } from "../src/lib/survey-file-evidence-annotation-disposition";
 import { disposeMediaMetadata } from "../src/lib/survey-file-media-metadata-disposition";
 import { disposeElementContent } from "../src/lib/survey-file-element-disposition";
@@ -432,6 +437,8 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     const removalElements=await db.insert(surveyElements).values([0,1].map(index=>({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,sectionKey:"outside",elementKey:"roof",locationLabel:`Fictional private element location ${index}`,limitationReason:"Fictional private inaccessible inspection"}))).returning();
     const elementReplayFixtures=await db.insert(syncOperations).values(removalElements.map((element,index)=>({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,operationId:`op_retention_element_replay_${index}`,operationType:"set_element",appliedByUserId:context.internalUserId,result:{id:element.id,limitationReason:element.limitationReason}}))).returning();
     const [removalLink]=await db.insert(evidenceLinks).values({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,targetType:"element",targetId:removalElements[0].id,evidenceType:"media",evidenceId:removalMedia.id,note:"Fictional private inspection evidence note",region:{x:0.1,y:0.2,width:0.3,height:0.4},clientGeneratedId:"retained-annotation-fixture"}).returning();
+    const [removalDraft]=await db.insert(preinspectionDrafts).values({organisationId:context.organisationId,jobId:removalJob.id,propertyId:retentionJob.propertyId,answers:{concerns:"Fictional private customer concern draft"},version:2}).returning();
+    const removalStatements=await db.insert(preinspectionSubmissions).values([1,2].map(version=>({organisationId:context.organisationId,jobId:removalJob.id,propertyId:retentionJob.propertyId,version,requestId:crypto.randomUUID(),answers:{concerns:`Fictional private customer concern ${version}`},source:"customer"}))).returning();
     const [removalObservation]=await db.insert(observations).values({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,kind:"current_observation",text:"Fictional private retained observation",structured:{source:{id:removalOriginal.id}},locationLabel:"Fictional private room",sourceRef:removalOriginal.id,clientGeneratedId:"retention-observation-disposition"}).returning();
     const observationReplayFixtures=await db.insert(syncOperations).values(["add_observation","revise_observation"].map((type,index)=>({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,operationId:`op_retention_observation_replay_${index}`,operationType:type,appliedByUserId:context.internalUserId,result:{id:removalObservation.id,text:removalObservation.text,version:removalObservation.version}}))).returning();
 
@@ -466,6 +473,9 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeMediaAnalysis(tx,context.organisationId,removalJob.id,context.internalUserId!,removalAnalysis.id))).rejects.toThrow("Whole-file removal");
     await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeMediaMetadata(tx,context.organisationId,removalJob.id,context.internalUserId!,removalMedia.id,executionDecision))).rejects.toThrow("decision changed");
     await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeEvidenceAnnotation(tx,context.organisationId,removalJob.id,context.internalUserId!,removalLink.id,executionDecision))).rejects.toThrow("decision changed");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeQuestionnaireAnswers(tx,context.organisationId,removalJob.id,context.internalUserId!,executionDecision))).rejects.toThrow("decision changed");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.insert(preinspectionSubmissions).values({...removalStatements[1],id:crypto.randomUUID(),version:3,requestId:crypto.randomUUID()}))).rejects.toMatchObject({cause:{message:"Customer statements in a survey file under removal cannot be added, changed or deleted"}});
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(preinspectionDrafts).set({answers:{concerns:"Late fictional edit"}}).where(eq(preinspectionDrafts.id,removalDraft.id)))).rejects.toMatchObject({cause:{message:"Customer statements in a survey file under removal cannot be added, changed or deleted"}});
     const removeOriginal=fixtureStorage.remove.bind(fixtureStorage);
     const deleteSpy=vi.spyOn(fixtureStorage,"remove").mockImplementation(async key=>{await removeOriginal(key);if(key===removalOriginal.storageKey)throw new Error("Fictional lost delete response");});
     expect(await processSurveyFileOriginal(createDatabase(),context.organisationId,removalJob.id,storageClaim,`questionnaire:${removalOriginal.id}`,fixtureStorage)).toEqual({removed:false,verificationRequired:true});
@@ -562,6 +572,7 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeMediaAnalysis(tx,context.organisationId,removalJob.id,context.internalUserId!,removalAnalysis.id))).rejects.toThrow("protected");
     await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeMediaMetadata(tx,context.organisationId,removalJob.id,context.internalUserId!,removalMedia.id,executionDecision))).rejects.toThrow("protected");
     await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeEvidenceAnnotation(tx,context.organisationId,removalJob.id,context.internalUserId!,removalLink.id,executionDecision))).rejects.toThrow("protected");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeQuestionnaireAnswers(tx,context.organisationId,removalJob.id,context.internalUserId!,executionDecision))).rejects.toThrow("protected");
     await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeAdviserTask(tx,context.organisationId,removalJob.id,context.internalUserId!,removalTask.id,{id:removalIntent.id,manifestVersion:storageClaim.manifest.manifestVersion,reason:"Reviewed fictional adviser task cleanup.",confirmed:true}))).rejects.toThrow("protected");
     await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeFieldProposal(tx,context.organisationId,removalJob.id,context.internalUserId!,removalProposal.id,{id:removalIntent.id,manifestVersion:storageClaim.manifest.manifestVersion,reason:"Reviewed fictional proposal cleanup.",confirmed:true}))).rejects.toThrow("protected");
     await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeReportContent(tx,context.organisationId,removalJob.id,context.internalUserId!,removalReport.id,{id:removalIntent.id,manifestVersion:storageClaim.manifest.manifestVersion,reason:"Reviewed fictional report content cleanup.",confirmed:true}))).rejects.toThrow("protected");
@@ -694,6 +705,36 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     expect(annotationRemoved).toEqual({...removalLink,note:null,region:{retentionRemoved:true}});
     await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(evidenceLinks).set({note:removalLink.note}).where(eq(evidenceLinks.id,removalLink.id)))).rejects.toThrow();
     const annotationEvents=await db.select().from(auditEvents).where(and(eq(auditEvents.resourceId,removalLink.id),eq(auditEvents.action,"job.evidence_annotation_disposed")));
+    await expect(withTenant(createDatabase(),foreignOrg.id,tx=>disposeQuestionnaireAnswers(tx,foreignOrg.id,removalJob.id,context.internalUserId!,cleanupDecision))).rejects.toThrow("permission");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeQuestionnaireAnswers(tx,context.organisationId,removalJob.id,context.internalUserId!,{...cleanupDecision,manifestVersion:"0".repeat(64)}))).rejects.toThrow("decision changed");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(preinspectionSubmissions).set({answers:{retentionRemoved:true}}).where(eq(preinspectionSubmissions.id,removalStatements[0].id)))).rejects.toThrow();
+    expect(await withTenant(createDatabase(),context.organisationId,tx=>disposeQuestionnaireAnswers(tx,context.organisationId,removalJob.id,context.internalUserId!,cleanupDecision))).toEqual({disposed:true,duplicate:false});
+    expect(await withTenant(createDatabase(),context.organisationId,tx=>disposeQuestionnaireAnswers(tx,context.organisationId,removalJob.id,context.internalUserId!,cleanupDecision))).toEqual({disposed:true,duplicate:true});
+    const statementRows=await db.select().from(preinspectionSubmissions).where(eq(preinspectionSubmissions.jobId,removalJob.id));
+    expect(statementRows.map(row=>({...row,answers:undefined})).sort((a,b)=>a.version-b.version)).toEqual(removalStatements.map(row=>({...row,answers:undefined})));
+    expect(statementRows.every(row=>JSON.stringify(row.answers)==='{"retentionRemoved":true}')).toBe(true);
+    const [draftRemoved]=await db.select().from(preinspectionDrafts).where(eq(preinspectionDrafts.id,removalDraft.id));
+    expect(draftRemoved).toMatchObject({answers:{retentionRemoved:true},version:removalDraft.version});
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(preinspectionSubmissions).set({answers:removalStatements[0].answers}).where(eq(preinspectionSubmissions.id,removalStatements[0].id)))).rejects.toThrow();
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(preinspectionDrafts).set({answers:removalDraft.answers}).where(eq(preinspectionDrafts.id,removalDraft.id)))).rejects.toThrow();
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.delete(preinspectionSubmissions).where(eq(preinspectionSubmissions.id,removalStatements[0].id)))).rejects.toThrow();
+    const statementEvents=await db.select().from(auditEvents).where(and(eq(auditEvents.resourceId,removalJob.id),eq(auditEvents.action,"job.questionnaire_answers_disposed")));
+    expect(statementEvents).toHaveLength(1);expect(statementEvents[0].metadata).toMatchObject({submissionCount:2,draft:true,confirmed:true});expect(JSON.stringify(statementEvents)).not.toContain("Fictional private");
+    const statementView=await withTenant(createDatabase(),context.organisationId,tx=>readPreinspection(tx,{organisationId:context.organisationId,jobId:removalJob.id,propertyId:retentionJob.propertyId,actorUserId:context.internalUserId,source:"staff_transcribed_client",valuation:false}));
+    expect(statementView).toMatchObject({contentRemoved:true,draft:{answers:{}}});expect(statementView.history.every(row=>row.contentRemoved)).toBe(true);expect(JSON.stringify(statementView)).not.toContain("Fictional private");
+    // Shared-learning staging honours removal: copies of the removed file are erased, others are untouched.
+    const learning=database.connect(database.learningUrl);
+    const candidateFixture=(jobRef:string)=>({organisationId:context.organisationId,contributorKey:crypto.randomUUID(),jobId:jobRef,surveyId:crypto.randomUUID(),elementId:crypto.randomUUID(),elementRef:"outside.roof",scope:"structured_cases",grantId:crypto.randomUUID(),policyVersion:"fixture",sourceFingerprint:crypto.randomUUID(),dedupKey:"d".repeat(64),groupKey:"g".repeat(64),content:{text:"Fictional private staged copy"},status:"awaiting_privacy_review"});
+    const [removedCopy,keptCopy]=await learning.insert(learningCandidates).values([candidateFixture(removalJob.id),candidateFixture(crypto.randomUUID())]).returning();
+    await learning.insert(learningSanitisationRuns).values({candidateId:removedCopy.id,transformer:"sanitiser-v1",output:{text:"Fictional private staged copy"},quasiKey:"q",outcome:"passed"});
+    expect(await propagateFileRemovals(db,learning)).toEqual({files:1,candidatesErased:1,sharedCasesRemoved:0});
+    expect(await propagateFileRemovals(db,learning)).toEqual({files:0,candidatesErased:0,sharedCasesRemoved:0});
+    const [erasedCopy]=await db.select().from(learningCandidates).where(eq(learningCandidates.id,removedCopy.id));
+    expect(erasedCopy).toMatchObject({status:"withdrawn",content:{}});
+    expect(await db.select().from(learningSanitisationRuns).where(eq(learningSanitisationRuns.candidateId,removedCopy.id))).toEqual([]);
+    expect((await db.select().from(learningCandidates).where(eq(learningCandidates.id,keptCopy.id)))[0].status).toBe("awaiting_privacy_review");
+    const retentionLearningEvents=await db.select().from(learningAuditLog).where(eq(learningAuditLog.action,"retention.file_removed"));
+    expect(retentionLearningEvents).toHaveLength(1);expect(JSON.stringify(retentionLearningEvents)).not.toContain("Fictional private");
     expect(annotationEvents).toHaveLength(1);expect(JSON.stringify(annotationEvents)).not.toContain("Fictional private");
     const removedSync=await applySyncOperations(context,removalSurvey.survey.id,[
       {type:"set_field",operationId:"op_retained_answer_restore",fieldPath:removalValue.fieldPath,value:{state:"provided",value:"Attempted restoration"},baseValueId:removalValue.id},
@@ -707,6 +748,7 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     const disposedRegister=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,removalJob.id));
     expect(disposedRegister!.mediaMetadata.find(media=>media.id===removalMedia.id)).toEqual({id:removalMedia.id,kind:"photo",metadataDisposed:true});
     expect(disposedRegister!.evidenceAnnotations.find(link=>link.id===removalLink.id)).toEqual({id:removalLink.id,evidenceType:"media",contentDisposed:true});
+    expect(disposedRegister!.questionnaireAnswers).toEqual({submissionCount:2,draft:true,contentDisposed:true});
     expect(disposedRegister!.assessment.eligibleForManagerReview).toBe(true);
     expect(disposedRegister!.recordedObservations.find(observation=>observation.id===removalObservation.id)).toEqual({id:removalObservation.id,kind:removalObservation.kind,contentDisposed:true});
     expect(disposedRegister!.recordedValues.find(value=>value.id===removalValue.id)).toEqual({id:removalValue.id,fieldPath:removalValue.fieldPath,contentDisposed:true});

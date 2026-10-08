@@ -3,7 +3,7 @@ import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { applyRarityCheck, currentGrant, evaluateEligibility, extractCandidates, quasiIdentifierKey, sanitiseCandidate, type KnownIdentifiers } from "@surveynt/learning";
 import {
   clientContacts, clients, createDatabase, evidenceLinks, jobs, learningAuditLog, learningCandidates, learningContributionGrants, learningContributors, learningReviews,
-  learningReleaseItems, learningSanitisationRuns, learningWithdrawalRequests, organisationMemberships, sharedCases, organisations, properties, reportApprovals, reportVersions, surveys, users, withTenant, type Database,
+  learningReleaseItems, learningSanitisationRuns, learningWithdrawalRequests, organisationMemberships, sharedCases, organisations, properties, reportApprovals, reportVersions, surveyFileRemovals, surveys, users, withTenant, type Database,
 } from "@surveynt/db";
 import { loadProgramme } from "./learning";
 import { readSurveyPack } from "./surveys";
@@ -54,7 +54,10 @@ export async function extractFirmCandidates(organisationId: string, limit = 10):
       tx.select({ scope: learningWithdrawalRequests.scope, jobId: learningWithdrawalRequests.jobId, createdAt: learningWithdrawalRequests.createdAt }).from(learningWithdrawalRequests).where(eq(learningWithdrawalRequests.organisationId, organisationId)),
       tx.select({ surveyId: surveys.id, jobId: surveys.jobId, propertyId: surveys.propertyId, status: surveys.status, jurisdiction: surveys.jurisdiction, reportVersionId: reportVersions.id, signedOffAt: reportApprovals.createdAt })
         .from(surveys).innerJoin(reportVersions, eq(reportVersions.surveyId, surveys.id)).innerJoin(reportApprovals, eq(reportApprovals.reportVersionId, reportVersions.id))
-        .where(and(eq(surveys.organisationId, organisationId), eq(surveys.status, "approved"))).orderBy(desc(reportApprovals.createdAt)).limit(200),
+        .where(and(eq(surveys.organisationId, organisationId), eq(surveys.status, "approved"),
+          // A file under retention removal is never copied, even before its content is cleaned.
+          sql`not exists (select 1 from ${surveyFileRemovals} r where r.organisation_id = ${surveys.organisationId} and r.job_id = ${surveys.jobId} and r.status <> 'cancelled')`))
+        .orderBy(desc(reportApprovals.createdAt)).limit(200),
     ]);
     const due = signedOff.filter((row) => !processed.has(row.reportVersionId)).slice(0, limit);
     const grant = currentGrant(grants, "structured_cases") as typeof grants[number] | null;
@@ -147,12 +150,7 @@ export async function processWithdrawal(organisationId: string, requestId: strin
       const conditions = [eq(learningCandidates.organisationId, organisationId), ne(learningCandidates.status, "withdrawn")];
       if (request.jobId) conditions.push(eq(learningCandidates.jobId, request.jobId));
       const ids = (await ltx.select({ id: learningCandidates.id }).from(learningCandidates).where(and(...conditions))).map((row) => row.id);
-      if (ids.length) {
-        result.sharedCasesRemoved = await removeSharedCases(ltx, ids);
-        await ltx.delete(learningSanitisationRuns).where(inArray(learningSanitisationRuns.candidateId, ids));
-        await ltx.delete(learningReviews).where(inArray(learningReviews.candidateId, ids));
-        await ltx.update(learningCandidates).set({ status: "withdrawn", content: {}, statusReason: "Withdrawn by the contributing firm.", updatedAt: new Date() }).where(inArray(learningCandidates.id, ids));
-      }
+      result.sharedCasesRemoved = await eraseCandidates(ltx, ids, "Withdrawn by the contributing firm.");
       result.candidatesWithdrawn = ids.length;
       await ltx.insert(learningAuditLog).values({ actor: "learning_service", action: "withdrawal.processed", organisationId, metadata: { requestId, scope: request.scope, jobId: request.jobId, candidates: ids.length, sharedCases: result.sharedCasesRemoved } });
     });
@@ -164,14 +162,50 @@ export async function processWithdrawal(organisationId: string, requestId: strin
   return { status: "completed", ...result, message };
 }
 
+type ErasureTx = Pick<Database, "select" | "update" | "delete" | "execute">;
+
+/** Clears candidate copies, erases their sanitisation and review records and removes released copies. Call with app.erasure on. */
+async function eraseCandidates(tx: ErasureTx, ids: string[], reason: string) {
+  if (!ids.length) return 0;
+  const removed = await removeSharedCases(tx, ids, reason);
+  await tx.delete(learningSanitisationRuns).where(inArray(learningSanitisationRuns.candidateId, ids));
+  await tx.delete(learningReviews).where(inArray(learningReviews.candidateId, ids));
+  await tx.update(learningCandidates).set({ status: "withdrawn", content: {}, statusReason: reason, updatedAt: new Date() }).where(inArray(learningCandidates.id, ids));
+  return removed;
+}
+
+/**
+ * Retention removal of a survey file ends its learning use, like a job
+ * withdrawal: staged copies are cleared and released copies leave retrieval.
+ * Runs for removals that have reached storage dispatch or later.
+ */
+export async function propagateFileRemovals(admin: Database, restricted: Database | null = learningDb()) {
+  const removals = await admin.select({ organisationId: surveyFileRemovals.organisationId, jobId: surveyFileRemovals.jobId }).from(surveyFileRemovals)
+    .where(inArray(surveyFileRemovals.status, ["dispatched", "verification_required", "completed"]));
+  if (!restricted || !removals.length) return { files: 0, candidatesErased: 0, sharedCasesRemoved: 0 };
+  const result = { files: 0, candidatesErased: 0, sharedCasesRemoved: 0 };
+  for (const removal of removals) {
+    await restricted.transaction(async (ltx) => {
+      const ids = (await ltx.select({ id: learningCandidates.id }).from(learningCandidates)
+        .where(and(eq(learningCandidates.organisationId, removal.organisationId), eq(learningCandidates.jobId, removal.jobId), ne(learningCandidates.status, "withdrawn")))).map((row) => row.id);
+      if (!ids.length) return;
+      await ltx.execute(sql`select set_config('app.erasure', 'on', true)`);
+      const shared = await eraseCandidates(ltx, ids, "Survey file removed under the practice retention policy.");
+      await ltx.insert(learningAuditLog).values({ actor: "learning_service", action: "retention.file_removed", organisationId: removal.organisationId, metadata: { jobId: removal.jobId, candidates: ids.length, sharedCases: shared } });
+      result.files += 1; result.candidatesErased += ids.length; result.sharedCasesRemoved += shared;
+    });
+  }
+  return result;
+}
+
 /** Removes released copies of these candidates from every release and marks the release items withdrawn. */
-async function removeSharedCases(tx: Pick<Database, "select" | "update" | "delete" | "execute">, candidateIds: string[]) {
+async function removeSharedCases(tx: ErasureTx, candidateIds: string[], reason = "Withdrawn by the contributing firm.") {
   const items = await tx.select({ sharedCaseId: learningReleaseItems.sharedCaseId, releaseId: learningReleaseItems.releaseId }).from(learningReleaseItems)
     .where(and(inArray(learningReleaseItems.candidateId, candidateIds), eq(learningReleaseItems.status, "included")));
   if (!items.length) return 0;
   const shared = items.map((item) => item.sharedCaseId);
   const deleted = await tx.delete(sharedCases).where(inArray(sharedCases.id, shared)).returning({ id: sharedCases.id });
-  await tx.update(learningReleaseItems).set({ status: "withdrawn", statusReason: "Withdrawn by the contributing firm." }).where(inArray(learningReleaseItems.sharedCaseId, shared));
+  await tx.update(learningReleaseItems).set({ status: "withdrawn", statusReason: reason }).where(inArray(learningReleaseItems.sharedCaseId, shared));
   for (const releaseId of new Set(items.map((item) => item.releaseId))) {
     await tx.execute(sql`update learning_shared.releases set case_count = (select count(*) from learning_shared.cases c where c.release_id = ${releaseId}) where id = ${releaseId}`);
   }
@@ -185,12 +219,13 @@ export async function runLearningSweep(limitPerFirm = 10) {
   const pending = await admin.select({ id: learningWithdrawalRequests.id, organisationId: learningWithdrawalRequests.organisationId }).from(learningWithdrawalRequests).where(eq(learningWithdrawalRequests.status, "requested")).limit(100);
   let withdrawals = 0;
   for (const request of pending) if ((await processWithdrawal(request.organisationId, request.id)).status === "completed") withdrawals += 1;
+  const removedFiles = await propagateFileRemovals(admin);
   const programme = await loadProgramme(admin);
-  if (!programme.status.active) return { withdrawals, firms: 0, created: 0, inactive: programme.status.reasons.map((reason) => reason.code) };
+  if (!programme.status.active) return { withdrawals, removedFiles, firms: 0, created: 0, inactive: programme.status.reasons.map((reason) => reason.code) };
   const firms = await admin.selectDistinct({ organisationId: learningContributionGrants.organisationId }).from(learningContributionGrants).where(eq(learningContributionGrants.status, "granted"));
   let created = 0;
   for (const firm of firms) created += (await extractFirmCandidates(firm.organisationId, limitPerFirm)).created;
-  return { withdrawals, firms: firms.length, created };
+  return { withdrawals, removedFiles, firms: firms.length, created };
 }
 
 /**

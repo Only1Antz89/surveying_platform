@@ -519,6 +519,13 @@
       "when": 1791423600000,
       "tag": "0073_evidence_annotation_disposition",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1791427200000,
+      "tag": "0074_questionnaire_answer_disposition",
+      "breakpoints": true
     }
   ]
 }
