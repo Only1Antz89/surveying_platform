@@ -12,6 +12,7 @@ import { disposeMediaAnalysis } from "@/lib/survey-file-media-analysis-dispositi
 
 import { reviewRemovalObservation } from "@/lib/survey-file-removal-observation-review";
 import { observeInterruptedSurveyFileOriginal } from "@/lib/survey-file-removal-recovery";
+import { processReviewedRemainingOriginals } from "@/lib/survey-file-removal-resume-runner";
 import { getObjectStorage } from "@/lib/storage";
 
 const common = { reason: z.string().trim().min(10).max(2000), confirmed: z.literal(true) };
@@ -19,6 +20,7 @@ const input = z.discriminatedUnion("action", [
   z.object({ ...common, action: z.literal("request"), requestId: z.uuid(), reviewVersion: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
   z.object({ ...common, action: z.literal("dispose_media_analysis"), id: z.uuid(), manifestVersion: z.string().regex(/^[a-f0-9]{64}$/), analysisId: z.uuid() }).strict(),
   z.object({ ...common, action: z.literal("dispose_analysis"), id: z.uuid(), manifestVersion: z.string().regex(/^[a-f0-9]{64}$/), documentId: z.uuid() }).strict(),
+  z.object({ ...common, action: z.literal("resume"), id: z.uuid(), manifestVersion: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
   z.object({ ...common, action: z.literal("observe"), id: z.uuid(), manifestVersion: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
   z.object({ ...common, action: z.literal("cancel"), id: z.uuid(), manifestVersion: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
 ]);
@@ -34,6 +36,12 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
   if (!z.uuid().safeParse(id).success) return problem(404, "not_found", "Job not found.");
   try {
     const decision = parsed.data;
+    if (decision.action === "resume") {
+      const storage = getObjectStorage();
+      if (!storage) return problem(503, "storage_unavailable", "Original storage is unavailable. Retry after restoring storage access.");
+      const outcome = await processReviewedRemainingOriginals(createDatabase(), context.organisationId, id, context.internalUserId!, { id: decision.id, manifestVersion: decision.manifestVersion, reason: decision.reason, confirmed: decision.confirmed }, storage);
+      return ok({ ...outcome, persisted: true });
+    }
     if (decision.action === "observe") {
       const storage = getObjectStorage();
       if (!storage) return problem(503, "storage_unavailable", "Original storage is unavailable. Retry the observation later.");

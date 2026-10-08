@@ -1,3 +1,4 @@
+import { processReviewedRemainingOriginals } from "../src/lib/survey-file-removal-resume-runner";
 import { resumeReviewedSurveyFileRemoval } from "../src/lib/survey-file-removal-resume";
 import { reviewRemovalObservation } from "../src/lib/survey-file-removal-observation-review";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -380,11 +381,10 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     await fixtureStorage.put(deliveryOriginal.blobPathname,deliveryBytes.buffer,"text/plain");
     await fixtureStorage.put(removalMedia.storageKey,originalBytes.buffer,"image/jpeg");
     expect(await processSurveyFileOriginal(createDatabase(),context.organisationId,removalJob.id,storageClaim,`media:${removalMedia.id}`,fixtureStorage)).toEqual({removed:true,verificationRequired:false});
-    expect(await processSurveyFileOriginal(createDatabase(),context.organisationId,removalJob.id,storageClaim,`document:${deliveryOriginal.id}`,fixtureStorage)).toEqual({removed:true,verificationRequired:false});
     await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeQuestionnaireAnalysis(tx,context.organisationId,removalJob.id,context.internalUserId!,removalOriginal.id))).rejects.toThrow("Whole-file removal");
     await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeMediaAnalysis(tx,context.organisationId,removalJob.id,context.internalUserId!,removalAnalysis.id))).rejects.toThrow("Whole-file removal");
     const removeOriginal=fixtureStorage.remove.bind(fixtureStorage);
-    const deleteSpy=vi.spyOn(fixtureStorage,"remove").mockImplementation(async key=>{await removeOriginal(key);throw new Error("Fictional lost delete response");});
+    const deleteSpy=vi.spyOn(fixtureStorage,"remove").mockImplementation(async key=>{await removeOriginal(key);if(key===removalOriginal.storageKey)throw new Error("Fictional lost delete response");});
     expect(await processSurveyFileOriginal(createDatabase(),context.organisationId,removalJob.id,storageClaim,`questionnaire:${removalOriginal.id}`,fixtureStorage)).toEqual({removed:false,verificationRequired:true});
     const observationDecision={id:removalIntent.id,manifestVersion:storageClaim.manifest.manifestVersion,reason:"Manager confirms fictional interrupted outcome observation.",confirmed:true as const};
     await expect(withTenant(createDatabase(),context.organisationId,tx=>reviewRemovalObservation(tx,context.organisationId,removalJob.id,context.internalUserId!,{...observationDecision,manifestVersion:"0".repeat(64)}))).rejects.toThrow("decision changed");
@@ -402,8 +402,13 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     expect(failedObservation.status).toBe("verification_required");expect(failedObservation.error).toBe("storage_unavailable");expect(failedObservation.lockedUntil).toBeNull();
     readSpy.mockRestore();
     const secondRecovery=await withTenant(createDatabase(),context.organisationId,tx=>claimSurveyFileRemovalRecovery(tx,context.organisationId,removalIntent.id));
-    expect(await observeInterruptedSurveyFileOriginal(createDatabase(),context.organisationId,secondRecovery,`questionnaire:${removalOriginal.id}`,fixtureStorage)).toEqual({removed:true,verificationRequired:false});
-    expect(deleteSpy).toHaveBeenCalledOnce();
+    expect(await observeInterruptedSurveyFileOriginal(createDatabase(),context.organisationId,secondRecovery,`questionnaire:${removalOriginal.id}`,fixtureStorage)).toEqual({removed:true,verificationRequired:true});
+    expect(deleteSpy).toHaveBeenCalledOnce();expect(fixtureStorage.objects.size).toBe(1);
+    const [partialRemoval]=await db.select().from(surveyFileRemovals).where(eq(surveyFileRemovals.id,removalIntent.id));
+    expect(partialRemoval.status).toBe("verification_required");expect(partialRemoval.lockedUntil).toBeNull();
+    const resumedOutcome=await processReviewedRemainingOriginals(createDatabase(),context.organisationId,removalJob.id,context.internalUserId!,{id:removalIntent.id,manifestVersion:storageClaim.manifest.manifestVersion,reason:"Manager reviewed the remaining fictional delivery original.",confirmed:true},fixtureStorage);
+    expect(resumedOutcome).toEqual({completed:true,verificationRequired:false,processed:1});
+    expect(deleteSpy).toHaveBeenCalledTimes(2);expect(deleteSpy.mock.calls.map(call=>call[0])).toEqual([removalOriginal.storageKey,deliveryOriginal.blobPathname]);
     expect(fixtureStorage.objects.size).toBe(0);
     const [completedRemoval]=await db.select().from(surveyFileRemovals).where(eq(surveyFileRemovals.id,removalIntent.id));expect(completedRemoval.status).toBe("completed");expect(completedRemoval.completedAt).not.toBeNull();
     await expect(withTenant(createDatabase(),context.organisationId,async tx=>{
@@ -413,7 +418,7 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     })).rejects.toMatchObject({cause:{message:"A record bound to a file under original removal cannot be added, changed, moved or deleted"}});
     const retryRead=vi.spyOn(fixtureStorage,"get");
     expect(await processSurveyFileOriginal(createDatabase(),context.organisationId,removalJob.id,storageClaim,`questionnaire:${removalOriginal.id}`,fixtureStorage)).toEqual({removed:true,verificationRequired:false});
-    expect(retryRead).not.toHaveBeenCalled();expect(deleteSpy).toHaveBeenCalledOnce();retryRead.mockRestore();
+    expect(retryRead).not.toHaveBeenCalled();expect(deleteSpy).toHaveBeenCalledTimes(2);retryRead.mockRestore();
     const [dispositionHold]=await db.insert(jobRetentionHolds).values({organisationId:context.organisationId,jobId:removalJob.id,kind:"legal",reason:"Fictional legal hold blocks extracted content disposition.",reviewedByUserId:context.internalUserId!}).returning();
     await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeQuestionnaireAnalysis(tx,context.organisationId,removalJob.id,context.internalUserId!,removalOriginal.id))).rejects.toThrow("protected");
     await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeMediaAnalysis(tx,context.organisationId,removalJob.id,context.internalUserId!,removalAnalysis.id))).rejects.toThrow("protected");
