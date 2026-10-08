@@ -68,6 +68,17 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : "Removal cancellation failed."); }
     finally { setBusy(false); }
   }
+  async function startRemoval(id: string, manifestVersion: string, form: FormData) {
+    setBusy(true); setMessage("");
+    try {
+      const response = await fetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "start", id, manifestVersion, reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error?.message ?? "Removal execution failed.");
+      setRegister(null);
+      setMessage(!payload.data.persisted ? "Preview only. No originals were removed." : payload.data.completed ? "Remaining originals removed and verified. Reload the assessment." : "Processing paused for further review. Reload the assessment before another decision.");
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : "Removal execution failed. Reload to review its outcome before retrying."); }
+    finally { setBusy(false); }
+  }
   async function resumeRemoval(id: string, manifestVersion: string, form: FormData) {
     setBusy(true); setMessage("");
     try {
@@ -157,6 +168,12 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
           <label className="field">Reason<textarea name="reason" required minLength={10} maxLength={2000} disabled={busy} /></label>
           <label><input name="confirmed" type="checkbox" required disabled={busy} /> I confirm this outcome check.</label>
           <button type="submit" disabled={busy}>Check original outcome</button>
+        </form></details> : null}
+        {canEdit && removal.status === "queued" ? <details><summary>Start reviewed original removal</summary><form action={form => startRemoval(removal.id, removal.manifestVersion, form)} className="form-grid">
+          <p>This permanently removes originals from the unchanged approved file in bounded batches. Review current protection and confirm the removal before starting.</p>
+          <label className="field">Reason<textarea name="reason" required minLength={10} maxLength={2000} disabled={busy} /></label>
+          <label><input name="confirmed" type="checkbox" required disabled={busy} /> I approve permanent removal of the remaining originals.</label>
+          <button type="submit" disabled={busy}>Start remaining removal</button>
         </form></details> : null}
         {canEdit && removal.status === "verification_required" ? <details><summary>Resume untouched originals</summary><form action={form => resumeRemoval(removal.id, removal.manifestVersion, form)} className="form-grid">
           <p>First verify every interrupted original outcome. Resumption permanently removes untouched originals from the unchanged approved file. Existing verified removals are preserved.</p>

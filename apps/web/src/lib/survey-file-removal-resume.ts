@@ -17,7 +17,7 @@ export async function resumeReviewedSurveyFileRemoval(tx: TenantTransaction, org
   const [request] = await tx.select().from(surveyFileRemovals).where(and(eq(surveyFileRemovals.organisationId, organisationId), eq(surveyFileRemovals.jobId, jobId), eq(surveyFileRemovals.id, decision.id))).for("update");
   if (!request || request.status !== "verification_required" || request.manifestVersion !== decision.manifestVersion) throw new Error("The partial removal decision changed.");
   const outcomes = Object.values(request.progress);
-  if (!outcomes.length || outcomes.some(outcome => outcome.state !== "removed")) throw new Error("Every interrupted dispatch must be verified before resuming untouched originals.");
+  if ((!outcomes.length && request.error !== "additional_originals_require_review") || outcomes.some(outcome => outcome.state !== "removed")) throw new Error("Every interrupted dispatch must be verified before resuming untouched originals.");
   const [requester] = await tx.select().from(organisationMemberships).where(and(eq(organisationMemberships.organisationId, organisationId), eq(organisationMemberships.userId, request.requestedByUserId), eq(organisationMemberships.active, true))).for("share");
   if (!requester || !isManagementRole(requester.role)) throw new Error("The requesting manager no longer has removal permission.");
   const prepared = await prepareReviewedSurveyFileRemoval(tx, organisationId, jobId, request.reviewVersion);

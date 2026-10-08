@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
-const state = vi.hoisted(() => ({ context: { organisationId: "11111111-1111-4111-8111-111111111111", internalUserId: "manager", role: "owner", demo: false }, writable: true, reportDispose: vi.fn(), proposalDispose: vi.fn(), taskDispose: vi.fn(), resume: vi.fn(), storage: {}, observe: vi.fn(), observationReview: vi.fn(), mediaDispose: vi.fn(), dispose: vi.fn(), request: vi.fn(), cancel: vi.fn(), database: vi.fn() }));
+const state = vi.hoisted(() => ({ context: { organisationId: "11111111-1111-4111-8111-111111111111", internalUserId: "manager", role: "owner", demo: false }, writable: true, start: vi.fn(), reportDispose: vi.fn(), proposalDispose: vi.fn(), taskDispose: vi.fn(), resume: vi.fn(), storage: {}, observe: vi.fn(), observationReview: vi.fn(), mediaDispose: vi.fn(), dispose: vi.fn(), request: vi.fn(), cancel: vi.fn(), database: vi.fn() }));
 vi.mock("@/lib/access", () => ({ apiContext: async () => state.context, canWriteWorkspace: () => state.writable }));
 vi.mock("@/lib/workspace-api-guard", () => ({ workspaceApiGuard: async () => null }));
 vi.mock("@/lib/survey-file-removal-request", () => ({ requestReviewedSurveyFileRemoval: state.request, cancelReviewedSurveyFileRemoval: state.cancel }));
@@ -13,6 +13,7 @@ vi.mock("@/lib/survey-file-removal-resume-runner", () => ({ processReviewedRemai
 vi.mock("@/lib/survey-file-adviser-task-disposition", () => ({ disposeAdviserTask: state.taskDispose }));
 vi.mock("@/lib/survey-file-field-proposal-disposition", () => ({ disposeFieldProposal: state.proposalDispose }));
 vi.mock("@/lib/survey-file-report-content-disposition", () => ({ disposeReportContent: state.reportDispose }));
+vi.mock("@/lib/survey-file-removal-start-runner", () => ({ processReviewedQueuedOriginals: state.start }));
 import { POST } from "./route";
 const id = "22222222-2222-4222-8222-222222222222";
 const route = { params: Promise.resolve({ id }) };
@@ -131,4 +132,15 @@ it("binds report cleanup to a confirmed completed manifest and hides private err
   const response = await POST(request(body), route);
   expect(response.status).toBe(409);
   expect(await response.text()).not.toContain("private report body");
+});
+
+it("starts only the confirmed manifest and keeps preview execution nonpersistent", async () => {
+  const body={action:"start",id,manifestVersion:"b".repeat(64),reason:decision.reason,confirmed:true};
+  state.start.mockResolvedValue({completed:true,verificationRequired:false,processed:1});
+  expect((await POST(request(body),route)).status).toBe(200);
+  expect(state.start).toHaveBeenCalledWith(expect.anything(),state.context.organisationId,id,"manager",{id,manifestVersion:body.manifestVersion,reason:body.reason,confirmed:true},state.storage);
+  expect((await POST(request({...body,storagePath:"untrusted"}),route)).status).toBe(400);
+  vi.clearAllMocks();state.context.demo=true;
+  expect((await (await POST(request(body),route)).json()).data.persisted).toBe(false);
+  expect(state.start).not.toHaveBeenCalled();
 });

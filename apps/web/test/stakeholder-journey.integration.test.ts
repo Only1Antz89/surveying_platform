@@ -1,3 +1,4 @@
+import { startReviewedSurveyFileRemoval } from "../src/lib/survey-file-removal-start";
 import { disposeReportContent } from "../src/lib/survey-file-report-content-disposition";
 import { loadSurveyReports } from "../src/lib/reports";
 import { disposeFieldProposal } from "../src/lib/survey-file-field-proposal-disposition";
@@ -396,7 +397,22 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     const removalFile=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,removalJob.id));expect(removalFile?.assessment.eligibleForManagerReview).toBe(true);
     await db.insert(auditEvents).values({organisationId:context.organisationId,actorUserId:context.internalUserId!,action:"job.retention_file_reviewed",resourceType:"job",resourceId:removalJob.id,metadata:{reviewVersion:removalFile!.assessment.reviewVersion,confirmed:true,noUnresolvedComplaintOrClaim:true}});
     const removalIntent=await withTenant(createDatabase(),context.organisationId,tx=>requestReviewedSurveyFileRemoval(tx,context.organisationId,removalJob.id,context.internalUserId!,{requestId:crypto.randomUUID(),reviewVersion:removalFile!.assessment.reviewVersion,reason:"Manager reviewed fictional storage integration original.",confirmed:true}));
-    const storageClaim=await withTenant(createDatabase(),context.organisationId,tx=>claimQueuedSurveyFileRemoval(tx,context.organisationId,removalJob.id,removalIntent.id));
+    const [queuedExecution]=await db.select().from(surveyFileRemovals).where(eq(surveyFileRemovals.id,removalIntent.id));
+    const executionDecision={id:removalIntent.id,manifestVersion:queuedExecution.manifestVersion,reason:"Manager confirms fictional original execution.",confirmed:true as const};
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>startReviewedSurveyFileRemoval(tx,context.organisationId,removalJob.id,context.internalUserId!,{...executionDecision,manifestVersion:"f".repeat(64)}))).rejects.toThrow("changed");
+    await expect(withTenant(createDatabase(),context.organisationId,async tx=>{
+      const first=await startReviewedSurveyFileRemoval(tx,context.organisationId,removalJob.id,context.internalUserId!,executionDecision);
+      await tx.update(surveyFileRemovals).set({status:"verification_required",lockedUntil:null,error:"additional_originals_require_review"}).where(eq(surveyFileRemovals.id,first.id));
+      const resumed=await resumeReviewedSurveyFileRemoval(tx,context.organisationId,removalJob.id,context.internalUserId!,executionDecision);
+      expect(resumed.remaining).toEqual(first.manifest.objects);
+      expect(resumed.attempts).toBe(first.attempts+1);
+      throw new Error("rollback zero-progress execution fixture");
+    })).rejects.toThrow("rollback zero-progress execution fixture");
+    const storageClaim=await withTenant(createDatabase(),context.organisationId,tx=>startReviewedSurveyFileRemoval(tx,context.organisationId,removalJob.id,context.internalUserId!,executionDecision));
+    expect(storageClaim.remaining).toEqual(storageClaim.manifest.objects);
+    const executionAudits=await db.select().from(auditEvents).where(and(eq(auditEvents.resourceId,removalIntent.id),eq(auditEvents.action,"job.original_removal_execution_reviewed")));
+    expect(executionAudits).toHaveLength(1);expect(executionAudits[0].actorUserId).toBe(context.internalUserId);expect(executionAudits[0].metadata).toMatchObject({manifestVersion:executionDecision.manifestVersion,confirmed:true,reason:executionDecision.reason,storageRemoved:false});
+
     const fixtureStorage=createMemoryStorage();await fixtureStorage.put(removalOriginal.storageKey,originalBytes.buffer,"text/plain");
     await fixtureStorage.put(deliveryOriginal.blobPathname,deliveryBytes.buffer,"text/plain");
     for(const document of batchDocuments)await fixtureStorage.put(document.blobPathname,deliveryBytes.buffer,"text/plain");

@@ -21,6 +21,8 @@ import { disposeFieldProposal } from "@/lib/survey-file-field-proposal-dispositi
 
 import { disposeReportContent } from "@/lib/survey-file-report-content-disposition";
 
+import { processReviewedQueuedOriginals } from "@/lib/survey-file-removal-start-runner";
+
 const common = { reason: z.string().trim().min(10).max(2000), confirmed: z.literal(true) };
 const input = z.discriminatedUnion("action", [
   z.object({ ...common, action: z.literal("request"), requestId: z.uuid(), reviewVersion: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
@@ -29,6 +31,7 @@ const input = z.discriminatedUnion("action", [
   z.object({ ...common, action: z.literal("dispose_task"), id: z.uuid(), manifestVersion: z.string().regex(/^[a-f0-9]{64}$/), taskId: z.uuid() }).strict(),
   z.object({ ...common, action: z.literal("dispose_media_analysis"), id: z.uuid(), manifestVersion: z.string().regex(/^[a-f0-9]{64}$/), analysisId: z.uuid() }).strict(),
   z.object({ ...common, action: z.literal("dispose_analysis"), id: z.uuid(), manifestVersion: z.string().regex(/^[a-f0-9]{64}$/), documentId: z.uuid() }).strict(),
+  z.object({ ...common, action: z.literal("start"), id: z.uuid(), manifestVersion: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
   z.object({ ...common, action: z.literal("resume"), id: z.uuid(), manifestVersion: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
   z.object({ ...common, action: z.literal("observe"), id: z.uuid(), manifestVersion: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
   z.object({ ...common, action: z.literal("cancel"), id: z.uuid(), manifestVersion: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
@@ -45,10 +48,10 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
   if (!z.uuid().safeParse(id).success) return problem(404, "not_found", "Job not found.");
   try {
     const decision = parsed.data;
-    if (decision.action === "resume") {
+    if (decision.action === "start" || decision.action === "resume") {
       const storage = getObjectStorage();
       if (!storage) return problem(503, "storage_unavailable", "Original storage is unavailable. Retry after restoring storage access.");
-      const outcome = await processReviewedRemainingOriginals(createDatabase(), context.organisationId, id, context.internalUserId!, { id: decision.id, manifestVersion: decision.manifestVersion, reason: decision.reason, confirmed: decision.confirmed }, storage);
+      const outcome = await (decision.action === "start" ? processReviewedQueuedOriginals : processReviewedRemainingOriginals)(createDatabase(), context.organisationId, id, context.internalUserId!, { id: decision.id, manifestVersion: decision.manifestVersion, reason: decision.reason, confirmed: decision.confirmed }, storage);
       return ok({ ...outcome, persisted: true });
     }
     if (decision.action === "observe") {
