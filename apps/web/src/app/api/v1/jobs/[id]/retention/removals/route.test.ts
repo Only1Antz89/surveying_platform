@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
-const state = vi.hoisted(() => ({ context: { organisationId: "11111111-1111-4111-8111-111111111111", internalUserId: "manager", role: "owner", demo: false }, writable: true, proposalDispose: vi.fn(), taskDispose: vi.fn(), resume: vi.fn(), storage: {}, observe: vi.fn(), observationReview: vi.fn(), mediaDispose: vi.fn(), dispose: vi.fn(), request: vi.fn(), cancel: vi.fn(), database: vi.fn() }));
+const state = vi.hoisted(() => ({ context: { organisationId: "11111111-1111-4111-8111-111111111111", internalUserId: "manager", role: "owner", demo: false }, writable: true, reportDispose: vi.fn(), proposalDispose: vi.fn(), taskDispose: vi.fn(), resume: vi.fn(), storage: {}, observe: vi.fn(), observationReview: vi.fn(), mediaDispose: vi.fn(), dispose: vi.fn(), request: vi.fn(), cancel: vi.fn(), database: vi.fn() }));
 vi.mock("@/lib/access", () => ({ apiContext: async () => state.context, canWriteWorkspace: () => state.writable }));
 vi.mock("@/lib/workspace-api-guard", () => ({ workspaceApiGuard: async () => null }));
 vi.mock("@/lib/survey-file-removal-request", () => ({ requestReviewedSurveyFileRemoval: state.request, cancelReviewedSurveyFileRemoval: state.cancel }));
@@ -12,6 +12,7 @@ vi.mock("@/lib/storage", () => ({ getObjectStorage: () => state.storage }));
 vi.mock("@/lib/survey-file-removal-resume-runner", () => ({ processReviewedRemainingOriginals: state.resume }));
 vi.mock("@/lib/survey-file-adviser-task-disposition", () => ({ disposeAdviserTask: state.taskDispose }));
 vi.mock("@/lib/survey-file-field-proposal-disposition", () => ({ disposeFieldProposal: state.proposalDispose }));
+vi.mock("@/lib/survey-file-report-content-disposition", () => ({ disposeReportContent: state.reportDispose }));
 import { POST } from "./route";
 const id = "22222222-2222-4222-8222-222222222222";
 const route = { params: Promise.resolve({ id }) };
@@ -112,4 +113,22 @@ it("binds confirmed proposal cleanup and preserves preview nonpersistence", asyn
  expect(state.proposalDispose).toHaveBeenCalledWith(expect.anything(),state.context.organisationId,id,"manager",id,{id,manifestVersion:body.manifestVersion,reason:body.reason,confirmed:true});
  expect((await POST(request({...body,confirmed:false}),route)).status).toBe(400);expect((await POST(request({...body,storagePath:"untrusted"}),route)).status).toBe(400);
  state.context.demo=true;state.proposalDispose.mockClear();expect((await (await POST(request(body),route)).json()).data.persisted).toBe(false);expect(state.proposalDispose).not.toHaveBeenCalled();
+});
+
+it("binds report cleanup to a confirmed completed manifest and hides private errors", async () => {
+  const body = { action: "dispose_report", id, reportId: id, manifestVersion: "b".repeat(64), reason: decision.reason, confirmed: true };
+  state.reportDispose.mockResolvedValue({ disposed: true, duplicate: false });
+  expect((await POST(request(body), route)).status).toBe(200);
+  expect(state.reportDispose).toHaveBeenCalledWith(expect.anything(), state.context.organisationId, id, "manager", id, { id, manifestVersion: body.manifestVersion, reason: body.reason, confirmed: true });
+  expect((await POST(request({ ...body, confirmed: false }), route)).status).toBe(400);
+  expect((await POST(request({ ...body, storagePath: "untrusted" }), route)).status).toBe(400);
+  state.context.demo = true;
+  vi.clearAllMocks();
+  expect((await (await POST(request(body), route)).json()).data.persisted).toBe(false);
+  expect(state.reportDispose).not.toHaveBeenCalled();
+  state.context.demo = false;
+  state.reportDispose.mockRejectedValue(new Error("private report body"));
+  const response = await POST(request(body), route);
+  expect(response.status).toBe(409);
+  expect(await response.text()).not.toContain("private report body");
 });

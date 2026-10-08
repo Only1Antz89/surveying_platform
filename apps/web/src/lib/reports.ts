@@ -2,7 +2,7 @@ import { hasProfessionalPermission } from "@surveynt/domain";
 import { currentProfessionalPermission } from "./professional-membership";
 import { and, desc, eq, inArray, max } from "drizzle-orm";
 import { canonicalJson, composeReport, composerInputFingerprint, COMPOSER, REPORT_SIGN_OFF_STATEMENT, type ComposedReport, type ComposerInput, type FieldValue, type InspectionStatus, type ServiceLevel } from "@surveynt/assistant";
-import { auditEvents, completionOverrides, createDatabase, jobs, reportApprovals, reportVersions, surveys, withTenant, type TenantTransaction } from "@surveynt/db";
+import { auditEvents, completionOverrides, createDatabase, jobs, reportApprovals, reportVersions, surveyFileRemovals, surveys, withTenant, type TenantTransaction } from "@surveynt/db";
 import { completionReportFromPack } from "./completion-input";
 import { readSurveyPack, type SurveyContext, type SurveyPack } from "./surveys";
 import { approvedClauses } from "./wording";
@@ -46,6 +46,10 @@ export async function composeSurveyReport(context: SurveyContext, surveyId: stri
     if (!await currentProfessionalPermission(tx, context, "record_survey")) throw new ReportError(403, "professional_recording_required", "Your professional recording permission has changed.");
     const current = await currentReportInput(tx, context, surveyId);
     if (!current) throw new ReportError(404, "survey_not_found", "The survey could not be found.");
+    // Serialize composition with the removal claim before reading its state.
+    await tx.select({ id: jobs.id }).from(jobs).where(and(eq(jobs.id, current.pack.survey.jobId), eq(jobs.organisationId, context.organisationId))).for("update");
+    const [removal] = await tx.select({ id: surveyFileRemovals.id }).from(surveyFileRemovals).where(and(eq(surveyFileRemovals.jobId, current.pack.survey.jobId), eq(surveyFileRemovals.organisationId, context.organisationId), inArray(surveyFileRemovals.status, ["dispatched", "verification_required", "completed"]))).limit(1);
+    if (removal) throw new ReportError(409, "originals_under_removal", "This survey file is under retention removal. Create a new instruction for further reporting.");
     const { report, trace } = composeReport(current.input);
     const completion = completionReportFromPack(current.pack);
     const [{ latest }] = await tx.select({ latest: max(reportVersions.versionNumber) }).from(reportVersions).where(and(eq(reportVersions.surveyId, surveyId), eq(reportVersions.organisationId, context.organisationId)));

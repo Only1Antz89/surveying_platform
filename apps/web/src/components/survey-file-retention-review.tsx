@@ -1,7 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 
-type Register = { fieldProposals: { id: string; reviewStatus: string; contentDisposed: boolean }[]; adviserTasks: { id: string; status: string; contentDisposed: boolean }[]; mediaAnalyses: { id: string; mediaId: string; status: string; analysisDisposed: boolean }[]; removals: { id: string; status: string; manifestVersion: string; createdAt: string; completedAt: string | null; reviewMessage: string | null; canCancel: boolean }[]; removalHistoryHasMore: boolean; analysisCount: number; adviserRecordCount: number; questionnaireDocuments: { id: string; name: string; supersededAt: string | null; analysisDisposed: boolean }[]; media: { id: string; filename: string | null; kind: string; derivation: string }[]; evidenceReferenceCount: number; externalEvidenceReferenceCount: number; hold: { revision: number; kind: string | null; reason: string } | null; reference: string; reportCount: number; deliveryCount: number; assessment: { reviewVersion: string; reason: string; retentionUntil: string | null; eligibleForManagerReview: boolean }; documents: { id: string; name: string; legalHold: boolean; archivedAt: string | null }[] };
+type Register = { reportVersions: { id: string; versionNumber: number; contentDisposed: boolean }[]; fieldProposals: { id: string; reviewStatus: string; contentDisposed: boolean }[]; adviserTasks: { id: string; status: string; contentDisposed: boolean }[]; mediaAnalyses: { id: string; mediaId: string; status: string; analysisDisposed: boolean }[]; removals: { id: string; status: string; manifestVersion: string; createdAt: string; completedAt: string | null; reviewMessage: string | null; canCancel: boolean }[]; removalHistoryHasMore: boolean; analysisCount: number; adviserRecordCount: number; questionnaireDocuments: { id: string; name: string; supersededAt: string | null; analysisDisposed: boolean }[]; media: { id: string; filename: string | null; kind: string; derivation: string }[]; evidenceReferenceCount: number; externalEvidenceReferenceCount: number; hold: { revision: number; kind: string | null; reason: string } | null; reference: string; reportCount: number; deliveryCount: number; assessment: { reviewVersion: string; reason: string; retentionUntil: string | null; eligibleForManagerReview: boolean }; documents: { id: string; name: string; legalHold: boolean; archivedAt: string | null }[] };
 const reasons: Record<string, string> = { evidence_review_required: "Evidence is shared, missing or inconsistent. Resolve its references before retention review.", policy_approval_required: "The practice policy needs approval in Operations settings.", protected: "A complaint, claim or legal hold protects this file.", job_open: "The job must be closed before retention review.", date_review_required: "Reliable final report delivery and closure dates are required.", retention_active: "The one-year retention period has not expired.", manager_review_required: "The retention period has expired. Review the file and any outstanding complaints or claims." };
 export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; canEdit: boolean }) {
   const [register, setRegister] = useState<Register | null>(null);
@@ -100,6 +100,16 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : "Analysis cleanup failed."); }
     finally { setBusy(false); }
   }
+  async function disposeReport(id: string, manifestVersion: string, form: FormData) {
+    setBusy(true); setMessage("");
+    try {
+      const response = await fetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "dispose_report", id, manifestVersion, reportId: form.get("reportId"), reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error?.message ?? "Report cleanup failed.");
+      setRegister(null); setMessage(payload.data.persisted ? "Report content removed. Version identity, approval history and audit evidence are retained." : "Preview only. No report content was removed.");
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : "Report cleanup failed."); }
+    finally { setBusy(false); }
+  }
   async function disposeProposal(id: string, manifestVersion: string, form: FormData) {
     setBusy(true); setMessage("");
     try {
@@ -165,6 +175,13 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
           <label className="field"><span>Cleanup reason</span><textarea name="reason" minLength={10} maxLength={2000} required disabled={busy}/></label>
           <label><input type="checkbox" name="confirmed" required disabled={busy}/> I confirm the retained analysis should be removed after reviewing this completed removal.</label>
           <button className="button button-secondary" disabled={busy}>Remove questionnaire analysis</button>
+        </form></details> : null}
+        {removal.status === "completed" && canEdit && register.assessment.eligibleForManagerReview && register.reportVersions?.some(task => !task.contentDisposed) ? <details><summary>Remove retained report content</summary><form action={form => disposeReport(removal.id, removal.manifestVersion, form)} className="form-grid">
+          <p>This permanently removes report body and source trace. Report identity, approval history and the content fingerprint remain.</p>
+          <label className="field">Report<select name="reportId" required disabled={busy}>{register.reportVersions.filter(task => !task.contentDisposed).map(task => <option key={task.id} value={task.id}>Version {task.versionNumber}</option>)}</select></label>
+          <label className="field">Reason<textarea name="reason" required minLength={10} maxLength={2000} disabled={busy} /></label>
+          <label><input name="confirmed" type="checkbox" required disabled={busy} /> I approve permanent removal of this report content.</label>
+          <button disabled={busy}>Remove report content</button>
         </form></details> : null}
         {removal.status === "completed" && canEdit && register.assessment.eligibleForManagerReview && register.fieldProposals?.some(task => !task.contentDisposed) ? <details><summary>Remove retained proposal content</summary><form action={form => disposeProposal(removal.id, removal.manifestVersion, form)} className="form-grid">
           <p>This permanently removes proposal value, evidence content, limitations and review text. Proposal identity, review history and the content fingerprint remain.</p>

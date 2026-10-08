@@ -18,7 +18,7 @@ import { createTestDatabase, integrationEnabled, stopRelay, type TestDatabase } 
 import { clientPayments, customerQuotes, invoices, jobs, jobStageEvents, organisations, organisationDocuments, organisationOperationalSettings, organisationMemberships, reportDeliveries, users, withTenant, createDatabase } from "@surveynt/db";
 import { readSurveyFileRetention } from "../src/lib/survey-file-retention-register";
 import { jobRetentionHolds } from "@surveynt/db";
-import { evidenceLinks, mediaAssets, reportVersions, surveyElements, surveys } from "@surveynt/db";
+import { evidenceLinks, mediaAssets, reportApprovals, reportVersions, surveyElements, surveys } from "@surveynt/db";
 import { preinspectionDocuments } from "@surveynt/db";
 import { auditEvents } from "@surveynt/db";
 import { prepareReviewedSurveyFileRemoval } from "../src/lib/survey-file-removal-prepare";
@@ -376,6 +376,9 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     await db.delete(jobStageEvents).where(eq(jobStageEvents.jobId,removalJob.id));
     await db.insert(jobStageEvents).values({organisationId:context.organisationId,jobId:removalJob.id,fromStage:null,toStage:"archived",createdAt:new Date("2000-03-01T00:00:00Z")});
     const [removalReport]=await db.insert(reportVersions).values({...sourceReport,id:crypto.randomUUID(),jobId:removalJob.id,surveyId:removalSurvey.survey.id,versionNumber:1,trace:{media:[]}}).returning();
+    const [sourceApproval]=await db.select().from(reportApprovals).where(eq(reportApprovals.reportVersionId,sourceReport.id));
+    expect(sourceApproval).toBeDefined();
+    const [removalApproval]=await db.insert(reportApprovals).values({...sourceApproval,id:crypto.randomUUID(),reportVersionId:removalReport.id}).returning();
     const deliveryOriginalId=crypto.randomUUID();const deliveryBytes=new TextEncoder().encode("file");
     const [deliveryOriginal]=await db.insert(organisationDocuments).values({id:deliveryOriginalId,organisationId:context.organisationId,name:"Fictional delivery-only original",category:"report",blobUrl:"https://example.test/fictional",blobPathname:`organisations/${context.organisationId}/documents/${deliveryOriginalId}/original`,checksum:createHash("sha256").update(deliveryBytes).digest("hex"),contentType:"text/plain",sizeBytes:deliveryBytes.length,deletedAt:new Date("2000-03-01T00:00:00Z"),retentionUntil:new Date("2001-03-01T00:00:00Z")}).returning();
     expect(deliveryOriginal.jobId).toBeNull();expect(deliveryOriginal.reportVersionId).toBeNull();
@@ -530,6 +533,10 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     expect(await withTenant(createDatabase(),context.organisationId,tx=>disposeReportContent(tx,context.organisationId,removalJob.id,context.internalUserId!,removalReport.id,cleanupDecision))).toEqual({disposed:true,duplicate:true});
     const [disposedReport]=await db.select().from(reportVersions).where(eq(reportVersions.id,removalReport.id));
     expect(disposedReport).toMatchObject({content:{retentionRemoved:true},trace:{retentionRemoved:true},contentSha256:removalReport.contentSha256,inputFingerprint:removalReport.inputFingerprint,versionNumber:removalReport.versionNumber,createdByUserId:removalReport.createdByUserId});
+    const [preservedApproval]=await db.select().from(reportApprovals).where(eq(reportApprovals.id,removalApproval.id));
+    expect(preservedApproval).toEqual(removalApproval);
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(reportApprovals).set({note:"Changed after disposal"}).where(eq(reportApprovals.id,removalApproval.id)))).rejects.toThrow();
+    await expect(composeSurveyReport(context,removalSurvey.survey.id)).rejects.toMatchObject({code:"originals_under_removal"});
     const reportDisposalEvents=await db.select().from(auditEvents).where(and(eq(auditEvents.resourceId,removalReport.id),eq(auditEvents.action,"job.report_content_disposed")));
     expect(reportDisposalEvents).toHaveLength(1);expect(reportDisposalEvents[0].actorUserId).toBe(context.internalUserId);expect(reportDisposalEvents[0].metadata).toMatchObject({removalId:removalIntent.id,originalContentSha256:removalReport.contentSha256,contentFingerprint:createHash("sha256").update(JSON.stringify({content:removalReport.content,trace:removalReport.trace})).digest("hex"),reason:cleanupDecision.reason,confirmed:true});
     await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(reportVersions).set({content:{restored:true}}).where(eq(reportVersions.id,removalReport.id)))).rejects.toThrow();
@@ -538,6 +545,7 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     expect(removedReports?.latest).toBeNull();expect(removedReports?.versions.find(version=>version.id===removalReport.id)).toMatchObject({contentRemoved:true,current:false});
     const disposedRegister=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,removalJob.id));
     expect(disposedRegister!.assessment.eligibleForManagerReview).toBe(true);
+    expect(disposedRegister!.reportVersions.find(report=>report.id===removalReport.id)?.contentDisposed).toBe(true);
     expect(disposedRegister!.fieldProposals.find(proposal=>proposal.id===removalProposal.id)?.contentDisposed).toBe(true);
     expect(disposedRegister!.adviserTasks.find(task=>task.id===removalTask.id)?.contentDisposed).toBe(true);
     expect(disposedRegister!.mediaAnalyses.find(analysis=>analysis.id===removalAnalysis.id)?.analysisDisposed).toBe(true);
