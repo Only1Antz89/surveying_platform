@@ -1,3 +1,4 @@
+import { disposeEvidenceAnnotation } from "@/lib/survey-file-evidence-annotation-disposition";
 import { disposeMediaMetadata } from "@/lib/survey-file-media-metadata-disposition";
 import { disposeElementContent } from "@/lib/survey-file-element-disposition";
 import { z } from "zod";
@@ -35,6 +36,7 @@ const input = z.discriminatedUnion("action", [
   z.object({ ...common, action: z.literal("dispose_observation"), id: z.uuid(), manifestVersion: z.string().regex(/^[a-f0-9]{64}$/), observationId: z.uuid() }).strict(),
   z.object({ ...common, action: z.literal("dispose_element"), id: z.uuid(), manifestVersion: z.string().regex(/^[a-f0-9]{64}$/), elementId: z.uuid() }).strict(),
   z.object({ ...common, action: z.literal("dispose_media_metadata"), id: z.uuid(), manifestVersion: z.string().regex(/^[a-f0-9]{64}$/), mediaId: z.uuid() }).strict(),
+  z.object({ ...common, action: z.literal("dispose_evidence_annotation"), id: z.uuid(), manifestVersion: z.string().regex(/^[a-f0-9]{64}$/), linkId: z.uuid() }).strict(),
   z.object({ ...common, action: z.literal("dispose_value"), id: z.uuid(), manifestVersion: z.string().regex(/^[a-f0-9]{64}$/), valueId: z.uuid() }).strict(),
   z.object({ ...common, action: z.literal("dispose_report"), id: z.uuid(), manifestVersion: z.string().regex(/^[a-f0-9]{64}$/), reportId: z.uuid() }).strict(),
   z.object({ ...common, action: z.literal("dispose_proposal"), id: z.uuid(), manifestVersion: z.string().regex(/^[a-f0-9]{64}$/), proposalId: z.uuid() }).strict(),
@@ -82,6 +84,7 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
       if (decision.action === "dispose_observation") return disposeObservationContent(tx, context.organisationId, id, context.internalUserId!, decision.observationId, value);
       if (decision.action === "dispose_element") return disposeElementContent(tx, context.organisationId, id, context.internalUserId!, decision.elementId, value);
       if (decision.action === "dispose_media_metadata") return disposeMediaMetadata(tx, context.organisationId, id, context.internalUserId!, decision.mediaId, value);
+      if (decision.action === "dispose_evidence_annotation") return disposeEvidenceAnnotation(tx, context.organisationId, id, context.internalUserId!, decision.linkId, value);
       if (decision.action === "dispose_value") return disposeRecordedFieldValue(tx, context.organisationId, id, context.internalUserId!, decision.valueId, value);
       if (decision.action === "dispose_report") return disposeReportContent(tx, context.organisationId, id, context.internalUserId!, decision.reportId, value);
       if (decision.action === "dispose_proposal") return disposeFieldProposal(tx, context.organisationId, id, context.internalUserId!, decision.proposalId, value);

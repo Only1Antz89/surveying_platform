@@ -1,7 +1,8 @@
+vi.mock("@/lib/survey-file-evidence-annotation-disposition", () => ({ disposeEvidenceAnnotation: state.annotationDispose }));
 vi.mock("@/lib/survey-file-media-metadata-disposition", () => ({ disposeMediaMetadata: state.metadataDispose }));
 vi.mock("@/lib/survey-file-element-disposition", () => ({ disposeElementContent: state.elementDispose }));
 import { beforeEach, expect, it, vi } from "vitest";
-const state = vi.hoisted(() => ({ context: { organisationId: "11111111-1111-4111-8111-111111111111", internalUserId: "manager", role: "owner", demo: false }, writable: true, metadataDispose: vi.fn(), elementDispose: vi.fn(), observationDispose: vi.fn(), valueDispose: vi.fn(), start: vi.fn(), reportDispose: vi.fn(), proposalDispose: vi.fn(), taskDispose: vi.fn(), resume: vi.fn(), storage: {}, observe: vi.fn(), observationReview: vi.fn(), mediaDispose: vi.fn(), dispose: vi.fn(), request: vi.fn(), cancel: vi.fn(), database: vi.fn() }));
+const state = vi.hoisted(() => ({ context: { organisationId: "11111111-1111-4111-8111-111111111111", internalUserId: "manager", role: "owner", demo: false }, writable: true, annotationDispose: vi.fn(), metadataDispose: vi.fn(), elementDispose: vi.fn(), observationDispose: vi.fn(), valueDispose: vi.fn(), start: vi.fn(), reportDispose: vi.fn(), proposalDispose: vi.fn(), taskDispose: vi.fn(), resume: vi.fn(), storage: {}, observe: vi.fn(), observationReview: vi.fn(), mediaDispose: vi.fn(), dispose: vi.fn(), request: vi.fn(), cancel: vi.fn(), database: vi.fn() }));
 vi.mock("@/lib/access", () => ({ apiContext: async () => state.context, canWriteWorkspace: () => state.writable }));
 vi.mock("@/lib/workspace-api-guard", () => ({ workspaceApiGuard: async () => null }));
 vi.mock("@/lib/survey-file-removal-request", () => ({ requestReviewedSurveyFileRemoval: state.request, cancelReviewedSurveyFileRemoval: state.cancel }));
@@ -197,4 +198,17 @@ it("binds media metadata cleanup to a confirmed manager decision and stays non-p
  state.context.demo=true;
  expect((await (await POST(request(body),route)).json()).data.persisted).toBe(false);
  expect(state.metadataDispose).not.toHaveBeenCalled();
+});
+
+it("binds evidence annotation cleanup to a confirmed manager decision and stays non-persistent in preview", async () => {
+ const body={action:"dispose_evidence_annotation",id,manifestVersion:"a".repeat(64),linkId:id,reason:decision.reason,confirmed:true};
+ state.annotationDispose.mockResolvedValue({disposed:true,duplicate:false});
+ expect((await POST(request(body),route)).status).toBe(200);
+ expect(state.annotationDispose).toHaveBeenCalledWith({},state.context.organisationId,id,"manager",id,{id,manifestVersion:body.manifestVersion,reason:body.reason,confirmed:true});
+ state.annotationDispose.mockClear();
+ expect((await POST(request({...body,confirmed:false}),route)).status).toBe(400);
+ expect(state.annotationDispose).not.toHaveBeenCalled();
+ state.context.demo=true;
+ expect((await (await POST(request(body),route)).json()).data.persisted).toBe(false);
+ expect(state.annotationDispose).not.toHaveBeenCalled();
 });
