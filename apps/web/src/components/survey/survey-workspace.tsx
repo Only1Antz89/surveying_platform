@@ -169,11 +169,12 @@ export function SurveyWorkspace({ surveyId, canEdit: initialCanEdit, canJudge: i
   }, [outbox, values]);
 
   const elementView = useCallback((sectionKey: string, key: string): ElementView => {
-    const row = elementRows.get(elementKey(sectionKey, key));
+    const row = elementRows.get(elementKey(sectionKey, key)) ?? pack?.elements.find(element => element.sectionKey === sectionKey && element.elementKey === key && element.locationLabel === `retention-removed:${element.id}` && element.limitationReason === "Content removed after retention review");
+    if (row?.locationLabel === `retention-removed:${row?.id}` && row.limitationReason === "Content removed after retention review") return {serverId:row.id,version:row.version,inspectionStatus:row.inspectionStatus,limitationReason:null,pending:false,contentRemoved:true};
     const pending = [...outbox].reverse().find((entry) => entry.status === "pending" && entry.operation.type === "set_element" && entry.operation.element.sectionKey === sectionKey && entry.operation.element.elementKey === key && entry.operation.element.locationLabel === "");
     if (pending && pending.operation.type === "set_element") return { serverId: row?.id ?? null, version: row?.version ?? null, inspectionStatus: pending.operation.inspectionStatus, limitationReason: pending.operation.limitationReason, pending: true };
     return { serverId: row?.id ?? null, version: row?.version ?? null, inspectionStatus: (row?.inspectionStatus as InspectionStatus | null) ?? null, limitationReason: row?.limitationReason ?? null, pending: false };
-  }, [elementRows, outbox]);
+  }, [elementRows, outbox, pack]);
 
   const photoUrls = useMemo(() => new Map(uploads.map((upload) => [upload.clientId, URL.createObjectURL(upload.blob)])), [uploads]);
   useEffect(() => () => { for (const url of photoUrls.values()) URL.revokeObjectURL(url); }, [photoUrls]);

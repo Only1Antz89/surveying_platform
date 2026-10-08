@@ -1,3 +1,4 @@
+import { disposeElementContent } from "../src/lib/survey-file-element-disposition";
 import { syncOperations } from "@surveynt/db";
 import { disposeObservationContent } from "../src/lib/survey-file-observation-disposition";
 import { disposeRecordedFieldValue } from "../src/lib/survey-file-recorded-value-disposition";
@@ -426,6 +427,8 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     const [removalValue]=await db.insert(surveyFieldValues).values({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,fieldPath:"matters.legal.guarantees",value:{state:"provided",value:"Fictional private accepted survey answer"},sourceRef:removalOriginal.id,correctionReason:"Fictional private correction reason",clientGeneratedId:"retention-value-disposition-fixture"}).returning();
     const valueReplayFixtures=await db.insert(syncOperations).values([0,1].map(index=>({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,operationId:`op_retention_value_replay_${index}`,operationType:"set_field",appliedByUserId:context.internalUserId,result:{id:removalValue.id,value:removalValue.value,fieldPath:removalValue.fieldPath}}))).returning();
     const [acceptedRemovalProposal]=await db.insert(fieldProposals).values({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,fieldPath:removalValue.fieldPath,proposedValue:removalValue.value,valueType:"text",evidenceRefs:[],originClass:"document_extraction",inputVersion:"fixture-v1",generator:"retention-fixture",dedupeKey:"accepted-retention-link-fixture",reviewStatus:"accepted",reviewedAt:new Date(),reviewedByUserId:context.internalUserId!,acceptedValueId:removalValue.id}).returning();
+    const removalElements=await db.insert(surveyElements).values([0,1].map(index=>({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,sectionKey:"outside",elementKey:"roof",locationLabel:`Fictional private element location ${index}`,limitationReason:"Fictional private inaccessible inspection"}))).returning();
+    const elementReplayFixtures=await db.insert(syncOperations).values(removalElements.map((element,index)=>({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,operationId:`op_retention_element_replay_${index}`,operationType:"set_element",appliedByUserId:context.internalUserId,result:{id:element.id,limitationReason:element.limitationReason}}))).returning();
     const [removalObservation]=await db.insert(observations).values({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,kind:"current_observation",text:"Fictional private retained observation",structured:{source:{id:removalOriginal.id}},locationLabel:"Fictional private room",sourceRef:removalOriginal.id,clientGeneratedId:"retention-observation-disposition"}).returning();
     const observationReplayFixtures=await db.insert(syncOperations).values(["add_observation","revise_observation"].map((type,index)=>({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,operationId:`op_retention_observation_replay_${index}`,operationType:type,appliedByUserId:context.internalUserId,result:{id:removalObservation.id,text:removalObservation.text,version:removalObservation.version}}))).returning();
 
@@ -449,6 +452,7 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     expect(executionAudits).toHaveLength(1);expect(executionAudits[0].actorUserId).toBe(context.internalUserId);expect(executionAudits[0].metadata).toMatchObject({manifestVersion:executionDecision.manifestVersion,confirmed:true,reason:executionDecision.reason,storageRemoved:false});
 
     await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeRecordedFieldValue(tx,context.organisationId,removalJob.id,context.internalUserId!,removalValue.id,executionDecision))).rejects.toThrow("decision changed");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeElementContent(tx,context.organisationId,removalJob.id,context.internalUserId!,removalElements[0].id,executionDecision))).rejects.toThrow("decision changed");
     await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeObservationContent(tx,context.organisationId,removalJob.id,context.internalUserId!,removalObservation.id,executionDecision))).rejects.toThrow("decision changed");
     const fixtureStorage=createMemoryStorage();await fixtureStorage.put(removalOriginal.storageKey,originalBytes.buffer,"text/plain");
     await fixtureStorage.put(deliveryOriginal.blobPathname,deliveryBytes.buffer,"text/plain");
@@ -549,6 +553,7 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeReportContent(tx,context.organisationId,removalJob.id,context.internalUserId!,removalReport.id,{id:removalIntent.id,manifestVersion:storageClaim.manifest.manifestVersion,reason:"Reviewed fictional report content cleanup.",confirmed:true}))).rejects.toThrow("protected");
     await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeRecordedFieldValue(tx,context.organisationId,removalJob.id,context.internalUserId!,removalValue.id,executionDecision))).rejects.toThrow("protected");
     await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeObservationContent(tx,context.organisationId,removalJob.id,context.internalUserId!,removalObservation.id,executionDecision))).rejects.toThrow("protected");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeElementContent(tx,context.organisationId,removalJob.id,context.internalUserId!,removalElements[0].id,executionDecision))).rejects.toThrow("protected");
     await db.delete(jobRetentionHolds).where(eq(jobRetentionHolds.id,dispositionHold.id));
     await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeQuestionnaireAnalysis(tx,context.organisationId,removalJob.id,context.internalUserId!,removalOriginal.id,{id:removalIntent.id,manifestVersion:"0".repeat(64),reason:"Reviewed analysis cleanup with a stale removal manifest.",confirmed:true}))).rejects.toThrow("decision changed");
     const cleanupDecision={id:removalIntent.id,manifestVersion:completedRemoval.manifestVersion,reason:"Manager confirmed cleanup of the verified fictional questionnaire analysis.",confirmed:true as const};
@@ -637,6 +642,23 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
       {operationId:valueReplayFixtures[0].operationId,status:"duplicate",record:{id:removalValue.id,retentionRemoved:true}},
       {operationId:observationReplayFixtures[1].operationId,status:"duplicate",record:{id:removalObservation.id,retentionRemoved:true}},
     ]);
+    for(const element of removalElements) {
+      await expect(withTenant(createDatabase(),foreignOrg.id,tx=>disposeElementContent(tx,foreignOrg.id,removalJob.id,context.internalUserId!,element.id,cleanupDecision))).rejects.toThrow("permission");
+      await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeElementContent(tx,context.organisationId,removalJob.id,context.internalUserId!,element.id,{...cleanupDecision,manifestVersion:"0".repeat(64)}))).rejects.toThrow("decision changed");
+      expect(await withTenant(createDatabase(),context.organisationId,tx=>disposeElementContent(tx,context.organisationId,removalJob.id,context.internalUserId!,element.id,cleanupDecision))).toEqual({disposed:true,duplicate:false});
+      expect(await withTenant(createDatabase(),context.organisationId,tx=>disposeElementContent(tx,context.organisationId,removalJob.id,context.internalUserId!,element.id,cleanupDecision))).toEqual({disposed:true,duplicate:true});
+      const [removed]=await db.select().from(surveyElements).where(eq(surveyElements.id,element.id));
+      expect(removed).toEqual({...element,locationLabel:`retention-removed:${element.id}`,limitationReason:"Content removed after retention review"});
+      await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(surveyElements).set({locationLabel:element.locationLabel}).where(eq(surveyElements.id,element.id)))).rejects.toThrow();
+      const fixture=elementReplayFixtures.find(row=>row.result.id===element.id)!;
+      const [ledger]=await db.select().from(syncOperations).where(eq(syncOperations.id,fixture.id));
+      expect(ledger).toEqual({...fixture,result:{id:element.id,retentionRemoved:true}});
+      await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(syncOperations).set({result:fixture.result}).where(eq(syncOperations.id,fixture.id)))).rejects.toThrow();
+      const events=await db.select().from(auditEvents).where(and(eq(auditEvents.resourceId,element.id),eq(auditEvents.action,"job.element_content_disposed")));
+      expect(events).toHaveLength(1);expect(JSON.stringify(events)).not.toContain("Fictional private");
+    }
+    const elementReplays=await applySyncOperations(context,removalSurvey.survey.id,[{type:"set_element",operationId:elementReplayFixtures[0].operationId,element:{sectionKey:"outside",elementKey:"roof",locationLabel:"Fictional private element location 0"},inspectionStatus:null,limitationReason:"Attempted restoration",baseVersion:removalElements[0].version}]);
+    expect(elementReplays).toEqual([{operationId:elementReplayFixtures[0].operationId,status:"duplicate",record:{id:removalElements[0].id,retentionRemoved:true}}]);
     const removedSync=await applySyncOperations(context,removalSurvey.survey.id,[
       {type:"set_field",operationId:"op_retained_answer_restore",fieldPath:removalValue.fieldPath,value:{state:"provided",value:"Attempted restoration"},baseValueId:removalValue.id},
       {type:"revise_observation",operationId:"op_retained_observation_restore",observationId:removalObservation.id,text:"Attempted restoration",baseVersion:removalObservation.version},
