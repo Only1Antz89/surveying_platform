@@ -2,10 +2,13 @@ import type {backgroundJobs} from "@surveynt/db";
 import {z} from "zod";
 import {decryptCalendarSecret,encryptCalendarSecret} from "./calendar-oauth";
 import {calendarReviewVersion} from "./calendar-review-summary";
-export const calendarOutcomeSchema=z.object({reviewVersion:z.string().regex(/^[a-f0-9]{64}$/),outcome:z.enum(["retry","removed","replacement_confirmed","replacement_not_created","cleanup_identity_verified","registration_confirmed","registration_not_created"]),verifiedAttemptId:z.uuid().optional(),verifiedChannelId:z.string().trim().min(1).max(2048),resourceId:z.string().trim().min(1).max(2048).optional(),expiresAt:z.string().max(64).datetime({offset:true}).optional(),evidence:z.string().trim().min(15).max(2000),confirmed:z.literal(true)});
+export const calendarOutcomeSchema=z.object({reviewVersion:z.string().regex(/^[a-f0-9]{64}$/),outcome:z.enum(["retry","removed","replacement_confirmed","replacement_not_created","cleanup_identity_verified","registration_confirmed","registration_not_created"]),verifiedAttemptId:z.uuid().optional(),verifiedChannelId:z.string().trim().min(1).max(2048),resourceId:z.string().trim().min(1).max(2048).optional(),expiresAt:z.string().max(64).datetime({offset:true}).optional(),evidence:z.string().trim().min(15).max(2000),confirmed:z.literal(true)}).strict();
 const snapshotSchema=z.object({connectionId:z.uuid(),organisationId:z.uuid(),userId:z.uuid(),provider:z.enum(["google","microsoft"]),channelId:z.string().min(1).nullable(),resourceId:z.string().nullable().optional(),registrationAttemptId:z.uuid().optional(),replacementChannelId:z.uuid().optional(),phase:z.enum(["ready","dispatched","confirmed"]).optional(),tokens:z.record(z.string(),z.unknown())}).passthrough();
 export class CalendarOutcomeError extends Error{}
 export function reviewedCalendarOutcome(job:typeof backgroundJobs.$inferSelect,input:z.infer<typeof calendarOutcomeSchema>){
+ const parsed=calendarOutcomeSchema.safeParse(input);
+ if(!parsed.success)throw new CalendarOutcomeError("Confirm the current calendar outcome with substantive provider evidence.");
+ input=parsed.data;
  if(job.queue!=="calendar_subscription"||job.status!=="failed"||calendarReviewVersion(job)!==input.reviewVersion)throw new CalendarOutcomeError("Reload and review the current calendar attempt.");
  let snapshot:z.infer<typeof snapshotSchema>;
  try{snapshot=snapshotSchema.parse(decryptCalendarSecret(String(job.payload.encryptedCleanup??"")));}catch{throw new CalendarOutcomeError("The encrypted calendar evidence is unavailable. Review its credentials and encryption keys before continuing.");}

@@ -50,4 +50,25 @@ describe("reviewed calendar provider outcomes",()=>{
   const row=job("register_webhook","confirmed");expect(()=>reviewedCalendarOutcome(row,input(row,"registration_not_created"))).toThrow("exact recorded");
  });
 
+ it("validates confirmation and rejects extra payload at the helper boundary",()=>{
+  const row=job();
+  expect(()=>reviewedCalendarOutcome(row,{...input(row),confirmed:false} as unknown as ReturnType<typeof input>)).toThrow("Confirm the current");
+  expect(()=>reviewedCalendarOutcome(row,{...input(row),evidence:"short"})).toThrow("Confirm the current");
+  expect(()=>reviewedCalendarOutcome(row,{...input(row),accessToken:"untrusted"} as ReturnType<typeof input>)).toThrow("Confirm the current");
+ });
+ it("holds unreadable encrypted evidence without returning credentials",()=>{
+  for(const encryptedCleanup of ["malformed", "", job().payload.encryptedCleanup as string]){
+   const row={...job(),payload:{connectionId,encryptedCleanup}};
+   if(encryptedCleanup!=="malformed"&&encryptedCleanup!=="")vi.stubEnv("CALENDAR_TOKEN_ENCRYPTION_KEY",Buffer.alloc(32,8).toString("base64"));
+   expect(()=>reviewedCalendarOutcome(row,input(row))).toThrow("encrypted calendar evidence is unavailable");
+  }
+ });
+ it("rejects mismatched tenant and connection evidence",()=>{
+  for(const changes of [{organisationId:connectionId},{connectionId:organisationId}]){
+   const row=job();const snapshot=decryptCalendarSecret<Record<string,unknown>>(String(row.payload.encryptedCleanup));
+   row.payload.encryptedCleanup=encryptCalendarSecret({...snapshot,...changes});
+   expect(()=>reviewedCalendarOutcome(row,input(row))).toThrow("binding is invalid");
+  }
+ });
+
 });
