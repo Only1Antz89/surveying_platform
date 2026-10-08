@@ -59,3 +59,45 @@ Nothing in this document was run against staging or production. No provider cred
 
 - **Real Clerk sign-in.** No Clerk keys are configured. The environment's network policy also blocks `api.clerk.com` (proxy returns 403). A staging run with real Clerk users remains required by the [release checklist](release-checklist.md): owner, a second signed-in session, and a platform operator. The browser script takes `SURVEYNT_URL` so it can be adapted to that run.
 - **Hosted data.** Hosted Neon and Vercel were not touched.
+
+## 2. Mobile, accessibility and offline
+
+Scripts: [`acceptance/responsive-accessibility.mjs`](../../acceptance/responsive-accessibility.mjs) and [`acceptance/device-offline.mjs`](../../acceptance/device-offline.mjs).
+
+Pages covered (15): landing, start, overview, jobs, job detail, survey workspace, customers, properties, calendar, routes, finance, documents, team, settings and platform customers.
+
+### Defects found and fixed
+
+| Defect | Where | Fix |
+|---|---|---|
+| Page-level horizontal scrolling at 360 and 390 px | Documents upload form: an unclassed `select` and file `input` were wider than their grid cell | `.field` controls are limited to the cell width |
+| WCAG 1.4.3 contrast (axe, serious), light theme: status badges 4.29–4.49:1; demo label and blocker text 4.15–4.2:1 | Jobs, team, platform customers, routes, survey workspace | Darker success, warning and danger text tokens (5.6–5.8:1). Darker muted text inside the always-light survey workspace (5.3:1) |
+| WCAG 1.4.3 contrast, dark theme: down to 1.03:1 | Quiet danger buttons (2.55:1); selected platform rows, active settings tab, colour field and start page left white | These now use theme tokens |
+| WCAG 2.1.1 scrollable region not keyboard reachable (axe, serious) | Calendar board | Focusable named region |
+| Hydration error (React #418) on every calendar load | Day headings formatted by `Intl` differ between Node and Chromium ("Mon 5 Oct" vs "Mon, 5 Oct") | Deterministic Europe/London day labels (`lib/day-label.ts`, unit-tested), also used by Routes |
+| WCAG 2.1.2 / 2.4.3: Escape did not close dialogs, Tab left them, focus was not returned | 11 custom `.modal` dialogs (clients, jobs, properties, team, tenants, staff, packs, wording, incidents, data sources, stage gate) | Shared `ModalKeyboard` in the root layout: Escape uses the dialog's own close control, Tab and Shift+Tab stay inside, focus returns to the opener |
+
+### Results after the fixes
+
+- **Responsive.** 360, 390, 768, 1024, 1440 and 1920 px, in light and dark (system preference, reduced motion): no page-level horizontal overflow and no page errors on any of the 180 page loads.
+- **axe-core 4.10 (WCAG 2.0/2.1 A and AA, 2.2 AA).** At 390 and 1440 px in both themes: **0 violations** across all 15 pages.
+- **Keyboard: 19 of 19 device checks passed.**
+  - The first Tab reaches a visible skip link, which moves focus to the content region.
+  - The client dialog opens with focus inside. Tab stays inside, Escape closes it and focus returns to "New client".
+  - The first 30 tab stops on Overview each show a focus indicator.
+  - The phone navigation menu opens with Enter and closes with Escape.
+- **200% enlargement.**
+  - Browser-zoom equivalent (640 CSS px at 2× density): no page-level horizontal scrolling on any page.
+  - 200% root text size at 1280 px: no page-level horizontal scrolling on any page.
+- **Offline (390 px).**
+  - The service worker is registered, and the device copy is stored in a per-user, per-practice IndexedDB database.
+  - With the network off, the survey reopens from the cached shell and device copy. It shows "Offline. 1 change saved on this device."
+  - Recording controls stay disabled offline for a user without recording permission.
+  - Back online, the queued change is sent to `/api/v1/surveys/:id/sync`. The server refuses it (403 `professional_recording_required`); the change stays on the device and the user is told.
+  - "Remove offline copy" clears the pack and outbox.
+  - The service worker holds no API responses.
+
+### Not verified, and why
+
+- **Offline recording of findings, end to end.** The local preview owner deliberately has no recording permission, and Clerk is unavailable here. So entering findings offline, then syncing, conflict handling and replay could only be checked through the permission-refusal path above. Server-side replay, conflicts and the removed-content guard are covered by the integration suites (for example the stakeholder journey and migration 0070 tests). A staging run by a surveyor with recording permission is still needed.
+- **Assistive technology and real devices.** No screen reader (NVDA, VoiceOver, TalkBack) or physical phone was available. axe checks names, roles and landmarks, not the spoken experience. Those manual checks remain on the [release checklist](release-checklist.md).

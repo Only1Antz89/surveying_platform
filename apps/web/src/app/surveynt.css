@@ -328,3 +328,10 @@ details.details-panel > *:last-child {
   gap: 10px;
   flex-wrap: wrap;
 }
+/* Acceptance contrast fixes (WCAG 2.2 AA, 8 Oct 2026): light status text on its soft badge, and surfaces that were fixed to white in dark mode. */
+:root { --success:#0f6e50; --warning:#8a5300; --danger:#b02f3e; }
+.survey-workspace { --muted:#56647a; --success:#0f6e50; --warning:#8a5300; --danger:#b02f3e; }
+.button-quiet.danger,.icon-button.danger { color:var(--danger); }
+.data-table tr.selected-row td { background:var(--blue-soft); }
+.settings-nav a.active,.colour-input,.auth-page { background:var(--surface); }
+.field input,.field select,.field textarea { max-width:100%; min-width:0; box-sizing:border-box; }
