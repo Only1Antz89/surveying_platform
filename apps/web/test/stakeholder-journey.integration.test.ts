@@ -1,3 +1,4 @@
+import { reviewRemovalObservation } from "../src/lib/survey-file-removal-observation-review";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 import { createHash } from "node:crypto";
@@ -364,8 +365,13 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     const removeOriginal=fixtureStorage.remove.bind(fixtureStorage);
     const deleteSpy=vi.spyOn(fixtureStorage,"remove").mockImplementation(async key=>{await removeOriginal(key);throw new Error("Fictional lost delete response");});
     expect(await processSurveyFileOriginal(createDatabase(),context.organisationId,removalJob.id,storageClaim,`questionnaire:${removalOriginal.id}`,fixtureStorage)).toEqual({removed:false,verificationRequired:true});
-    const recoveryClaims=await Promise.allSettled([1,2].map(()=>withTenant(createDatabase(),context.organisationId,tx=>claimSurveyFileRemovalRecovery(tx,context.organisationId,removalIntent.id))));
+    const observationDecision={id:removalIntent.id,manifestVersion:storageClaim.manifest.manifestVersion,reason:"Manager confirms fictional interrupted outcome observation.",confirmed:true as const};
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>reviewRemovalObservation(tx,context.organisationId,removalJob.id,context.internalUserId!,{...observationDecision,manifestVersion:"0".repeat(64)}))).rejects.toThrow("decision changed");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>reviewRemovalObservation(tx,context.organisationId,removalJob.id,crypto.randomUUID(),observationDecision))).rejects.toThrow("management permission");
+    const recoveryClaims=await Promise.allSettled([1,2].map(()=>withTenant(createDatabase(),context.organisationId,tx=>reviewRemovalObservation(tx,context.organisationId,removalJob.id,context.internalUserId!,{id:removalIntent.id,manifestVersion:storageClaim.manifest.manifestVersion,reason:"Manager confirms fictional interrupted outcome observation.",confirmed:true}))));
     expect(recoveryClaims.filter(result=>result.status==="fulfilled")).toHaveLength(1);
+    const observationAudits=await db.select().from(auditEvents).where(and(eq(auditEvents.resourceId,removalIntent.id),eq(auditEvents.action,"job.original_removal_observation_reviewed")));
+    expect(observationAudits).toHaveLength(1);expect(observationAudits[0].actorUserId).toBe(context.internalUserId);expect(observationAudits[0].metadata).toMatchObject({confirmed:true,deletionAuthorised:false,reason:observationDecision.reason});
     const deniedRecovery=recoveryClaims.find(result=>result.status==="rejected") as PromiseRejectedResult;
     expect(deniedRecovery.reason.message).toContain("still active");
     const firstRecovery=(recoveryClaims.find(result=>result.status==="fulfilled") as PromiseFulfilledResult<Awaited<ReturnType<typeof claimSurveyFileRemovalRecovery>>>).value;

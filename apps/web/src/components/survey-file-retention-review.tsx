@@ -68,6 +68,17 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : "Removal cancellation failed."); }
     finally { setBusy(false); }
   }
+  async function observeRemoval(id: string, manifestVersion: string, form: FormData) {
+    setBusy(true); setMessage("");
+    try {
+      const response = await fetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "observe", id, manifestVersion, reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error?.message ?? "Original observation failed.");
+      setRegister(null);
+      setMessage(!payload.data.persisted ? "Preview only. No outcome was checked." : payload.data.verificationRequired ? "Observation recorded. Further file verification is required; reload the assessment." : "Original absence verified and whole-file removal completed. Reload the assessment.");
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : "Original observation failed."); }
+    finally { setBusy(false); }
+  }
   async function disposeAnalysis(id: string, manifestVersion: string, form: FormData) {
     setBusy(true); setMessage("");
     try {
@@ -100,6 +111,12 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
       {register.removals?.length ? <><h3>Original removal requests</h3><ul>{register.removals.map(removal => <li key={removal.id}>
         <p>{({ queued: "Awaiting processing", dispatched: "Processing originals", verification_required: "Outcome review required", completed: "Removal verified", cancelled: "Cancelled" } as Record<string, string>)[removal.status] ?? "Review required"} · requested {new Date(removal.createdAt).toLocaleDateString("en-GB")}</p>
         {removal.reviewMessage ? <p role="status">{removal.reviewMessage}</p> : null}
+        {canEdit && ["dispatched", "verification_required"].includes(removal.status) ? <details><summary>Check interrupted original outcome</summary><form action={form => observeRemoval(removal.id, removal.manifestVersion, form)} className="form-grid">
+          <p>This checks one previously dispatched original and records whether it still exists. It does not delete anything. An active processing lease must finish before observation.</p>
+          <label className="field">Reason<textarea name="reason" required minLength={10} maxLength={2000} disabled={busy} /></label>
+          <label><input name="confirmed" type="checkbox" required disabled={busy} /> I confirm this outcome check.</label>
+          <button type="submit" disabled={busy}>Check original outcome</button>
+        </form></details> : null}
         {removal.canCancel && canEdit ? <details><summary>Cancel this request</summary><form action={form => cancelRemoval(removal.id, removal.manifestVersion, form)} className="form-grid">
           <label className="field"><span>Cancellation reason</span><textarea name="reason" minLength={10} maxLength={2000} required disabled={busy}/></label>
           <label><input type="checkbox" name="confirmed" required disabled={busy}/> I confirm this request should stop without removing any originals.</label>

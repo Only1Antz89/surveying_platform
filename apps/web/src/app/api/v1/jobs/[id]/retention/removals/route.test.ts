@@ -1,17 +1,20 @@
 import { beforeEach, expect, it, vi } from "vitest";
-const state = vi.hoisted(() => ({ context: { organisationId: "11111111-1111-4111-8111-111111111111", internalUserId: "manager", role: "owner", demo: false }, writable: true, mediaDispose: vi.fn(), dispose: vi.fn(), request: vi.fn(), cancel: vi.fn(), database: vi.fn() }));
+const state = vi.hoisted(() => ({ context: { organisationId: "11111111-1111-4111-8111-111111111111", internalUserId: "manager", role: "owner", demo: false }, writable: true, storage: {}, observe: vi.fn(), observationReview: vi.fn(), mediaDispose: vi.fn(), dispose: vi.fn(), request: vi.fn(), cancel: vi.fn(), database: vi.fn() }));
 vi.mock("@/lib/access", () => ({ apiContext: async () => state.context, canWriteWorkspace: () => state.writable }));
 vi.mock("@/lib/workspace-api-guard", () => ({ workspaceApiGuard: async () => null }));
 vi.mock("@/lib/survey-file-removal-request", () => ({ requestReviewedSurveyFileRemoval: state.request, cancelReviewedSurveyFileRemoval: state.cancel }));
 vi.mock("@surveynt/db", () => ({ createDatabase: state.database, withTenant: async (_db: unknown, _org: string, callback: (tx: unknown) => unknown) => callback({}) }));
 vi.mock("@/lib/survey-file-questionnaire-disposition", () => ({ disposeQuestionnaireAnalysis: state.dispose }));
 vi.mock("@/lib/survey-file-media-analysis-disposition", () => ({ disposeMediaAnalysis: state.mediaDispose }));
+vi.mock("@/lib/survey-file-removal-observation-review", () => ({ reviewRemovalObservation: state.observationReview }));
+vi.mock("@/lib/survey-file-removal-recovery", () => ({ observeInterruptedSurveyFileOriginal: state.observe }));
+vi.mock("@/lib/storage", () => ({ getObjectStorage: () => state.storage }));
 import { POST } from "./route";
 const id = "22222222-2222-4222-8222-222222222222";
 const route = { params: Promise.resolve({ id }) };
 const decision = { action: "request", requestId: id, reviewVersion: "a".repeat(64), reason: "Manager reviewed the removal decision.", confirmed: true };
 const request = (body: unknown = decision) => new Request("http://surveynt.test/removals", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-beforeEach(() => { vi.clearAllMocks(); Object.assign(state.context, { role: "owner", demo: false }); state.writable = true; state.request.mockResolvedValue({ id, status: "queued", storageRemoved: false }); state.cancel.mockResolvedValue({ id, status: "cancelled" }); });
+beforeEach(() => { vi.clearAllMocks(); Object.assign(state.context, { role: "owner", demo: false }); state.writable = true; state.database.mockReturnValue({}); state.request.mockResolvedValue({ id, status: "queued", storageRemoved: false }); state.cancel.mockResolvedValue({ id, status: "cancelled" }); });
 it("queues the reviewed decision without forwarding client storage paths", async () => {
   expect((await POST(request(), route)).status).toBe(200);
   expect(state.request).toHaveBeenCalledWith(expect.anything(), state.context.organisationId, id, "manager", { requestId: id, reviewVersion: decision.reviewVersion, reason: decision.reason, confirmed: true });
@@ -54,4 +57,27 @@ it("keeps preview media cleanup nonpersistent and hides internal failure details
   state.context.demo=true;expect((await (await POST(request(body),route)).json()).data.persisted).toBe(false);expect(state.mediaDispose).not.toHaveBeenCalled();
   state.context.demo=false;state.mediaDispose.mockRejectedValue(new Error("private storage path"));
   const response=await POST(request(body),route);expect(response.status).toBe(409);expect(await response.text()).not.toContain("private storage path");
+});
+
+it("observes only server-selected originals after confirmed management review", async () => {
+  state.observationReview.mockResolvedValue({ id, leaseToken: id, objects: [{ kind: "media", id }] });
+  state.observe.mockResolvedValue({ removed: true, verificationRequired: true });
+  const body = { action: "observe", id, manifestVersion: "b".repeat(64), reason: decision.reason, confirmed: true };
+  const response = await POST(request(body), route);
+  expect(response.status).toBe(200);
+  expect((await response.json()).data).toMatchObject({ verificationRequired: true, deletionAuthorised: false });
+  expect(state.observationReview).toHaveBeenCalledWith(expect.anything(), state.context.organisationId, id, "manager", { id, manifestVersion: body.manifestVersion, reason: body.reason, confirmed: true });
+  expect(state.observe).toHaveBeenCalledWith(expect.anything(), state.context.organisationId, expect.anything(), `media:${id}`, state.storage);
+  expect((await POST(request({ ...body, storagePath: "untrusted" }), route)).status).toBe(400);
+  expect((await POST(request({ ...body, confirmed: false }), route)).status).toBe(400);
+});
+it("keeps preview outcome checks nonpersistent and hides recovery failures", async () => {
+  const body = { action: "observe", id, manifestVersion: "b".repeat(64), reason: decision.reason, confirmed: true };
+  state.context.demo = true;
+  expect((await (await POST(request(body), route)).json()).data.persisted).toBe(false);
+  expect(state.observationReview).not.toHaveBeenCalled(); expect(state.observe).not.toHaveBeenCalled();
+  state.context.demo = false; state.observationReview.mockRejectedValue(new Error("private original path"));
+  const response = await POST(request(body), route);
+  expect(response.status).toBe(409); expect(await response.text()).not.toContain("private original path");
+  expect(state.observe).not.toHaveBeenCalled();
 });
