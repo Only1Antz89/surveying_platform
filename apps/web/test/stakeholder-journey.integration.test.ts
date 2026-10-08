@@ -417,6 +417,13 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     expect(pausedBatch.status).toBe("verification_required");expect(pausedBatch.lockedUntil).toBeNull();expect(pausedBatch.error).toBe("additional_originals_require_review");
     const pausedAudits=await db.select().from(auditEvents).where(and(eq(auditEvents.resourceId,removalIntent.id),eq(auditEvents.action,"job.original_removal_batch_paused")));
     expect(pausedAudits).toHaveLength(1);expect(pausedAudits[0].actorUserId).toBe(context.internalUserId);expect(pausedAudits[0].metadata).toMatchObject({processed:25,remainingOriginalCount:1});
+    const [lateBatchHold]=await db.insert(jobRetentionHolds).values({organisationId:context.organisationId,jobId:removalJob.id,kind:"legal",reason:"Fictional new legal hold between original removal batches.",reviewedByUserId:context.internalUserId!}).returning();
+    const heldStorageRead=vi.spyOn(fixtureStorage,"get");const deletesBeforeHold=deleteSpy.mock.calls.length;
+    await expect(processReviewedRemainingOriginals(createDatabase(),context.organisationId,removalJob.id,context.internalUserId!,{id:removalIntent.id,manifestVersion:storageClaim.manifest.manifestVersion,reason:"Attempt remaining original processing while a legal hold applies.",confirmed:true},fixtureStorage)).rejects.toThrow("file changed");
+    expect(heldStorageRead).not.toHaveBeenCalled();expect(deleteSpy).toHaveBeenCalledTimes(deletesBeforeHold);expect(fixtureStorage.objects.size).toBe(1);heldStorageRead.mockRestore();
+    const [stillPaused]=await db.select().from(surveyFileRemovals).where(eq(surveyFileRemovals.id,removalIntent.id));
+    expect(stillPaused.status).toBe("verification_required");expect(stillPaused.leaseToken).toBe(pausedBatch.leaseToken);
+    await db.delete(jobRetentionHolds).where(eq(jobRetentionHolds.id,lateBatchHold.id));
     expect(await processReviewedRemainingOriginals(createDatabase(),context.organisationId,removalJob.id,context.internalUserId!,{id:removalIntent.id,manifestVersion:storageClaim.manifest.manifestVersion,reason:"Manager reviewed the final untouched fictional batch original.",confirmed:true},fixtureStorage)).toEqual({completed:true,verificationRequired:false,processed:1});
     expect(deleteSpy).toHaveBeenCalledTimes(27);
     expect(deleteSpy.mock.calls.map(call=>call[0]).sort()).toEqual([removalOriginal.storageKey,deliveryOriginal.blobPathname,...batchDocuments.map(document=>document.blobPathname)].sort());
