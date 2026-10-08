@@ -524,6 +524,7 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(fieldProposals).set({proposedValue:{restored:true}}).where(eq(fieldProposals.id,removalProposal.id)))).rejects.toThrow();
     await expect(withTenant(createDatabase(),foreignOrg.id,tx=>disposeFieldProposal(tx,foreignOrg.id,removalJob.id,context.internalUserId!,removalProposal.id,cleanupDecision))).rejects.toThrow("permission");
     const disposedRegister=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,removalJob.id));
+    expect(disposedRegister!.fieldProposals.find(proposal=>proposal.id===removalProposal.id)?.contentDisposed).toBe(true);
     expect(disposedRegister!.adviserTasks.find(task=>task.id===removalTask.id)?.contentDisposed).toBe(true);
     expect(disposedRegister!.mediaAnalyses.find(analysis=>analysis.id===removalAnalysis.id)?.analysisDisposed).toBe(true);
     expect(disposedRegister!.questionnaireDocuments.find(document=>document.id===removalOriginal.id)?.analysisDisposed).toBe(true);
