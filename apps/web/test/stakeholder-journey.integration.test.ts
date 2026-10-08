@@ -1,3 +1,4 @@
+import { disposeAdviserTask } from "../src/lib/survey-file-adviser-task-disposition";
 import { createSurveyFileRemovalManifest } from "../src/lib/survey-file-removal-manifest";
 import { processReviewedRemainingOriginals } from "../src/lib/survey-file-removal-resume-runner";
 import { resumeReviewedSurveyFileRemoval } from "../src/lib/survey-file-removal-resume";
@@ -384,6 +385,7 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     const batchDocuments=await db.insert(organisationDocuments).values(Array.from({length:25},(_,index)=>{
       const id=crypto.randomUUID();return {id,organisationId:context.organisationId,jobId:removalJob.id,name:`Fictional batch original ${index+1}`,category:"report" as const,blobUrl:"https://example.test/fictional-batch",blobPathname:`organisations/${context.organisationId}/documents/${id}/original`,checksum:createHash("sha256").update(deliveryBytes).digest("hex"),contentType:"text/plain",sizeBytes:deliveryBytes.length,deletedAt:new Date("2000-03-01T00:00:00Z"),retentionUntil:new Date("2001-03-01T00:00:00Z")};
     })).returning();
+    const [removalTask]=await db.insert(assistantTasks).values({organisationId:context.organisationId,surveyId:removalSurvey.survey.id,kind:"discrepancy",status:"resolved",dedupeKey:"fictional-task-disposition",title:"Fictional extracted task title",detail:"Fictional private task detail",evidence:{source:{id:removalOriginal.id}},resolvedAt:new Date(),resolvedByUserId:context.internalUserId!,resolutionNote:"Fictional task resolution text"}).returning();
     const removalFile=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,removalJob.id));expect(removalFile?.assessment.eligibleForManagerReview).toBe(true);
     await db.insert(auditEvents).values({organisationId:context.organisationId,actorUserId:context.internalUserId!,action:"job.retention_file_reviewed",resourceType:"job",resourceId:removalJob.id,metadata:{reviewVersion:removalFile!.assessment.reviewVersion,confirmed:true,noUnresolvedComplaintOrClaim:true}});
     const removalIntent=await withTenant(createDatabase(),context.organisationId,tx=>requestReviewedSurveyFileRemoval(tx,context.organisationId,removalJob.id,context.internalUserId!,{requestId:crypto.randomUUID(),reviewVersion:removalFile!.assessment.reviewVersion,reason:"Manager reviewed fictional storage integration original.",confirmed:true}));
@@ -482,6 +484,7 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     const [dispositionHold]=await db.insert(jobRetentionHolds).values({organisationId:context.organisationId,jobId:removalJob.id,kind:"legal",reason:"Fictional legal hold blocks extracted content disposition.",reviewedByUserId:context.internalUserId!}).returning();
     await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeQuestionnaireAnalysis(tx,context.organisationId,removalJob.id,context.internalUserId!,removalOriginal.id))).rejects.toThrow("protected");
     await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeMediaAnalysis(tx,context.organisationId,removalJob.id,context.internalUserId!,removalAnalysis.id))).rejects.toThrow("protected");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeAdviserTask(tx,context.organisationId,removalJob.id,context.internalUserId!,removalTask.id,{id:removalIntent.id,manifestVersion:storageClaim.manifest.manifestVersion,reason:"Reviewed fictional adviser task cleanup.",confirmed:true}))).rejects.toThrow("protected");
     await db.delete(jobRetentionHolds).where(eq(jobRetentionHolds.id,dispositionHold.id));
     await expect(withTenant(createDatabase(),context.organisationId,tx=>disposeQuestionnaireAnalysis(tx,context.organisationId,removalJob.id,context.internalUserId!,removalOriginal.id,{id:removalIntent.id,manifestVersion:"0".repeat(64),reason:"Reviewed analysis cleanup with a stale removal manifest.",confirmed:true}))).rejects.toThrow("decision changed");
     const cleanupDecision={id:removalIntent.id,manifestVersion:completedRemoval.manifestVersion,reason:"Manager confirmed cleanup of the verified fictional questionnaire analysis.",confirmed:true as const};
@@ -499,6 +502,15 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     expect(JSON.stringify(mediaDisposalEvents[0].metadata)).not.toContain("Fictional extracted media text");
     await expect(withTenant(createDatabase(),foreignOrg.id,tx=>disposeMediaAnalysis(tx,foreignOrg.id,removalJob.id,context.internalUserId!,removalAnalysis.id,cleanupDecision))).rejects.toThrow("permission");
     await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(mediaAnalyses).set({result:{restored:true}}).where(eq(mediaAnalyses.id,removalAnalysis.id)))).rejects.toMatchObject({cause:{message:"Media belonging to a file under removal cannot be changed or extended"}});
+    expect(await withTenant(createDatabase(),context.organisationId,tx=>disposeAdviserTask(tx,context.organisationId,removalJob.id,context.internalUserId!,removalTask.id,cleanupDecision))).toEqual({disposed:true,duplicate:false});
+    expect(await withTenant(createDatabase(),context.organisationId,tx=>disposeAdviserTask(tx,context.organisationId,removalJob.id,context.internalUserId!,removalTask.id,cleanupDecision))).toEqual({disposed:true,duplicate:true});
+    const [disposedTask]=await db.select().from(assistantTasks).where(eq(assistantTasks.id,removalTask.id));
+    expect(disposedTask).toMatchObject({title:"Content removed after retention review",detail:null,resolutionNote:null,evidence:{retentionRemoved:true},status:removalTask.status,resolvedAt:removalTask.resolvedAt,resolvedByUserId:removalTask.resolvedByUserId,surveyId:removalTask.surveyId});
+    const taskDisposalEvents=await db.select().from(auditEvents).where(and(eq(auditEvents.resourceId,removalTask.id),eq(auditEvents.action,"job.adviser_task_disposed")));
+    expect(taskDisposalEvents).toHaveLength(1);expect(taskDisposalEvents[0].actorUserId).toBe(context.internalUserId);expect(taskDisposalEvents[0].metadata).toMatchObject({removalId:removalIntent.id,reason:cleanupDecision.reason,confirmed:true,contentFingerprint:createHash("sha256").update(JSON.stringify({title:removalTask.title,detail:removalTask.detail,evidence:removalTask.evidence,resolutionNote:removalTask.resolutionNote})).digest("hex")});
+    expect(JSON.stringify(taskDisposalEvents)).not.toContain("Fictional private task detail");
+    await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(assistantTasks).set({detail:"Restored text"}).where(eq(assistantTasks.id,removalTask.id)))).rejects.toThrow();
+    await expect(withTenant(createDatabase(),foreignOrg.id,tx=>disposeAdviserTask(tx,foreignOrg.id,removalJob.id,context.internalUserId!,removalTask.id,cleanupDecision))).rejects.toThrow("permission");
     const disposedRegister=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,removalJob.id));
     expect(disposedRegister!.mediaAnalyses.find(analysis=>analysis.id===removalAnalysis.id)?.analysisDisposed).toBe(true);
     expect(disposedRegister!.questionnaireDocuments.find(document=>document.id===removalOriginal.id)?.analysisDisposed).toBe(true);

@@ -449,6 +449,13 @@
       "when": 1791387600000,
       "tag": "0063_proposal_value_reference_fence",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1791391200000,
+      "tag": "0064_adviser_task_disposition",
+      "breakpoints": true
     }
   ]
 }
