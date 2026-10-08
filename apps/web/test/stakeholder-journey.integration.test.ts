@@ -1,3 +1,4 @@
+import { resumeReviewedSurveyFileRemoval } from "../src/lib/survey-file-removal-resume";
 import { reviewRemovalObservation } from "../src/lib/survey-file-removal-observation-review";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
@@ -153,6 +154,26 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     const removalRequest={requestId:crypto.randomUUID(),reviewVersion:questionnaireFile!.assessment.reviewVersion,reason:"Manager confirmed expiry and reviewed every retained original.",confirmed:true as const};
     const requested=await Promise.all([1,2].map(()=>withTenant(createDatabase(),context.organisationId,tx=>requestReviewedSurveyFileRemoval(tx,context.organisationId,jobId,context.internalUserId!,removalRequest))));
     expect(requested[0].id).toBe(requested[1].id);expect(requested.map(result=>result.duplicate).sort()).toEqual([false,true]);expect(requested.every(result=>result.storageRemoved===false)).toBe(true);
+    await expect(withTenant(createDatabase(),context.organisationId,async tx=>{
+      const claim=await claimQueuedSurveyFileRemoval(tx,context.organisationId,jobId,requested[0].id);
+      const first=claim.manifest.objects[0];const key=`${first.kind}:${first.id}`;
+      await recordSurveyFileOriginalDispatch(tx,context.organisationId,jobId,claim.id,claim.leaseToken,key);
+      await recordSurveyFileOriginalOutcome(tx,context.organisationId,claim.id,claim.leaseToken,key,{state:"verification_required",reason:"uncertain_delete"});
+      const decision={id:claim.id,manifestVersion:claim.manifest.manifestVersion,reason:"Manager reviewed remaining fictional originals for resumption.",confirmed:true as const};
+      await expect(resumeReviewedSurveyFileRemoval(tx,context.organisationId,jobId,context.internalUserId!,decision)).rejects.toThrow("must be verified");
+      const recovery=await claimSurveyFileRemovalRecovery(tx,context.organisationId,claim.id);
+      await recordSurveyFileOriginalOutcome(tx,context.organisationId,claim.id,recovery.leaseToken,key,{state:"removed"});
+      await tx.update(surveyFileRemovals).set({status:"verification_required",lockedUntil:null,error:"additional_originals_require_review"}).where(eq(surveyFileRemovals.id,claim.id));
+      await expect(resumeReviewedSurveyFileRemoval(tx,context.organisationId,jobId,context.internalUserId!,{...decision,manifestVersion:"0".repeat(64)})).rejects.toThrow("decision changed");
+      const resumed=await resumeReviewedSurveyFileRemoval(tx,context.organisationId,jobId,context.internalUserId!,decision);
+      expect(resumed.leaseToken).not.toBe(recovery.leaseToken);
+      const [resumedRequest]=await tx.select().from(surveyFileRemovals).where(eq(surveyFileRemovals.id,claim.id));
+      expect(resumedRequest.progress[key].state).toBe("removed");expect(resumedRequest.error).toBeNull();
+      await expect(resumeReviewedSurveyFileRemoval(tx,context.organisationId,jobId,context.internalUserId!,decision)).rejects.toThrow("decision changed");
+      const second=resumed.manifest.objects.find(object=>`${object.kind}:${object.id}`!==key)!;
+      expect(await recordSurveyFileOriginalDispatch(tx,context.organisationId,jobId,resumed.id,resumed.leaseToken,`${second.kind}:${second.id}`)).toMatchObject({dispatch:true});
+      throw new Error("Rollback reviewed resumption fixture");
+    })).rejects.toThrow("Rollback reviewed resumption fixture");
     await expect(withTenant(createDatabase(),context.organisationId,async tx=>{
       const claim=await claimQueuedSurveyFileRemoval(tx,context.organisationId,jobId,requested[0].id);
       const first=claim.manifest.objects[0];const key=`${first.kind}:${first.id}`;
