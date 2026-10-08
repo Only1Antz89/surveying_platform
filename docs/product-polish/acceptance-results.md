@@ -151,3 +151,40 @@ Sources:
 - [Microsoft Graph subscription resource](https://learn.microsoft.com/graph/api/resources/subscription)
 - [Vercel Blob private storage](https://vercel.com/docs/vercel-blob/private-storage) and [consistent reads changelog](https://vercel.com/changelog/vercel-blob-now-supports-consistent-reads-on-private-storage)
 - [OSRM HTTP API](https://project-osrm.org/docs/v5.24.0/api)
+
+## 4. Shared-learning activation requirements
+
+The full requirement list, and the `check:learning-activation` command, are in [`docs/shared-learning/operations.md`](../shared-learning/operations.md#activation-requirements-confirmed-8-october-2026).
+
+### Confirmed
+
+- **Production is off.** Production has the learning schema (migrations 0010 and 0023–0025, applied with 0000–0025 on 2 October). The deployed project has no `SHARED_LEARNING_ENABLED`, `DATABASE_LEARNING_URL` or `LEARNING_LINEAGE_SECRET`, so the programme is off and nothing is copied.
+- **Two gates hold until a policy exists.** Activation needs a published policy with a privacy assessment reference and valid release criteria. It also needs three reviewer roles held by different people (one platform role per person).
+
+### Gap found and fixed
+
+The documented "daily sweep" was never scheduled; `runLearningSweep` ran only from the console's manual button. It now runs in the daily cron, and a failure there doesn't break the other daily jobs. This is what makes withdrawal retries and retention-removal erasure happen automatically.
+
+### New readiness check
+
+`pnpm --filter @surveynt/web check:learning-activation` is read-only and checks:
+
+- the migrations, and the separation of the learning, application and owner roles;
+- the application role's read-only grant and the lineage secret length;
+- the published policy, through the same `programmeStatus` gate the application uses;
+- reviewer appointments.
+
+It is integration-tested against a real database (3 tests).
+
+### Still outstanding
+
+These are decisions for people, not code:
+
+- the DPIA and legal review;
+- a published policy and release criteria;
+- appointing the three reviewers;
+- creating the learning login role and granting the application role read access on Neon;
+- the secrets;
+- L3 pass marks.
+
+The readiness check was not run against production from this environment, which has no production credentials.

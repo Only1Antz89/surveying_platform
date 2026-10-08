@@ -4,6 +4,7 @@ import { processIntelligenceQueue } from "@/lib/intelligence";
 import { processMediaAnalysisBacklog } from "@/lib/media-analysis";
 import { runDataSourceSweep } from "@/lib/data-source-admin";
 import { enqueueCalendarReconciliation, processCalendarQueue } from "@/lib/calendar-sync";
+import { runLearningSweep } from "@/lib/learning-pipeline";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -21,5 +22,7 @@ export async function GET(request: Request) {
   const sources = await runDataSourceSweep().catch(() => ({ probed: 0, stale: [] }));
   const calendarScheduled = await enqueueCalendarReconciliation().catch(() => ({ eligible: 0, queued: 0 }));
   const calendars = await processCalendarQueue(10).catch(() => ({ claimed: 0, results: [] }));
-  return Response.json({ ok: true, scheduled, delivery, intelligence: { claimed: intelligence.claimed }, media: { analysed: media.analysed }, sources: { probed: sources.probed, releaseChecksDue: sources.stale.length }, calendars: { ...calendarScheduled, claimed: calendars.claimed } });
+  // Retries learning withdrawals and survey-file removals; extraction runs only while the programme is active.
+  const learning = await runLearningSweep(5).catch(() => ({ withdrawals: 0, firms: 0, created: 0, error: "Learning sweep failed." }));
+  return Response.json({ ok: true, scheduled, delivery, intelligence: { claimed: intelligence.claimed }, media: { analysed: media.analysed }, sources: { probed: sources.probed, releaseChecksDue: sources.stale.length }, calendars: { ...calendarScheduled, claimed: calendars.claimed }, learning: { withdrawals: learning.withdrawals, filesErased: "removedFiles" in learning ? learning.removedFiles?.files ?? 0 : 0, created: learning.created } });
 }
