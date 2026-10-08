@@ -1,3 +1,4 @@
+import { createSurveyFileRemovalManifest } from "../src/lib/survey-file-removal-manifest";
 import { processReviewedRemainingOriginals } from "../src/lib/survey-file-removal-resume-runner";
 import { resumeReviewedSurveyFileRemoval } from "../src/lib/survey-file-removal-resume";
 import { reviewRemovalObservation } from "../src/lib/survey-file-removal-observation-review";
@@ -429,6 +430,40 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     expect(deleteSpy.mock.calls.map(call=>call[0]).sort()).toEqual([removalOriginal.storageKey,deliveryOriginal.blobPathname,...batchDocuments.map(document=>document.blobPathname)].sort());
     expect(fixtureStorage.objects.size).toBe(0);
     const [completedRemoval]=await db.select().from(surveyFileRemovals).where(eq(surveyFileRemovals.id,removalIntent.id));expect(completedRemoval.status).toBe("completed");expect(completedRemoval.completedAt).not.toBeNull();
+    for(const disposition of ["questionnaire","media"])for(const legalHold of [true,false]) {
+      const fixture=db.transaction(async tx=>{
+        const [isolatedJob]=await tx.insert(jobs).values({...removalJob,id:crypto.randomUUID(),reference:`MANIFEST-ONLY-HOLD-${disposition}-${legalHold}`}).returning();
+        const questionnaireId=crypto.randomUUID(),documentId=crypto.randomUUID();
+        const [isolatedQuestionnaire]=await tx.insert(preinspectionDocuments).values({...removalOriginal,id:questionnaireId,jobId:isolatedJob.id,requestId:crypto.randomUUID(),storageKey:`organisations/${context.organisationId}/preinspection/${isolatedJob.id}/${questionnaireId}/original`}).returning();
+        const [isolatedDocument]=await tx.insert(organisationDocuments).values({...deliveryOriginal,id:documentId,legalHold,blobPathname:`organisations/${context.organisationId}/documents/${documentId}/original`}).returning();
+        expect(isolatedDocument.jobId).toBeNull();expect(isolatedDocument.reportVersionId).toBeNull();
+        expect(await tx.select().from(reportDeliveries).where(eq(reportDeliveries.documentId,documentId))).toHaveLength(0);
+        const [isolatedSurvey]=await tx.insert(surveys).values({...removalSurvey.survey,id:crypto.randomUUID(),jobId:isolatedJob.id}).returning();
+        const mediaId=crypto.randomUUID();
+        const [isolatedMedia]=await tx.insert(mediaAssets).values({...removalMedia,id:mediaId,surveyId:isolatedSurvey.id,clientGeneratedId:crypto.randomUUID(),storageKey:`organisations/${context.organisationId}/surveys/${isolatedSurvey.id}/${mediaId}/original`}).returning();
+        const [isolatedAnalysis]=await tx.insert(mediaAnalyses).values({...removalAnalysis,id:crypto.randomUUID(),mediaId,surveyId:isolatedSurvey.id}).returning();
+        const reviewVersion="a".repeat(64);
+        const manifest=createSurveyFileRemovalManifest({organisationId:context.organisationId,jobId:isolatedJob.id,reviewVersion,policyVersion:"survey-file-1-year-v2",objects:[
+          {kind:"questionnaire",id:questionnaireId,storagePath:isolatedQuestionnaire.storageKey,checksum:isolatedQuestionnaire.checksum,sizeBytes:isolatedQuestionnaire.sizeBytes},
+          {kind:"document",id:documentId,storagePath:isolatedDocument.blobPathname,checksum:isolatedDocument.checksum,sizeBytes:isolatedDocument.sizeBytes},
+          {kind:"media",id:mediaId,surveyId:isolatedSurvey.id,derivation:"original",storagePath:isolatedMedia.storageKey,checksum:isolatedMedia.sha256,sizeBytes:isolatedMedia.byteSize},
+        ]});
+        const [review]=await tx.insert(auditEvents).values({organisationId:context.organisationId,actorUserId:context.internalUserId!,action:"job.retention_file_reviewed",resourceType:"job",resourceId:isolatedJob.id,metadata:{reviewVersion,confirmed:true,noUnresolvedComplaintOrClaim:true}}).returning();
+        const [intent]=await tx.insert(surveyFileRemovals).values({organisationId:context.organisationId,jobId:isolatedJob.id,requestId:crypto.randomUUID(),requestedByUserId:context.internalUserId!,reviewId:review.id,reviewVersion,requestFingerprint:"b".repeat(64),manifestVersion:manifest.manifestVersion,manifest,reason:"Synthetic removal evidence for isolated database guard testing."}).returning();
+        const leaseToken=crypto.randomUUID();
+        await tx.update(surveyFileRemovals).set({status:"dispatched",leaseToken,lockedUntil:new Date(Date.now()+300000),attempts:1}).where(eq(surveyFileRemovals.id,intent.id));
+        await tx.update(surveyFileRemovals).set({status:"completed",completedAt:new Date(),progress:Object.fromEntries(manifest.objects.map(object=>[`${object.kind}:${object.id}`,{state:"removed",attemptId:leaseToken,removedAt:new Date().toISOString()}]))}).where(eq(surveyFileRemovals.id,intent.id));
+        await tx.insert(auditEvents).values({organisationId:context.organisationId,actorUserId:context.internalUserId!,action:"job.questionnaire_analysis_disposed",resourceType:"preinspection_document",resourceId:questionnaireId,metadata:{removalId:intent.id,originalChecksum:isolatedQuestionnaire.checksum}});
+        if(disposition==="questionnaire")await tx.update(preinspectionDocuments).set({analysis:{retentionRemoved:true}}).where(eq(preinspectionDocuments.id,questionnaireId));
+        else {
+          await tx.insert(auditEvents).values({organisationId:context.organisationId,actorUserId:context.internalUserId!,action:"job.media_analysis_disposed",resourceType:"media_analysis",resourceId:isolatedAnalysis.id,metadata:{removalId:intent.id,mediaId}});
+          await tx.update(mediaAnalyses).set({result:{retentionRemoved:true}}).where(eq(mediaAnalyses.id,isolatedAnalysis.id));
+        }
+        throw new Error("Rollback unheld manifest-only guard control");
+      });
+      if(legalHold)await expect(fixture).rejects.toMatchObject({cause:{message:disposition==="questionnaire"?"A record bound to a file under original removal cannot be added, changed, moved or deleted":"Media belonging to a file under removal cannot be changed or extended"}});
+      else await expect(fixture).rejects.toThrow("Rollback unheld manifest-only guard control");
+    }
     await expect(withTenant(createDatabase(),context.organisationId,async tx=>{
       await tx.update(organisationDocuments).set({legalHold:true}).where(eq(organisationDocuments.id,deliveryOriginal.id));
       await tx.insert(auditEvents).values({organisationId:context.organisationId,actorUserId:context.internalUserId!,action:"job.questionnaire_analysis_disposed",resourceType:"preinspection_document",resourceId:removalOriginal.id,metadata:{removalId:removalIntent.id,originalChecksum:removalOriginal.checksum}});
