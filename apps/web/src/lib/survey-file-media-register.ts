@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { and, asc, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { evidenceLinks, mediaAssets, reportVersions, surveys, type TenantTransaction } from "@surveynt/db";
 import { z } from "zod";
@@ -15,7 +16,7 @@ export async function readSurveyFileMedia(tx: TenantTransaction, organisationId:
   const references = [...new Set([...traces.flatMap(trace => Array.isArray(trace.media) ? trace.media.filter((id): id is string => typeof id === "string") : []), ...links.filter(link => link.evidenceType === "media").map(link => link.evidenceId)])];
   if (references.length > limit) throw new Error("The survey evidence exceeds the review register limit.");
   const uuidReferences = references.filter(id => z.uuid().safeParse(id).success);
-  const selection = { id: mediaAssets.id, surveyId: mediaAssets.surveyId, checksum: mediaAssets.sha256, byteSize: mediaAssets.byteSize, kind: mediaAssets.kind, filename: mediaAssets.originalFilename, status: mediaAssets.status, deletedAt: mediaAssets.deletedAt, parentId: mediaAssets.derivedFromId, derivation: mediaAssets.derivation, clientGeneratedId: mediaAssets.clientGeneratedId };
+  const selection = { id: mediaAssets.id, surveyId: mediaAssets.surveyId, checksum: mediaAssets.sha256, byteSize: mediaAssets.byteSize, kind: mediaAssets.kind, filename: mediaAssets.originalFilename, captureContext: mediaAssets.captureContext, status: mediaAssets.status, deletedAt: mediaAssets.deletedAt, parentId: mediaAssets.derivedFromId, derivation: mediaAssets.derivation, clientGeneratedId: mediaAssets.clientGeneratedId };
   const initial = complete(await tx.select(selection).from(mediaAssets).where(and(eq(mediaAssets.organisationId, organisationId), or(surveyIds.length ? inArray(mediaAssets.surveyId, surveyIds) : sql`false`, uuidReferences.length ? inArray(mediaAssets.id, uuidReferences) : undefined, references.length ? inArray(mediaAssets.clientGeneratedId, references) : undefined))).orderBy(asc(mediaAssets.id)).limit(limit + 1));
   const media = new Map(initial.map(row => [row.id, row]));
   // Include both original ancestors and all derived copies, even when stored under another survey.
@@ -38,5 +39,5 @@ export async function readSurveyFileMedia(tx: TenantTransaction, organisationId:
     while (current?.parentId) { if (seen.has(current.id)) return true; seen.add(current.id); current = media.get(current.parentId); if (!current) return true; }
     return false;
   });
-  return { media: rows, evidenceLinks: links, externalLinks, externalReports, unresolvedReferences, referenceReviewRequired: !traceValid || cyclicDerivation || unresolvedReferences.length > 0 || externalLinks.length > 0 || externalReports.length > 0 || rows.some(row => row.surveyId !== null && !surveyIds.includes(row.surveyId)) };
+  return { media: rows.map(({ captureContext, ...row }) => ({ ...row, captureContextFingerprint: createHash("sha256").update(JSON.stringify(captureContext ?? {})).digest("hex") })), evidenceLinks: links, externalLinks, externalReports, unresolvedReferences, referenceReviewRequired: !traceValid || cyclicDerivation || unresolvedReferences.length > 0 || externalLinks.length > 0 || externalReports.length > 0 || rows.some(row => row.surveyId !== null && !surveyIds.includes(row.surveyId)) };
 }
