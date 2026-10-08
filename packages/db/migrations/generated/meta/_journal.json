@@ -442,6 +442,13 @@
       "when": 1791384000000,
       "tag": "0062_media_analysis_disposition",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1791387600000,
+      "tag": "0063_proposal_value_reference_fence",
+      "breakpoints": true
     }
   ]
 }
