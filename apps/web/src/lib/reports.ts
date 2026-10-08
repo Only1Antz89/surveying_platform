@@ -99,6 +99,7 @@ export async function approveReportVersion(context: SurveyContext, surveyId: str
     if (current.pack.template.key.startsWith("surveynt-home-survey") && current.pack.template.reviewStatus !== "surveyor_reviewed") throw new ReportError(409, "template_review_required", "This firm Home Survey template is a draft. Complete professional template review and any required licence verification before approving or issuing reports.");
     const [latest] = await tx.select().from(reportVersions).where(and(eq(reportVersions.surveyId, surveyId), eq(reportVersions.organisationId, context.organisationId))).orderBy(desc(reportVersions.versionNumber)).limit(1);
     if (!latest || latest.id !== versionId) throw new ReportError(409, "not_latest", "Only the latest report version can be signed off.");
+    if (latest.content.retentionRemoved === true) throw new ReportError(410, "report_content_removed", "Report content was removed after retention review.");
     if (latest.inputFingerprint !== current.fingerprint) throw new ReportError(409, "out_of_date", "The survey or approved wording changed after this version was composed. Compose a new version and review it.");
     const [existing] = await tx.select({ id: reportApprovals.id }).from(reportApprovals).where(eq(reportApprovals.reportVersionId, versionId)).limit(1);
     if (existing) throw new ReportError(409, "already_approved", "This version is already signed off.");
@@ -135,10 +136,11 @@ export async function reopenSurvey(context: SurveyContext, surveyId: string, rea
 
 /** For the issue gate: whether the newest signed-off version still matches the survey. */
 export async function approvedReportIsCurrent(tx: TenantTransaction, context: Pick<SurveyContext, "organisationId">, surveyId: string) {
-  const [latestApproved] = await tx.select({ id: reportVersions.id, fingerprint: reportVersions.inputFingerprint, versionNumber: reportVersions.versionNumber }).from(reportVersions)
+  const [latestApproved] = await tx.select({ id: reportVersions.id, fingerprint: reportVersions.inputFingerprint, versionNumber: reportVersions.versionNumber, content: reportVersions.content }).from(reportVersions)
     .innerJoin(reportApprovals, eq(reportApprovals.reportVersionId, reportVersions.id))
     .where(and(eq(reportVersions.surveyId, surveyId), eq(reportVersions.organisationId, context.organisationId))).orderBy(desc(reportVersions.versionNumber)).limit(1);
   if (!latestApproved) return { approved: false as const, current: false };
+  if (latestApproved.content.retentionRemoved === true) return { approved: true as const, current: false, versionNumber: latestApproved.versionNumber, contentRemoved: true };
   const current = await currentReportInput(tx, context, surveyId);
   return { approved: true as const, current: current?.fingerprint === latestApproved.fingerprint, versionNumber: latestApproved.versionNumber };
 }

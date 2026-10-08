@@ -41,7 +41,7 @@ import { syncSourceRegistry } from "@surveynt/property-data/importers";
 import { seedStakeholderDemo } from "../src/lib/stakeholder-demo";
 import { acceptQuoteAddress, createPublicQuote, readPublicQuote } from "../src/lib/firm-operations";
 import { createSurvey, applySyncOperations, type SurveyContext } from "../src/lib/surveys";
-import { composeSurveyReport, approveReportVersion } from "../src/lib/reports";
+import { composeSurveyReport, approveReportVersion, approvedReportIsCurrent } from "../src/lib/reports";
 import { enforceStageGate } from "../src/lib/completion";
 import { POST as checkout } from "../src/app/api/v1/public/quotes/[id]/checkout/route";
 import { GET as slots, POST as book } from "../src/app/api/v1/public/quotes/[id]/appointments/route";
@@ -541,6 +541,8 @@ describe.skipIf(!integrationEnabled)("stakeholder staff and customer journey",()
     expect(reportDisposalEvents).toHaveLength(1);expect(reportDisposalEvents[0].actorUserId).toBe(context.internalUserId);expect(reportDisposalEvents[0].metadata).toMatchObject({removalId:removalIntent.id,originalContentSha256:removalReport.contentSha256,contentFingerprint:createHash("sha256").update(JSON.stringify({content:removalReport.content,trace:removalReport.trace})).digest("hex"),reason:cleanupDecision.reason,confirmed:true});
     await expect(withTenant(createDatabase(),context.organisationId,tx=>tx.update(reportVersions).set({content:{restored:true}}).where(eq(reportVersions.id,removalReport.id)))).rejects.toThrow();
     await expect(withTenant(createDatabase(),foreignOrg.id,tx=>disposeReportContent(tx,foreignOrg.id,removalJob.id,context.internalUserId!,removalReport.id,cleanupDecision))).rejects.toThrow("permission");
+    expect(await withTenant(createDatabase(),context.organisationId,tx=>approvedReportIsCurrent(tx,context,removalSurvey.survey.id))).toMatchObject({approved:true,current:false,contentRemoved:true,versionNumber:removalReport.versionNumber});
+    await expect(approveReportVersion(context,removalSurvey.survey.id,removalReport.id,{confirm:true})).rejects.toMatchObject({code:"report_content_removed"});
     const removedReports=await loadSurveyReports(context,removalSurvey.survey.id);
     expect(removedReports?.latest).toBeNull();expect(removedReports?.versions.find(version=>version.id===removalReport.id)).toMatchObject({contentRemoved:true,current:false});
     const disposedRegister=await withTenant(createDatabase(),context.organisationId,tx=>readSurveyFileRetention(tx,context.organisationId,removalJob.id));
