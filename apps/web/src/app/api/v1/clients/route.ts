@@ -1,3 +1,5 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
+import {jobs as demoJobs} from "@/lib/demo-data";
 import { clientApiContext, clientAuditActor, clientDatabase } from "@/lib/client-api-context";
 import { demoStore, recordDemoAudit } from "@/lib/demo-store";
 import { assignedClientScope } from "@/lib/workspace-scope";
@@ -16,7 +18,7 @@ export async function GET(request: Request) {
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
   const accessDenial = await workspaceApiGuard(request, context);
   if (accessDenial) return accessDenial;
-  if (context.demo) return ok((await demoStore.snapshot()).clients.filter(client => client.organisationId === context.organisationId && !client.archivedAt), { demo: true, persisted: true, nextCursor: null });
+  if (context.demo) return ok((await demoStore.snapshot()).clients.filter(client => client.organisationId === context.organisationId && !client.archivedAt && (context.role!=="surveyor"||demoJobs.some(j=>j.assignee==="Maya Patel"&&j.client===client.displayName))), { demo: true, persisted: true, nextCursor: null });
   const db = clientDatabase(context);
   const rows = await db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
@@ -44,13 +46,13 @@ export async function POST(request: Request) {
   const [created] = await db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
     const result = await tx.insert(clients).values({ organisationId: context.organisationId, ...parsed.data }).returning();
-    await tx.insert(auditEvents).values({
+    await tx.insert(auditEvents).values(workspaceAudit(context,{
       organisationId: context.organisationId,
       ...clientAuditActor(context),
       action: "client.created",
       resourceType: "client",
       resourceId: result[0].id,
-    });
+    }));
     return result;
   });
   return ok(created);

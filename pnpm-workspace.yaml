@@ -3,6 +3,8 @@ packages:
   - "packages/*"
 
 allowBuilds:
+  browser-tabs-lock: false
+  core-js: false
   esbuild: true
   unrs-resolver: true
 

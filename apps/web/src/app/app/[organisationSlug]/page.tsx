@@ -1,7 +1,7 @@
 import { requireWorkspacePageAccess } from "@/lib/workspace-page-access";
-import { redirect } from "next/navigation";
+import {redirectWorkspace as redirect} from "@/lib/workspace-redirect";
 
 export default async function FirmHome({ params }: { params: Promise<{ organisationSlug: string }> }) {
   const { organisationSlug } = await params; await requireWorkspacePageAccess(organisationSlug, "");
-  redirect(`/app/${organisationSlug}/overview`);
+  await redirect(`/app/${organisationSlug}/overview`);
 }

@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { type FormEvent, useState } from "react";
 import { BookOpenCheck, CheckCircle2, FilePlus2, Plus, Power, Upload, X } from "lucide-react";
@@ -19,7 +20,7 @@ export function PracticePackManager({ packs, canManage }: { packs: PracticePackR
 
   async function request(url: string, method: "POST" | "PATCH", body: unknown) {
     setError(null);
-    const response = await fetch(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const response = await workspaceFetch(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload?.error?.message ?? "The practice-pack change could not be completed.");
     router.refresh();

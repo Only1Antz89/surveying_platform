@@ -1,0 +1,2 @@
+ALTER TABLE "surveyant_conversations" ADD COLUMN "workspace_audience" text DEFAULT 'manager' NOT NULL;--> statement-breakpoint
+ALTER TABLE "surveyant_conversations" ADD CONSTRAINT "surveyant_conversations_audience" CHECK ("surveyant_conversations"."workspace_audience" in ('administration','manager','surveyor'));

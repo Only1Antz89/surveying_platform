@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { useCallback, useEffect, useState } from "react";
 import { ShieldCheck } from "lucide-react";
@@ -25,7 +26,7 @@ export function JobAiConsent({ jobId, canEdit }: { jobId: string; canEdit: boole
   const [message, setMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
 
   const fetchStatus = useCallback(async () => {
-    const response = await fetch(`/api/v1/jobs/${jobId}/ai-consent`, { cache: "no-store" });
+    const response = await workspaceFetch(`/api/v1/jobs/${jobId}/ai-consent`, { cache: "no-store" });
     if (!response.ok) throw new Error("unavailable");
     return response.json() as Promise<{ data: AiStatus; meta?: { demo?: boolean } }>;
   }, [jobId]);
@@ -38,7 +39,7 @@ export function JobAiConsent({ jobId, canEdit }: { jobId: string; canEdit: boole
 
   async function record(kind: "granted" | "withdrawn") {
     setBusy(true); setMessage(null);
-    const response = await fetch(`/api/v1/jobs/${jobId}/ai-consent`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: kind, uses: kind === "granted" ? uses : [], method }) });
+    const response = await workspaceFetch(`/api/v1/jobs/${jobId}/ai-consent`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: kind, uses: kind === "granted" ? uses : [], method }) });
     const payload = await response.json().catch(() => null);
     setBusy(false);
     if (!response.ok) { setMessage({ tone: "error", text: payload?.error?.message ?? "The consent could not be recorded." }); return; }

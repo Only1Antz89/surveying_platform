@@ -1,5 +1,7 @@
+import {CasePublicationEditor} from "@/components/case-publication-editor";
+import {AllocationPanel} from "@/components/allocation-panel";
 import { requireWorkspacePageAccess } from "@/lib/workspace-page-access";
-import Link from "next/link";
+import Link from "@/components/workspace-link";
 import { notFound } from "next/navigation";
 import { ClipboardList } from "lucide-react";
 import { jobStageLabels, canConfirmPropertyIdentity, isManagementRole } from "@surveynt/domain";
@@ -13,13 +15,15 @@ export default async function Page({ params }: PageProps<"/app/[organisationSlug
   const [record, access] = await Promise.all([loadJobWorkspace(slug, id), requireFirmAccess(slug)]);
   if (!record) notFound();
   const href = `/app/${slug}/jobs/${id}/survey`;
-  const recording = canConfirmPropertyIdentity(access.userRole, access.canRecordSurvey);
+  const recording = canConfirmPropertyIdentity(access.actorRole??access.userRole, access.canRecordSurvey);
   return <main className="page"><nav aria-label="Breadcrumb"><Link href={`/app/${slug}/jobs`}>Work / Jobs</Link> / {record.job.reference}</nav>
     <header className="page-header"><div><span className="eyebrow">{record.job.reference} · {jobStageLabels[record.job.stage]}</span><h1>{record.property.line1}</h1><p>{record.client.displayName} · {record.job.serviceName}</p></div><Link className="button button-primary" href={href}><ClipboardList size={17} />{recording ? record.survey ? "Continue survey" : "Start survey" : "View survey"}</Link></header>
     {record.preview ? <p className="demo-banner">Design preview — representative records, not persistent survey data.</p> : null}
     <section className="panel"><div className="panel-header"><h2>Inspection workspace</h2></div><div className="panel-body"><dl className="detail-grid"><div><dt>Agreed service</dt><dd>{record.job.serviceName}</dd></div><div><dt>Survey status</dt><dd>{record.survey?.status.replaceAll("_", " ") ?? "Not started"}</dd></div><div><dt>Customer</dt><dd><Link href={`/app/${slug}/customers`}>{record.client.displayName}</Link></dd></div><div><dt>Property</dt><dd><Link href={`/app/${slug}/properties/${record.property.id}`}>{[record.property.line1, record.property.city, record.property.postcode].filter(Boolean).join(", ")}</Link></dd></div></dl>{!recording ? <p>An owner must grant professional recording permission before you can enter findings. You can still manage permitted operational records.</p> : null}</div></section>
     <section className="panel"><div className="panel-header"><h2>Appointments</h2><Link href={`/app/${slug}/calendar`}>Open calendar</Link></div><div className="panel-body">{record.appointments.length ? <ul>{record.appointments.map(visit => <li key={visit.id}>{visit.startsAt.toLocaleString("en-GB", { timeZone: "Europe/London" })} · {visit.status} · <Link href={href}>Open survey</Link></li>)}</ul> : <p>No appointment has been recorded.</p>}</div></section>
+    {isManagementRole(access.userRole)?<AllocationPanel jobId={id} version={record.job.version} canEdit={access.accessLevel==="full"} appointments={record.appointments.map(v=>({...v,startsAt:v.startsAt.toISOString(),endsAt:v.endsAt.toISOString()}))}/>:null}
     {!record.preview ? <PreinspectionQuestionnaire jobId={id} canAssociate={recording && access.accessLevel === "full"} canEdit={["owner", "administrator", "manager", "surveyor"].includes(access.userRole) && access.accessLevel === "full"}/> : null}
+    {!record.preview&&isManagementRole(access.userRole)?<CasePublicationEditor jobId={id} propertyId={record.property.id} canEdit={access.accessLevel==="full"}/>:null}
     {isManagementRole(access.userRole) ? <SurveyFileRetentionReview jobId={id} canEdit={access.accessLevel === "full"}/> : null}
   </main>;
 }

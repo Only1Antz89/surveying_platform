@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { useState } from "react";
 import { CheckCircle2, ShieldCheck, XCircle } from "lucide-react";
@@ -17,7 +18,7 @@ export function SupportApprovalPanel({ initialRequests, organisationSlug }: { in
       setWorkingId(id);
       setError(null);
       setMessage(null);
-      const response = await fetch(`/api/v1/support-sessions/${id}`, {
+      const response = await workspaceFetch(`/api/v1/support-sessions/${id}`, {
         method: "PATCH",
         headers: { "content-type": "application/json", ...(organisationSlug ? { "x-demo-organisation-slug": organisationSlug } : {}) },
         body: JSON.stringify({ decision }),

@@ -1,0 +1,5 @@
+import {platformApiContext} from "@/lib/access";
+import {ok,problem,parseBody} from "@/lib/api";
+import {connectionInput,listConnections,saveConnection} from "@/lib/platform-connections";
+export async function GET(){const c=await platformApiContext();if(!c)return problem(401,"unauthorised","Platform access required.");if(c.role!=="super_admin")return problem(403,"forbidden","Platform administrator access required.");return ok(c.demo?[]:await listConnections());}
+export async function POST(r:Request){const c=await platformApiContext();if(!c)return problem(401,"unauthorised","Platform access required.");if(c.role!=="super_admin")return problem(403,"forbidden","Platform administrator access required.");const p=await parseBody(r,connectionInput);if(!p.success)return problem(422,"invalid_connection","Check connection fields.");if(c.demo)return ok(null,{persisted:false});try{return ok(await saveConnection(c.platformStaffId,p.data));}catch(e){return problem(422,"connection_refused",(e as Error).message);}}

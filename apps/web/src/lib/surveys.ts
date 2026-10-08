@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { and, asc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { assignedJobScope } from "./workspace-scope";
 import { currentProfessionalPermission } from "./professional-membership";
@@ -43,7 +44,7 @@ import { assistantEnabled } from "./assistant-flags";
 import { getObjectStorage, maxUploadBytes } from "./storage";
 import { wholeFormEvidenceEnabled } from "./whole-form-evidence";
 
-export type SurveyContext = { organisationId: string; internalUserId: string | null; role: OrganisationRole; canRecordSurvey?: boolean; canApproveReports?: boolean };
+export type SurveyContext = { organisationId: string; internalUserId: string | null; role: OrganisationRole; actorRole?:OrganisationRole; canRecordSurvey?: boolean; canApproveReports?: boolean };
 
 export class TemplateIntegrityError extends Error {}
 
@@ -72,7 +73,7 @@ export async function pinnedTemplate(tx: TenantTransaction, survey: Pick<typeof 
 export type CreateSurveyInput = { serviceLevel: ServiceLevel; jurisdiction?: UkCountry; templateKey?: string; templateVersion?: string; clientGeneratedId?: string };
 
 export async function createSurvey(context: SurveyContext, jobId: string, input: CreateSurveyInput) {
-  if (!canRecordProfessionalJudgement(context.role, context.canRecordSurvey)) return { kind: "invalid" as const, message: "Professional survey recording permission is required." };
+  if (!canRecordProfessionalJudgement(context.actorRole??context.role, context.canRecordSurvey)) return { kind: "invalid" as const, message: "Professional survey recording permission is required." };
   const db = createDatabase();
   return withTenant(db, context.organisationId, async (tx) => {
     if (!await currentProfessionalPermission(tx, context, "record_survey")) return { kind: "invalid" as const, message: "Your professional recording permission has changed. Reload before continuing." };
@@ -102,7 +103,7 @@ export async function createSurvey(context: SurveyContext, jobId: string, input:
       createdByUserId: context.internalUserId,
     }).returning();
     await refreshHistoryTasks(tx, context.organisationId, survey);
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "survey.created", resourceType: "survey", resourceId: survey.id, metadata: { jobId, template: `${template.key}@${template.version}`, serviceLevel: input.serviceLevel } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "survey.created", resourceType: "survey", resourceId: survey.id, metadata: { jobId, template: `${template.key}@${template.version}`, serviceLevel: input.serviceLevel } }));
     return { kind: "created" as const, survey };
   });
 }
@@ -198,7 +199,7 @@ export async function upgradeHomeSurveyTemplate(context: SurveyContext, surveyId
     const now = new Date();
     await tx.update(surveys).set({ templateVersion: next.version, templateFingerprint: await templateFingerprint(next), version: survey.version + 1, updatedAt: now }).where(eq(surveys.id, survey.id));
     await tx.update(fieldProposals).set({ reviewStatus: "superseded", reviewedAt: now, reviewNote: "Explicit template upgrade; reload evidence." }).where(and(eq(fieldProposals.surveyId, survey.id), eq(fieldProposals.organisationId, context.organisationId), eq(fieldProposals.reviewStatus, "pending")));
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "survey.template_upgraded", resourceType: "survey", resourceId: survey.id, metadata: { fromVersion: survey.templateVersion, toVersion: next.version, previousFingerprint: survey.templateFingerprint, nextFingerprint: await templateFingerprint(next), valuesPreserved: true } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "survey.template_upgraded", resourceType: "survey", resourceId: survey.id, metadata: { fromVersion: survey.templateVersion, toVersion: next.version, previousFingerprint: survey.templateFingerprint, nextFingerprint: await templateFingerprint(next), valuesPreserved: true } }));
     return { kind: "upgraded" as const, version: next.version };
   });
 }
@@ -243,7 +244,7 @@ async function applyOperation(tx: TenantTransaction, context: SurveyContext, sur
     case "set_field": {
       const resolved = resolveField(template, operation.fieldPath);
       if (!resolved) return reject(operationId, "That field is not part of this survey's template.");
-      if (resolved.field.fieldClass === "professional_assessment" && !canRecordProfessionalJudgement(context.role, context.canRecordSurvey)) return reject(operationId, "Only surveyors, administrators and owners can record professional assessments.");
+      if (resolved.field.fieldClass === "professional_assessment" && !canRecordProfessionalJudgement(context.actorRole??context.role, context.canRecordSurvey)) return reject(operationId, "Only surveyors, administrators and owners can record professional assessments.");
       const validation = validateFieldValue(resolved.field, operation.value);
       if (!validation.ok) return reject(operationId, validation.message);
       const [current] = await tx.select().from(surveyFieldValues).where(and(eq(surveyFieldValues.surveyId, survey.id), eq(surveyFieldValues.fieldPath, resolved.path), isNull(surveyFieldValues.supersededAt))).limit(1);
@@ -255,7 +256,7 @@ async function applyOperation(tx: TenantTransaction, context: SurveyContext, sur
       return { id: created.id, fieldPath: created.fieldPath, value: created.value, supersedesId: created.supersedesId };
     }
     case "add_observation": {
-      if (operation.defect && !canRecordProfessionalJudgement(context.role, context.canRecordSurvey)) return reject(operationId, "Only surveyors, administrators and owners can classify a defect.");
+      if (operation.defect && !canRecordProfessionalJudgement(context.actorRole??context.role, context.canRecordSurvey)) return reject(operationId, "Only surveyors, administrators and owners can classify a defect.");
       if (operation.defect && operation.kind !== "current_observation") return reject(operationId, "Only a current observation can be classified as a defect.");
       const element = operation.element ? await elementRow(tx, context.organisationId, survey.id, template, operationId, operation.element, context.internalUserId) : null;
       if (element && !resolveElement(template, element.sectionKey, element.elementKey)?.element.inspectable) return reject(operationId, "Observations attach to building elements only.");
@@ -326,7 +327,7 @@ async function applyOperation(tx: TenantTransaction, context: SurveyContext, sur
  * ledger; replays return "duplicate" with the original record.
  */
 export async function applySyncOperations(context: SurveyContext, surveyId: string, operations: SyncOperation[]) {
-  if (!canRecordProfessionalJudgement(context.role, context.canRecordSurvey)) return operations.map((operation): SyncResult => ({ operationId: operation.operationId, status: "rejected", message: "Professional survey recording permission is required." }));
+  if (!canRecordProfessionalJudgement(context.actorRole??context.role, context.canRecordSurvey)) return operations.map((operation): SyncResult => ({ operationId: operation.operationId, status: "rejected", message: "Professional survey recording permission is required." }));
   const db = createDatabase();
   const results: SyncResult[] = [];
   for (const operation of operations) {
@@ -357,7 +358,7 @@ export async function applySyncOperations(context: SurveyContext, surveyId: stri
   }
   const applied = results.filter((result) => result.status === "applied").length;
   if (applied) {
-    await withTenant(db, context.organisationId, (tx) => tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "survey.synced", resourceType: "survey", resourceId: surveyId, metadata: { applied, total: results.length } }));
+    await withTenant(db, context.organisationId, (tx) => tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "survey.synced", resourceType: "survey", resourceId: surveyId, metadata: { applied, total: results.length } })));
   }
   return results;
 }
@@ -369,7 +370,7 @@ export type StoreMediaInput = { file: File; clientGeneratedId: string; capturedA
 
 /** Stores an immutable original. Idempotent per client id, so a retried upload never duplicates the file. */
 export async function storeSurveyMedia(context: SurveyContext, surveyId: string, input: StoreMediaInput) {
-  if (!canRecordProfessionalJudgement(context.role, context.canRecordSurvey)) return { kind: "invalid" as const, message: "Professional recording permission is required." };
+  if (!canRecordProfessionalJudgement(context.actorRole??context.role, context.canRecordSurvey)) return { kind: "invalid" as const, message: "Professional recording permission is required." };
   const storage = getObjectStorage();
   if (!storage) return { kind: "not_configured" as const, message: "Photo and document storage is not configured. Text capture continues to work." };
   const kind = photoTypes.includes(input.file.type) ? "photo" as const : documentTypes.includes(input.file.type) ? "document" as const : null;
@@ -402,7 +403,7 @@ export async function storeSurveyMedia(context: SurveyContext, surveyId: string,
         originalFilename: input.file.name ? input.file.name.slice(0, 200) : null, capturedAt: input.capturedAt ? new Date(input.capturedAt) : null, captureContext: input.captureContext ?? {},
         uploadedByUserId: context.internalUserId, clientGeneratedId: input.clientGeneratedId,
       }).returning();
-      await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "survey.media_stored", resourceType: "media_asset", resourceId: created.id, metadata: { surveyId, kind, byteSize: input.file.size } });
+      await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "survey.media_stored", resourceType: "media_asset", resourceId: created.id, metadata: { surveyId, kind, byteSize: input.file.size } }));
       return created;
     });
     return { kind: "stored" as const, media, duplicate: false };

@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -31,7 +32,7 @@ export async function PATCH(request: Request, route: RouteContext<"/api/v1/team/
     if (member.role === "surveyor" && parsed.data.permission === "record_survey" && !parsed.data.enabled) return "inherited" as const;
     const column = parsed.data.permission === "record_survey" ? "canRecordSurvey" : "canApproveReports";
     const [updated] = await tx.update(organisationMemberships).set({ [column]: parsed.data.enabled, updatedAt: new Date() }).where(eq(organisationMemberships.id, member.id)).returning();
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: parsed.data.enabled ? "membership.professional_permission_granted" : "membership.professional_permission_revoked", resourceType: "membership", resourceId: member.id, metadata: { recipientUserId: member.userId, permission: parsed.data.permission, previous: member[column], enabled: parsed.data.enabled, reason: parsed.data.reason, grantedAt: new Date().toISOString() } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: parsed.data.enabled ? "membership.professional_permission_granted" : "membership.professional_permission_revoked", resourceType: "membership", resourceId: member.id, metadata: { recipientUserId: member.userId, permission: parsed.data.permission, previous: member[column], enabled: parsed.data.enabled, reason: parsed.data.reason, grantedAt: new Date().toISOString() } }));
     return { id: updated.id, canRecordSurvey: updated.canRecordSurvey, canApproveReports: updated.canApproveReports };
   });
   if (result === "forbidden") return problem(403, "owner_required", "Your owner access has changed. Reload before continuing.");

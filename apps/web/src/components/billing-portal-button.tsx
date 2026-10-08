@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { useState } from "react";
 import { ExternalLink, LoaderCircle } from "lucide-react";
@@ -10,7 +11,7 @@ export function BillingPortalButton({ disabled }: { disabled: boolean }) {
   async function openPortal() {
     setLoading(true);
     setError(null);
-    const response = await fetch("/api/billing/portal", { method: "POST" });
+    const response = await workspaceFetch("/api/billing/portal", { method: "POST" });
     const payload = await response.json();
     setLoading(false);
     if (!response.ok) {

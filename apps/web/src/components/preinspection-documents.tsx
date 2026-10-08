@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 import { useEffect, useRef, useState } from "react";
 type Document = { originalRemovedAt: string | null; id: string; name: string; contentType: string; sizeBytes: number; checksum: string; supersededAt: string | null; createdAt: string; worksKind: string | null; analysis: { status?: string; reason?: string; facts?: { worksCompletionDate?: { value: string; span: { page: number; excerpt: string } } | null } } | null };
 export function PreinspectionDocuments({ base, parentToken, scopedToken, canEdit, canAssociate = false }: { base: string; parentToken?: string; scopedToken: string; canEdit: boolean; canAssociate?: boolean }) {
@@ -9,7 +10,7 @@ export function PreinspectionDocuments({ base, parentToken, scopedToken, canEdit
   const headers = (): Record<string, string> => parentToken ? { "x-quote-token": parentToken, "x-questionnaire-token": scopedToken } : {};
   useEffect(() => {
     const controller = new AbortController();
-    fetch(`${base}/documents`, { headers: parentToken ? { "x-quote-token": parentToken, "x-questionnaire-token": scopedToken } : {}, signal: controller.signal }).then(async response => { const payload = await response.json(); if (!response.ok) throw new Error(payload.error?.message ?? "Documents could not be loaded."); setDocuments(payload.data); }).catch(error => { if (!controller.signal.aborted) setMessage(error.message); });
+    workspaceFetch(`${base}/documents`, { headers: parentToken ? { "x-quote-token": parentToken, "x-questionnaire-token": scopedToken } : {}, signal: controller.signal }).then(async response => { const payload = await response.json(); if (!response.ok) throw new Error(payload.error?.message ?? "Documents could not be loaded."); setDocuments(payload.data); }).catch(error => { if (!controller.signal.aborted) setMessage(error.message); });
     return () => controller.abort();
   }, [base, parentToken, scopedToken]);
   async function upload() {
@@ -18,16 +19,16 @@ export function PreinspectionDocuments({ base, parentToken, scopedToken, canEdit
     try {
       pendingRequestId.current ??= crypto.randomUUID();
       const form = new FormData(); form.set("file", file); form.set("requestId", pendingRequestId.current); if (replaceId) form.set("replacesId", replaceId);
-      const response = await fetch(`${base}/documents`, { method: "POST", headers: headers(), body: form }); const payload = await response.json();
+      const response = await workspaceFetch(`${base}/documents`, { method: "POST", headers: headers(), body: form }); const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "Upload failed.");
-      const list = await fetch(`${base}/documents`, { headers: headers() }); const loaded = await list.json(); if (!list.ok) throw new Error("Document saved, but the list could not be refreshed. Reload this page.");
+      const list = await workspaceFetch(`${base}/documents`, { headers: headers() }); const loaded = await list.json(); if (!list.ok) throw new Error("Document saved, but the list could not be refreshed. Reload this page.");
       setDocuments(loaded.data); setReplaceId(""); pendingRequestId.current = null; if (fileInput.current) fileInput.current.value = ""; setMessage("Private document saved. It is not a survey finding or proof of compliance.");
     } catch (error) { setMessage(error instanceof Error ? error.message : "Upload failed."); } finally { setBusy(false); }
   }
   async function download(document: Document) {
     setBusy(true); setMessage("");
     try {
-      const response = await fetch(`${base}/documents/${document.id}`, { headers: headers() });
+      const response = await workspaceFetch(`${base}/documents/${document.id}`, { headers: headers() });
       if (!response.ok) { const payload = await response.json(); throw new Error(payload.error?.message ?? "Download failed."); }
       const url = URL.createObjectURL(await response.blob()); const link = window.document.createElement("a"); link.href = url; link.download = document.name; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (error) { setMessage(error instanceof Error ? error.message : "Download failed."); } finally { setBusy(false); }
@@ -40,7 +41,7 @@ export function PreinspectionDocuments({ base, parentToken, scopedToken, canEdit
     if (!window.confirm("I have reviewed the original and confirm the association with this property and the selected works. This does not certify legal compliance.")) return;
     setBusy(true); setMessage("");
     try {
-      const response = await fetch(`${base}/documents/${document.id}/association`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ worksKind, reason, checksum: document.checksum, confirm: true }) }); const payload = await response.json();
+      const response = await workspaceFetch(`${base}/documents/${document.id}/association`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ worksKind, reason, checksum: document.checksum, confirm: true }) }); const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "Association could not be confirmed.");
       setMessage("Association audited. Load evidence in the survey to review the completion-year suggestion.");
     } catch (error) { setMessage(error instanceof Error ? error.message : "Association failed."); } finally { setBusy(false); }

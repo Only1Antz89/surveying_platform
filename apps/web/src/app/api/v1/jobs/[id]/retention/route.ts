@@ -29,7 +29,7 @@ export async function PATCH(request: Request, route: RouteContext<"/api/v1/jobs/
   const { id } = await route.params; if (!z.uuid().safeParse(id).success) return problem(404, "not_found", "Job not found.");
   return withTenant(createDatabase(), context.organisationId, async tx => {
     const [member] = await tx.select().from(organisationMemberships).where(and(eq(organisationMemberships.organisationId, context.organisationId), eq(organisationMemberships.userId, context.internalUserId!), eq(organisationMemberships.active, true))).for("share");
-    if (!member || member.role !== context.role || !isManagementRole(member.role)) return problem(403, "forbidden", "Your hold review permission changed.");
+    if (!member || member.role !== (context.actorRole??context.role) || !isManagementRole(member.role)) return problem(403, "forbidden", "Your hold review permission changed.");
     // All hold decisions lock the job, including the first insert with no hold row yet.
     const [job] = await tx.select({ id: jobs.id }).from(jobs).where(and(eq(jobs.organisationId, context.organisationId), eq(jobs.id, id))).for("update");
     if (!job) return problem(404, "not_found", "Job not found.");
@@ -64,7 +64,7 @@ export async function POST(request: Request, route: RouteContext<"/api/v1/jobs/[
   const { id } = await route.params; if (!z.uuid().safeParse(id).success) return problem(404, "not_found", "Job not found.");
   return withTenant(createDatabase(), context.organisationId, async tx => {
     const [member] = await tx.select().from(organisationMemberships).where(and(eq(organisationMemberships.organisationId, context.organisationId), eq(organisationMemberships.userId, context.internalUserId!), eq(organisationMemberships.active, true))).for("share");
-    if (!member || member.role !== context.role || !isManagementRole(member.role)) return problem(403, "forbidden", "Your review permission changed.");
+    if (!member || member.role !== (context.actorRole??context.role) || !isManagementRole(member.role)) return problem(403, "forbidden", "Your review permission changed.");
     const register = await readSurveyFileRetention(tx, context.organisationId, id);
     if (!register) return problem(404, "not_found", "Job not found.");
     if (register.assessment.reviewVersion !== parsed.data.reviewVersion) return problem(409, "file_changed", "Reload and review the current file and policy.");

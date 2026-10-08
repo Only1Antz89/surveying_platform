@@ -2,11 +2,11 @@ export type Coordinate = { latitude: number; longitude: number };
 export type FieldworkStop = {
   id: string; jobId: string; propertyId: string; clientName: string; serviceName: string;
   propertyType: string | null; reference: string; address: string; startsAt: string; endsAt: string;
-  surveyorId: string | null; surveyorName: string; coordinates: Coordinate | null; precision: string;
+  siteStatus?:string|null;siteConfirmedAt?:string|null;surveyorId: string | null; surveyorName: string; coordinates: Coordinate | null; precision: string;
   directDistanceMetres: number | null; openInMapsUrl: string;
 };
 export type FieldworkRoute = {
-  date: string; origin: Coordinate | null; selectedSurveyorId: string | null;
+  date: string; timezone?:string; today?:string; showTomorrow?:boolean; origin: Coordinate | null; selectedSurveyorId: string | null;
   surveyors: { id: string; name: string }[]; stops: FieldworkStop[];
   provider: { status: string; attribution?: string | null; distanceMetres?: number; durationSeconds?: number;
     geometry?: { type: "LineString"; coordinates: [number, number][] }; legs?: { distanceMetres: number; durationSeconds: number }[] };
@@ -61,3 +61,4 @@ export function boundedFieldContext(input:unknown,points:Coordinate[]):{attribut
  });
  return{attribution:data.attribution,caveat:typeof data.caveat==="string"?data.caveat.slice(0,2000):"Mapped context; completeness unverified.",featureCollection:{type:"FeatureCollection",features}};
 }
+export type LivePosition={userId:string;name:string;latitude:number;longitude:number;accuracyMetres:number;observedAt:string;sharingStatus:string};

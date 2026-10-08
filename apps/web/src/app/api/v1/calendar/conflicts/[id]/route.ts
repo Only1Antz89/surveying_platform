@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { changeAppointment } from "@/lib/appointment-change";
 import { CalendarReviewError } from "@/lib/calendar-provider-review";
 import { inspectCalendarConflict,restoreCalendarConflictTime } from "@/lib/calendar-sync";
@@ -46,14 +47,14 @@ export async function POST(request: Request, route: RouteContext<"/api/v1/calend
       if(!result.ok)return result;
       await tx.update(calendarEventLinks).set({externalVersion:external.version,lastSyncedAppointmentVersion:appointment.version+1,updatedAt:new Date()}).where(eq(calendarEventLinks.id,link.id));
       await tx.update(calendarConflicts).set({status:"resolved",resolvedAt:new Date(),resolvedByUserId:context.internalUserId,updatedAt:new Date()}).where(eq(calendarConflicts.id,id));
-      await tx.insert(auditEvents).values({organisationId:context.organisationId,actorUserId:context.internalUserId,action:"calendar.conflict_resolved",resourceType:"calendar_conflict",resourceId:id,metadata:{decision:"accept_external",appointmentVersion:appointment.version+1,reviewedUpdatedAt:parsed.data.expectedUpdatedAt,providerEventId:external.id,providerVersion:external.version,cancelled:external.cancelled,externalCalendarChanged:false,simulated:external.simulated}});
+      await tx.insert(auditEvents).values(workspaceAudit(context,{organisationId:context.organisationId,actorUserId:context.internalUserId,action:"calendar.conflict_resolved",resourceType:"calendar_conflict",resourceId:id,metadata:{decision:"accept_external",appointmentVersion:appointment.version+1,reviewedUpdatedAt:parsed.data.expectedUpdatedAt,providerEventId:external.id,providerVersion:external.version,cancelled:external.cancelled,externalCalendarChanged:false,simulated:external.simulated}}));
       return ok({resolved:true,externalCalendarChanged:false,localCalendarChanged:true,cancelled:external.cancelled,simulated:external.simulated});
     }
     let provider;
     try{provider=await restoreCalendarConflictTime(connection,appointment,link.externalEventId,parsed.data.expectedExternalVersion,{id:conflict.id,kind:conflict.kind});}catch(error){return problem(error instanceof CalendarReviewError?error.status:502,"calendar_resolution_failed",error instanceof CalendarReviewError?error.message:"The provider update could not be confirmed. The conflict remains open.");}
     await tx.update(calendarEventLinks).set({externalEventId:provider.id,externalVersion:provider.version,lastSyncedAppointmentVersion:appointment.version,updatedAt:new Date()}).where(eq(calendarEventLinks.id,link.id));
     await tx.update(calendarConflicts).set({ status: "resolved", resolvedAt: new Date(), resolvedByUserId: context.internalUserId, updatedAt: new Date() }).where(eq(calendarConflicts.id, id));
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "calendar.conflict_resolved", resourceType: "calendar_conflict", resourceId: id, metadata: { decision: parsed.data.decision,appointmentVersion:appointment.version,externalVersion:parsed.data.expectedExternalVersion,reviewedUpdatedAt:parsed.data.expectedUpdatedAt,providerEventId:provider.id,previousEventId:link.externalEventId,providerVersion:provider.version,externalCalendarChanged:provider.changed,simulated:provider.simulated } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "calendar.conflict_resolved", resourceType: "calendar_conflict", resourceId: id, metadata: { decision: parsed.data.decision,appointmentVersion:appointment.version,externalVersion:parsed.data.expectedExternalVersion,reviewedUpdatedAt:parsed.data.expectedUpdatedAt,providerEventId:provider.id,previousEventId:link.externalEventId,providerVersion:provider.version,externalCalendarChanged:provider.changed,simulated:provider.simulated } }));
     return ok({ resolved: true, externalCalendarChanged: provider.changed,simulated:provider.simulated });
   });
 }

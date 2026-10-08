@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { and, desc, eq, inArray, isNull, ne } from "drizzle-orm";
 import { assistantTasks, auditEvents, createDatabase, enrichmentRuns, evidenceLinks, fieldProposals, jobs, organisations, organisationOperationalSettings, preinspectionDocuments, preinspectionSubmissions, properties, propertyIntelligenceSnapshots, surveyElements, surveyFieldValues, surveys, withTenant, type TenantTransaction } from "@surveynt/db";
 import { inspectionWeather, type InspectionWeatherResult } from "@surveynt/property-data";
@@ -152,10 +153,10 @@ export async function reviewProposal(context: SurveyContext, surveyId: string, p
     const now = new Date();
     if (input.decision === "reject") {
       await tx.update(fieldProposals).set({ reviewStatus: "rejected", reviewedAt: now, reviewedByUserId: context.internalUserId, reviewNote: input.note ?? null }).where(and(eq(fieldProposals.id, proposal.id), eq(fieldProposals.reviewStatus, "pending")));
-      await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "survey.proposal_rejected", resourceType: "field_proposal", resourceId: proposal.id, metadata: { surveyId, fieldPath: proposal.fieldPath } });
+      await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "survey.proposal_rejected", resourceType: "field_proposal", resourceId: proposal.id, metadata: { surveyId, fieldPath: proposal.fieldPath } }));
       return { kind: "reviewed", status: "rejected", valueId: null };
     }
-    if (resolved.field.fieldClass === "professional_assessment" && (!canRecordProfessionalJudgement(context.role, context.canRecordSurvey) || !input.confirmProfessional)) return { kind: "invalid", message: "Professional assessments need explicit confirmation by a surveyor." };
+    if (resolved.field.fieldClass === "professional_assessment" && (!canRecordProfessionalJudgement(context.actorRole??context.role, context.canRecordSurvey) || !input.confirmProfessional)) return { kind: "invalid", message: "Professional assessments need explicit confirmation by a surveyor." };
     const [current] = await tx.select().from(surveyFieldValues).where(and(eq(surveyFieldValues.surveyId, surveyId), eq(surveyFieldValues.fieldPath, proposal.fieldPath), isNull(surveyFieldValues.supersededAt))).limit(1);
     if ((current?.id ?? null) !== proposal.baseValueId) {
       await tx.update(fieldProposals).set({ reviewStatus: "superseded", reviewedAt: now, reviewNote: "The field changed after this suggestion was made." }).where(and(eq(fieldProposals.id, proposal.id), eq(fieldProposals.reviewStatus, "pending")));
@@ -201,7 +202,7 @@ export async function reviewProposal(context: SurveyContext, surveyId: string, p
     }
     const status = input.decision === "edit" ? "edited" as const : "accepted" as const;
     await tx.update(fieldProposals).set({ reviewStatus: status, reviewedAt: now, reviewedByUserId: context.internalUserId, reviewNote: input.note ?? null, acceptedValueId: value.id }).where(and(eq(fieldProposals.id, proposal.id), eq(fieldProposals.reviewStatus, "pending")));
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: `survey.proposal_${status}`, resourceType: "field_proposal", resourceId: proposal.id, metadata: { surveyId, fieldPath: proposal.fieldPath, valueId: value.id } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: `survey.proposal_${status}`, resourceType: "field_proposal", resourceId: proposal.id, metadata: { surveyId, fieldPath: proposal.fieldPath, valueId: value.id } }));
     return { kind: "reviewed", status, valueId: value.id };
   });
 }
@@ -211,7 +212,7 @@ export async function updateTask(context: SurveyContext, surveyId: string, taskI
   return withTenant(db, context.organisationId, async (tx) => {
     const [task] = await tx.update(assistantTasks).set({ status: input.status, resolvedAt: new Date(), resolvedByUserId: context.internalUserId, resolutionNote: input.note, updatedAt: new Date() })
       .where(and(eq(assistantTasks.id, taskId), eq(assistantTasks.surveyId, surveyId), eq(assistantTasks.organisationId, context.organisationId), eq(assistantTasks.status, "open"))).returning();
-    if (task) await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: `survey.task_${input.status}`, resourceType: "assistant_task", resourceId: task.id, metadata: { surveyId, kind: task.kind } });
+    if (task) await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: `survey.task_${input.status}`, resourceType: "assistant_task", resourceId: task.id, metadata: { surveyId, kind: task.kind } }));
     return task ?? null;
   });
 }

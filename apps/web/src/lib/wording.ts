@@ -1,10 +1,11 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { and, asc, desc, eq, max } from "drizzle-orm";
 import { z } from "zod";
 import { builtInTemplates, clausePurposes, conditionRatings, inspectionStatuses, nextActions, serviceLevels, unknownPlaceholders, type WordingClause } from "@surveynt/assistant";
 import { auditEvents, createDatabase, wordingClauses, withTenant, type TenantTransaction } from "@surveynt/db";
 import { hasProfessionalPermission, canConfirmPropertyIdentity, ukCountries, type OrganisationRole } from "@surveynt/domain";
 
-export type WordingContext = { organisationId: string; internalUserId: string | null; role: OrganisationRole; canRecordSurvey?: boolean; canApproveReports?: boolean };
+export type WordingContext = { organisationId: string; internalUserId: string | null; role: OrganisationRole; actorRole?:OrganisationRole; canRecordSurvey?: boolean; canApproveReports?: boolean };
 
 const elementKeys = new Set(builtInTemplates.flatMap((template) => template.sections.flatMap((section) => section.elements.map((element) => `${section.key}.${element.key}`))));
 
@@ -56,7 +57,7 @@ export async function listWording(context: Pick<WordingContext, "organisationId"
 }
 
 async function audit(tx: TenantTransaction, context: WordingContext, action: string, id: string, metadata: Record<string, unknown>) {
-  await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action, resourceType: "wording_clause", resourceId: id, metadata });
+  await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action, resourceType: "wording_clause", resourceId: id, metadata }));
 }
 
 /** Creates a draft: version 1 of a new key, or the next version of an existing key. */
@@ -87,7 +88,7 @@ export async function updateWordingDraft(context: WordingContext, id: string, in
 
 /** Approves a draft and retires the previously approved version of the same clause, in one transaction. */
 export async function approveWording(context: WordingContext, id: string) {
-  if (!hasProfessionalPermission(context.role, "approve_reports", context.canApproveReports)) throw new WordingError(403, "forbidden", "Only owners and administrators can approve wording.");
+  if (!hasProfessionalPermission(context.actorRole??context.role, "approve_reports", context.canApproveReports)) throw new WordingError(403, "forbidden", "Only owners and administrators can approve wording.");
   if (!context.internalUserId) throw new WordingError(403, "forbidden", "Approval needs a named user.");
   return withTenant(createDatabase(), context.organisationId, async (tx) => {
     const [row] = await tx.select().from(wordingClauses).where(and(eq(wordingClauses.id, id), eq(wordingClauses.organisationId, context.organisationId))).limit(1);
@@ -113,7 +114,7 @@ export async function retireWording(context: WordingContext, id: string) {
       await audit(tx, context, "wording.draft_deleted", id, { clauseKey: row.clauseKey, version: row.version });
       return null;
     }
-    if (!hasProfessionalPermission(context.role, "approve_reports", context.canApproveReports)) throw new WordingError(403, "forbidden", "Only owners and administrators can retire wording.");
+    if (!hasProfessionalPermission(context.actorRole??context.role, "approve_reports", context.canApproveReports)) throw new WordingError(403, "forbidden", "Only owners and administrators can retire wording.");
     if (row.status !== "approved") throw new WordingError(409, "already_retired", "This version is already retired.");
     const now = new Date();
     const [retired] = await tx.update(wordingClauses).set({ status: "retired", retiredAt: now, retiredByUserId: context.internalUserId, updatedAt: now }).where(eq(wordingClauses.id, id)).returning();

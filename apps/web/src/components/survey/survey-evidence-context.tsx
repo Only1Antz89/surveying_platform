@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 import { createContext, useEffect, useState, type ReactNode } from "react";
 import type { SurveyPack } from "@/lib/surveys";
 export type EvidenceSource = { key: string; name: string; status: string; coverageNotes: string; guardrail: string; categories: { category: string; status: string; coverage: string; retrievedAt: string; fresh: boolean; evidence: { label: string; url: string }[] }[] };
@@ -12,7 +13,7 @@ export function SurveyEvidenceProvider({ children, ...props }: EvidenceContextPr
   useEffect(() => {
     if (!online) return;
     const controller = new AbortController();
-    fetch(`/api/v1/surveys/${surveyId}/evidence`, { signal: controller.signal, cache: "no-store" }).then(async response => {
+    workspaceFetch(`/api/v1/surveys/${surveyId}/evidence`, { signal: controller.signal, cache: "no-store" }).then(async response => {
       const payload = await response.json(); if (!response.ok) throw new Error(payload?.error?.message ?? "Source status could not be loaded.");
       setSources(payload.data.sources); setPreview(Boolean(payload.data.preview)); setError(null);
       setFieldContexts(new Map((payload.data.fields ?? []).map((field: { path: string; context?: string[] }) => [field.path, field.context ?? []])));

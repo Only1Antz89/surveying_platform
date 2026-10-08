@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import "server-only";
 import { createHash, randomBytes } from "node:crypto";
 import { and, desc, eq, sql } from "drizzle-orm";
@@ -38,7 +39,7 @@ export async function changeWebsiteForm(context: { organisationId: string; inter
     }
     const values = { config, revision: input.revision + 1, activeVersionId, updatedByUserId: context.internalUserId, updatedAt: new Date() };
     await tx.insert(websiteFormDrafts).values({ organisationId: context.organisationId, ...values }).onConflictDoUpdate({ target: websiteFormDrafts.organisationId, set: values });
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: `website_form.${input.action}`, resourceType: "website_form", resourceId: context.organisationId, metadata: { revision: values.revision, activeVersionId, restoredFromId } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: `website_form.${input.action}`, resourceType: "website_form", resourceId: context.organisationId, metadata: { revision: values.revision, activeVersionId, restoredFromId } }));
     return values;
   });
 }

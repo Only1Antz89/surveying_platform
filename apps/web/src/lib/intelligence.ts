@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { and, asc, desc, eq, lte, or, sql } from "drizzle-orm";
 import { auditEvents, backgroundJobs, createDatabase, referenceDatasetSyncs, enrichmentRuns, properties, propertyIntelligenceSnapshots, withTenant, type TenantTransaction } from "@surveynt/db";
 import { getSourceDefinition, intelligenceProviders, runProviders, sourceCoversCountry, sourceDefinitions, type IntelligenceProvider, type ProviderResult } from "@surveynt/property-data";
@@ -45,7 +46,7 @@ export async function requestIntelligenceRefresh(context: TenantContext, propert
     if (recent && (recent.status === "queued" || recent.status === "running" || Date.now() - recent.createdAt.getTime() < REUSE_WINDOW_MS)) return { kind: "existing", run: recent };
     const [run] = await tx.insert(enrichmentRuns).values({ organisationId: context.organisationId, propertyId, actorUserId: context.internalUserId, idempotencyKey: input.idempotencyKey ?? `refresh:${crypto.randomUUID()}`, inputFingerprint: fingerprint, locationFingerprint: fingerprint, propertyVersion: property.version }).returning();
     await tx.insert(backgroundJobs).values({ organisationId: context.organisationId, queue: QUEUE, type: "enrich_property", deduplicationKey: `intelligence:${run.id}`, payload: { runId: run.id } });
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "property.intelligence_refresh_requested", resourceType: "property", resourceId: propertyId, metadata: { runId: run.id } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "property.intelligence_refresh_requested", resourceType: "property", resourceId: propertyId, metadata: { runId: run.id } }));
     return { kind: "queued", run };
   });
 }

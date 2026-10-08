@@ -1,9 +1,11 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 import { useEffect, useRef, useState } from "react";
 import { Layers, LocateFixed, Pause, Play, X } from "lucide-react";
 import "maplibre-gl/dist/maplibre-gl.css";
+import "./fieldwork.css";
 import type { Map, Marker } from "maplibre-gl";
-import { boundedFieldContext, interpolateRoad, journeySections, type FieldworkRoute } from "@/lib/fieldwork";
+import { boundedFieldContext, interpolateRoad, journeySections, type FieldworkRoute, type LivePosition } from "@/lib/fieldwork";
 import type { PropertyMapView } from "@/lib/property-map";
 
 const configuredStyle=process.env.NEXT_PUBLIC_MAP_STYLE_URL;
@@ -14,11 +16,11 @@ const terrainUrl=process.env.NEXT_PUBLIC_FIELD_TERRAIN_URL;
 const terrainCredit=process.env.NEXT_PUBLIC_FIELD_TERRAIN_ATTRIBUTION;
 const contextUrl=process.env.NEXT_PUBLIC_FIELD_CONTEXT_URL;
 const empty={type:"FeatureCollection" as const,features:[]};
-export function FieldworkMap({route,selected,onSelect,journey,evidence}:{route:FieldworkRoute;selected:string;onSelect:(id:string)=>void;journey:boolean;evidence:PropertyMapView|null}){
+export function FieldworkMap({route,selected,onSelect,journey,evidence,overview=false,coverageRadiusKm=null,positions=[]}:{route:FieldworkRoute;selected:string;onSelect:(id:string)=>void;journey:boolean;evidence:PropertyMapView|null;overview?:boolean;coverageRadiusKm?:number|null;positions?:LivePosition[]}){
  const container=useRef<HTMLDivElement>(null),mapRef=useRef<Map|null>(null),markers=useRef<{id:string;marker:Marker}[]>([]),callback=useRef(onSelect),selectedRef=useRef(selected),motion=useRef<()=>void>(()=>{}),panelRef=useRef<HTMLDivElement>(null),trigger=useRef<HTMLButtonElement|null>(null);
  const treeController=useRef<{setVisible:(visible:boolean)=>void}|null>(null),toolbar=useRef<HTMLDivElement>(null);
  const [derivedAvailable,setDerivedAvailable]=useState(false),[onlyDerived,setOnlyDerived]=useState(false);
- const [ready,setReady]=useState(false),[error,setError]=useState(""),[view,setView]=useState("map"),[threeD,setThreeD]=useState(true),[buildings,setBuildings]=useState(true),[contextVisible,setContextVisible]=useState(true),[contextCredit,setContextCredit]=useState(""),[panel,setPanel]=useState<"layers"|"view"|null>(null),[hidden,setHidden]=useState<Record<string,boolean>>({}),[playing,setPlaying]=useState(false),[orbit,setOrbit]=useState(false),[reduced,setReduced]=useState(false),[buildingAvailable,setBuildingAvailable]=useState(false);
+ const [ready,setReady]=useState(false),[error,setError]=useState(""),[view,setView]=useState("map"),[threeD,setThreeD]=useState(!overview),[buildings,setBuildings]=useState(true),[contextVisible,setContextVisible]=useState(true),[contextCredit,setContextCredit]=useState(""),[panel,setPanel]=useState<"layers"|"view"|null>(null),[hidden,setHidden]=useState<Record<string,boolean>>({}),[playing,setPlaying]=useState(false),[orbit,setOrbit]=useState(false),[reduced,setReduced]=useState(false),[buildingAvailable,setBuildingAvailable]=useState(false);
  useEffect(()=>{callback.current=onSelect;selectedRef.current=selected;},[onSelect,selected]);
  useEffect(()=>{const q=matchMedia("(prefers-reduced-motion: reduce)"),update=()=>setReduced(q.matches||document.documentElement.dataset.motion==="reduced");update();q.addEventListener("change",update);const observer=new MutationObserver(update);observer.observe(document.documentElement,{attributes:true});return()=>{q.removeEventListener("change",update);observer.disconnect();};},[]);
  function closePanel(){setPanel(null);trigger.current?.focus();}
@@ -26,10 +28,10 @@ export function FieldworkMap({route,selected,onSelect,journey,evidence}:{route:F
  useEffect(()=>{
   let disposed=false;const abort=new AbortController();const resources:Marker[]=[];
   (async()=>{try{
-   const lib=await import("maplibre-gl");lib.setWorkerUrl(`/vendor/maplibre-gl/${lib.getVersion()}/maplibre-gl-worker.mjs`);
+   const lib=await import("maplibre-gl");if(!disposed)setReady(false);lib.setWorkerUrl(`/vendor/maplibre-gl/${lib.getVersion()}/maplibre-gl-worker.mjs`);
    if(disposed||!container.current)return;
    const first=route.stops.find(s=>s.coordinates)?.coordinates??route.origin;
-   const map=new lib.Map({container:container.current,style:styleUrl??{version:8,sources:{},layers:[{id:"field-background",type:"background",paint:{"background-color":"#e9eff7"}}]},center:first?[first.longitude,first.latitude]:[-2.6,51.45],zoom:first?15:6,pitch:48,cooperativeGestures:true,attributionControl:{compact:true,customAttribution:process.env.NEXT_PUBLIC_MAP_ATTRIBUTION??(configuredStyle?undefined:"Development basemap · OpenFreeMap / OpenStreetMap")}});mapRef.current=map;
+   const map=new lib.Map({container:container.current,style:styleUrl??{version:8,sources:{},layers:[{id:"field-background",type:"background",paint:{"background-color":"#e9eff7"}}]},center:first?[first.longitude,first.latitude]:[-2.6,51.45],zoom:first?15:6,pitch:overview?0:48,cooperativeGestures:true,attributionControl:{compact:true,customAttribution:process.env.NEXT_PUBLIC_MAP_ATTRIBUTION??(configuredStyle?undefined:"Development basemap · OpenFreeMap / OpenStreetMap")}});mapRef.current=map;
    map.addControl(new lib.NavigationControl({showCompass:true,showZoom:true}),"top-right");map.addControl(new lib.ScaleControl());
    map.on("error",()=>{if(!disposed)setError("Some map tiles or overlays could not load. The itinerary and property records remain available.");});
    map.on("dragstart",()=>motion.current());map.on("zoomstart",event=>{if(event.originalEvent)motion.current();});map.on("rotatestart",event=>{if(event.originalEvent)motion.current();});
@@ -44,9 +46,11 @@ export function FieldworkMap({route,selected,onSelect,journey,evidence}:{route:F
     if(terrainUrl?.startsWith("https://")&&terrainCredit){map.addSource("field-terrain",{type:"raster-dem",url:terrainUrl,encoding:"terrarium",tileSize:512,attribution:terrainCredit});}
     for(const stop of route.stops){if(!stop.coordinates)continue;const el=document.createElement("button");el.className="field-map-marker";el.textContent=String(route.stops.indexOf(stop)+1);el.setAttribute("aria-label",`Select ${stop.address}`);el.setAttribute("aria-pressed",String(stop.id===selectedRef.current));el.onclick=e=>{e.stopPropagation();motion.current();callback.current(stop.id);};const marker=new lib.Marker({element:el}).setLngLat([stop.coordinates.longitude,stop.coordinates.latitude]).addTo(map);resources.push(marker);markers.current.push({id:stop.id,marker});}
     if(route.origin){const el=document.createElement("span");el.className="field-map-origin";el.textContent="Base";resources.push(new lib.Marker({element:el}).setLngLat([route.origin.longitude,route.origin.latitude]).addTo(map));}
+    if(coverageRadiusKm && route.origin){const ring=Array.from({length:65},(_,i)=>{const angle=i/64*Math.PI*2;return [route.origin!.longitude+Math.cos(angle)*coverageRadiusKm/(111.32*Math.cos(route.origin!.latitude*Math.PI/180)),route.origin!.latitude+Math.sin(angle)*coverageRadiusKm/111.32];});map.addSource("staff-coverage",{type:"geojson",data:{type:"Feature",properties:{},geometry:{type:"Polygon",coordinates:[ring]}}});map.addLayer({id:"staff-coverage-fill",type:"fill",source:"staff-coverage",paint:{"fill-color":"#2455dc","fill-opacity":.12}});map.addLayer({id:"staff-coverage-edge",type:"line",source:"staff-coverage",paint:{"line-color":"#2455dc","line-width":2,"line-dasharray":[3,2]}});map.fitBounds([[Math.min(...ring.map(p=>p[0])),Math.min(...ring.map(p=>p[1]))],[Math.max(...ring.map(p=>p[0])),Math.max(...ring.map(p=>p[1]))]],{padding:45,maxZoom:12,duration:0});}
+    if(overview&&route.stops.some(s=>s.coordinates)){const points=route.stops.flatMap(s=>s.coordinates?[[s.coordinates.longitude,s.coordinates.latitude]]:[]);map.fitBounds([[Math.min(...points.map(p=>p[0])),Math.min(...points.map(p=>p[1]))],[Math.max(...points.map(p=>p[0])),Math.max(...points.map(p=>p[1]))]],{padding:65,maxZoom:12,duration:0});}
     setReady(true);
     if(contextUrl?.startsWith("https://"))try{
-     const response=await fetch(contextUrl,{signal:abort.signal});const text=await response.text();if(text.length>8_000_000)throw Error("Context exceeds size limit");const data=boundedFieldContext(JSON.parse(text),route.stops.flatMap(s=>s.coordinates?[s.coordinates]:[]));
+     const response=await workspaceFetch(contextUrl,{signal:abort.signal});const text=await response.text();if(text.length>8_000_000)throw Error("Context exceeds size limit");const data=boundedFieldContext(JSON.parse(text),route.stops.flatMap(s=>s.coordinates?[s.coordinates]:[]));
      if(disposed||!response.ok||!data)return;
      map.addSource("field-context",{type:"geojson",data:data.featureCollection as never,attribution:data.attribution});
      map.addLayer({id:"field-green",type:"fill",source:"field-context",filter:["in",["get","kind"],["literal",["park","garden","green_space"]]],paint:{"fill-color":"#86b88d","fill-opacity":.4}});
@@ -60,14 +64,14 @@ export function FieldworkMap({route,selected,onSelect,journey,evidence}:{route:F
    });
   }catch{if(!disposed)setError("Interactive mapping is unavailable on this device. Use the itinerary and navigation links.");}})();
   return()=>{disposed=true;abort.abort();resources.forEach(m=>m.remove());markers.current=[];mapRef.current?.remove();mapRef.current=null;treeController.current=null;};
- },[route]);
+ },[route,overview,coverageRadiusKm]);
  useEffect(()=>{if(!ready)return;const map=mapRef.current!;map.easeTo({pitch:threeD?48:0,duration:reduced?0:900});if(map.getLayer("field-buildings"))map.setLayoutProperty("field-buildings","visibility",threeD&&buildings&&!onlyDerived?"visible":"none");if(map.getLayer("field-derived-buildings"))map.setLayoutProperty("field-derived-buildings","visibility",threeD&&buildings?"visible":"none");treeController.current?.setVisible(contextVisible&&threeD);for(const id of ["field-green","field-landmarks"])if(map.getLayer(id))map.setLayoutProperty(id,"visibility",contextVisible&&(id!=="natural-tree-models"||threeD)?"visible":"none");if(map.getLayer("field-satellite"))map.setLayoutProperty("field-satellite","visibility",view==="satellite"?"visible":"none");if(map.getSource("field-terrain"))map.setTerrain(view==="terrain"?{source:"field-terrain",exaggeration:1}:null);},[ready,view,threeD,buildings,onlyDerived,contextVisible,reduced,contextCredit]);
  useEffect(()=>{
   if(!ready||!mapRef.current)return;const map=mapRef.current,added:string[]=[];
   for(const layer of evidence?.layers??[]){const id=`field-evidence-${layer.id}`,flood=layer.layer.toLowerCase();const colour=/zone.?3|fz3/.test(flood)?"#1d4ed8":/zone.?2|fz2/.test(flood)?"#38bdf8":"#8b5cf6";map.addSource(id,{type:"geojson",data:layer.featureCollection as never,attribution:layer.attribution});map.addLayer({id,type:"fill",source:id,filter:["==",["geometry-type"],"Polygon"],layout:{visibility:hidden[layer.id]?"none":"visible"},paint:{"fill-color":colour,"fill-opacity":.28}});map.addLayer({id:`${id}-outline`,type:"line",source:id,layout:{visibility:hidden[layer.id]?"none":"visible"},paint:{"line-color":colour,"line-width":1.5}});added.push(id);}
   return()=>{for(const id of added){if(map.getLayer(`${id}-outline`))map.removeLayer(`${id}-outline`);if(map.getLayer(id))map.removeLayer(id);if(map.getSource(id))map.removeSource(id);}};
  },[ready,evidence,hidden]);
- useEffect(()=>{const map=mapRef.current;if(!ready||!map)return;for(const m of markers.current)m.marker.getElement().setAttribute("aria-pressed",String(m.id===selected));const stop=route.stops.find(s=>s.id===selected);if(stop?.coordinates)map.easeTo({center:[stop.coordinates.longitude,stop.coordinates.latitude],zoom:16,pitch:threeD?48:0,duration:reduced?0:1800});},[ready,selected,route,threeD,reduced]);
+ useEffect(()=>{const map=mapRef.current;if(!ready||!map)return;for(const m of markers.current)m.marker.getElement().setAttribute("aria-pressed",String(m.id===selected));const stop=route.stops.find(s=>s.id===selected);if(stop?.coordinates&&!overview)map.easeTo({center:[stop.coordinates.longitude,stop.coordinates.latitude],zoom:16,pitch:threeD?48:0,duration:reduced?0:1800});},[ready,selected,route,threeD,reduced,overview]);
  useEffect(()=>{
   motion.current=()=>{setPlaying(false);setOrbit(false);};if(!ready||reduced||(!playing&&!orbit)||!mapRef.current)return;
   const map=mapRef.current;let frame=0,cancelled=false,marker:Marker|null=null;const start=performance.now();
@@ -83,6 +87,7 @@ export function FieldworkMap({route,selected,onSelect,journey,evidence}:{route:F
   return()=>{cancelled=true;cancelAnimationFrame(frame);marker?.remove();document.removeEventListener("visibilitychange",visibility);};
  },[ready,playing,orbit,route,reduced]);
  useEffect(()=>{if(!journey)motion.current();},[journey]);
+ useEffect(()=>{if(!ready||!mapRef.current)return;let cancelled=false;const pins:Marker[]=[];(async()=>{const lib=await import("maplibre-gl");if(cancelled||!mapRef.current)return;for(const p of positions){const el=document.createElement("button");el.className=`field-live-marker ${p.sharingStatus==="stale"?"stale":""}`;el.textContent=p.name.split(/\s+/).map(v=>v[0]).join("").slice(0,2);el.title=`${p.name} · ${p.sharingStatus} · ${new Date(p.observedAt).toLocaleTimeString()} · accuracy ${Math.round(p.accuracyMetres)}m`;el.setAttribute("aria-label",el.title);pins.push(new lib.Marker({element:el}).setLngLat([p.longitude,p.latitude]).addTo(mapRef.current));}})();return()=>{cancelled=true;pins.forEach(p=>p.remove());};},[ready,positions]);
  function fit(){motion.current();const points=route.stops.flatMap(s=>s.coordinates?[[s.coordinates.longitude,s.coordinates.latitude] as [number,number]]:[]);if(route.origin)points.push([route.origin.longitude,route.origin.latitude]);if(!points.length)return;mapRef.current?.fitBounds([[Math.min(...points.map(p=>p[0])),Math.min(...points.map(p=>p[1]))],[Math.max(...points.map(p=>p[0])),Math.max(...points.map(p=>p[1]))]],{padding:70,maxZoom:16,duration:reduced?0:1400});}
  const count=(buildings&&threeD&&(buildingAvailable||derivedAvailable)?1:0)+(contextVisible&&contextCredit?1:0)+(evidence?.layers.filter(l=>!hidden[l.id]).length??0);
  return <section className="panel fieldwork-map-panel" aria-label="Interactive fieldwork map">

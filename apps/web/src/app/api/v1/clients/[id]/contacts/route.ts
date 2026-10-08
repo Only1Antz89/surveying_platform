@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { clientApiContext, clientAuditActor, clientDatabase } from "@/lib/client-api-context";
 import { demoStore, recordDemoAudit } from "@/lib/demo-store";
 import { workspaceApiGuard } from "@/lib/workspace-api-guard";
@@ -42,7 +43,7 @@ export async function POST(request: Request, route: RouteContext<"/api/v1/client
     if (!client) return null;
     if (parsed.data.primary) await tx.update(clientContacts).set({ primary: false }).where(and(eq(clientContacts.clientId, id), eq(clientContacts.organisationId, context.organisationId)));
     const [created] = await tx.insert(clientContacts).values({ organisationId: context.organisationId, clientId: id, ...parsed.data }).returning();
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, ...clientAuditActor(context), action: "client_contact.created", resourceType: "client_contact", resourceId: created.id, metadata: { clientId: id, primary: created.primary } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, ...clientAuditActor(context), action: "client_contact.created", resourceType: "client_contact", resourceId: created.id, metadata: { clientId: id, primary: created.primary } }));
     return created;
   });
   return result ? ok(result) : problem(404, "client_not_found", "The client could not be found.");

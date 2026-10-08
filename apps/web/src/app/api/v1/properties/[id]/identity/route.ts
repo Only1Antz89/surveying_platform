@@ -51,7 +51,7 @@ export async function PUT(request: Request, route: RouteContext<"/api/v1/propert
   if (!canMutateOperations(context.role)) return problem(403, "forbidden", "Your role cannot change property records.");
   const parsed = await parseBody(request, identityAction);
   if (!parsed.success) return problem(400, "invalid_request", "The identity change is invalid.", parsed.error.flatten());
-  if ((parsed.data.action === "confirm_uprn" || parsed.data.action === "clear_uprn") && !canConfirmPropertyIdentity(context.role, context.canRecordSurvey)) return problem(403, "forbidden", "Only owners, administrators and surveyors can confirm or clear a UPRN.");
+  if ((parsed.data.action === "confirm_uprn" || parsed.data.action === "clear_uprn") && !canConfirmPropertyIdentity(context.actorRole??context.role, context.canRecordSurvey)) return problem(403, "forbidden", "Only owners, administrators and surveyors can confirm or clear a UPRN.");
   const { id } = await route.params;
   if (context.demo) return ok({ id, action: parsed.data.action, version: parsed.data.version + 1 }, { demo: true, persisted: false });
   if (!z.uuid().safeParse(id).success) return problem(404, "property_not_found", "The property could not be found.");

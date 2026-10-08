@@ -1,0 +1,9 @@
+import {apiContext} from "@/lib/access";
+import {ok,problem,parseBody} from "@/lib/api";
+import {workspaceApiGuard} from "@/lib/workspace-api-guard";
+import {chatInput,chatHistory,sendChat} from "@/lib/surveyant-chat";
+import {canAccessAssignedResource} from "@/lib/workspace-scope";
+import {GovernanceError} from "@/lib/ai-governance";
+import {z} from "zod";
+export async function GET(r:Request){const c=await apiContext(r);if(!c)return problem(401,"unauthorised","Sign in required.");const d=await workspaceApiGuard(r,c);if(d)return d;const jobId=new URL(r.url).searchParams.get("jobId")??undefined;if(jobId&&!z.uuid().safeParse(jobId).success)return problem(422,"invalid_job","Select a case.");if(!jobId&&!["owner","administrator","manager","surveyor"].includes(c.role))return problem(403,"forbidden","Open an assigned case to use Surveyant.");if(jobId&&!c.demo&&!await canAccessAssignedResource(c,"jobs",jobId))return problem(404,"not_found","Case unavailable.");return ok(c.demo?{messages:[]}:await chatHistory(c,{jobId}));}
+export async function POST(r:Request){const c=await apiContext(r);if(!c)return problem(401,"unauthorised","Sign in required.");const d=await workspaceApiGuard(r,c);if(d)return d;if(c.accessLevel!=="full")return problem(403,"read_only","Surveyant conversations require an active workspace.");const p=await parseBody(r,chatInput);if(!p.success)return problem(422,"invalid_message","Enter a message up to 4,000 characters.");if(c.demo)return problem(503,"not_configured","This local demo has no approved Surveyant provider. No records were sent to an AI service.");try{return ok(await sendChat(c,p.data));}catch(e){return e instanceof GovernanceError?problem(e.status,e.code,e.message):problem(503,"assistant_unavailable","Surveyant is temporarily unavailable. Retry later.");}}

@@ -1,0 +1,2 @@
+ALTER TABLE "platform_assistant_threads" ADD COLUMN "support_session_id" uuid;--> statement-breakpoint
+ALTER TABLE "platform_assistant_threads" ADD CONSTRAINT "platform_assistant_threads_support_session_id_support_sessions_id_fk" FOREIGN KEY ("support_session_id") REFERENCES "public"."support_sessions"("id") ON DELETE no action ON UPDATE no action;

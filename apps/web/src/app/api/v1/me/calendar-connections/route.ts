@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { auditEvents, backgroundJobs, calendarConnections, createDatabase, withTenant } from "@surveynt/db";
@@ -35,7 +36,7 @@ export async function POST(request:Request){
       if(connection.status!=="active")return problem(409,"reconnect_required","Reconnect this calendar before synchronising.");
       await tx.insert(backgroundJobs).values({organisationId:context.organisationId,queue:"calendar",type:"calendar_reconcile",deduplicationKey:`calendar-manual:${connection.id}:${Math.floor(Date.now()/60000)}`,payload:{connectionId:connection.id}}).onConflictDoNothing();
     }
-    await tx.insert(auditEvents).values({organisationId:context.organisationId,actorUserId:context.internalUserId,action:`calendar.${parsed.data.action}_requested`,resourceType:"calendar_connection",resourceId:connection.id,metadata:{provider:connection.provider}});
+    await tx.insert(auditEvents).values(workspaceAudit(context,{organisationId:context.organisationId,actorUserId:context.internalUserId,action:`calendar.${parsed.data.action}_requested`,resourceType:"calendar_connection",resourceId:connection.id,metadata:{provider:connection.provider}}));
     return ok({queued:parsed.data.action==="sync",disconnected:parsed.data.action==="disconnect"});
   });
 }

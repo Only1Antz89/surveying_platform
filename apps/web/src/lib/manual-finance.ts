@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { invoiceBalance, refreshInvoiceBalance } from "./invoice-balance";
 import { createHash } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -51,7 +52,7 @@ export async function recordManualReview(context: Context, invoiceId: string, in
     }
     const [review] = await tx.insert(manualPaymentReviews).values({ organisationId: context.organisationId, invoiceId, paymentId: payment.id, requestId: input.requestId, kind, method: input.method, reference: input.reference, evidence: input.evidence, amountMinor: input.amountMinor, occurredAt: new Date(input.occurredAt), fingerprint, verifiedByUserId: context.internalUserId! }).returning();
     await refreshInvoiceBalance(tx, invoice, new Date(input.occurredAt));
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: `manual_payment.${kind}_verified`, resourceType: "client_payment", resourceId: payment.id, metadata: { reviewId: review.id, invoiceId, reference: review.reference, amountMinor: review.amountMinor, currency: invoice.currency, method: review.method } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: `manual_payment.${kind}_verified`, resourceType: "client_payment", resourceId: payment.id, metadata: { reviewId: review.id, invoiceId, reference: review.reference, amountMinor: review.amountMinor, currency: invoice.currency, method: review.method } }));
     // The funds moved outside Surveynt, so no platform payout liability is created.
     return ok(review, { externallyCompleted: true, fundsTransferred: false });
   });
@@ -87,7 +88,7 @@ export async function recordManualDeposit(context: Context, quoteId: string, inp
     const [review] = await tx.insert(manualPaymentReviews).values({ organisationId: context.organisationId, invoiceId: depositInvoice.id, paymentId: payment.id, requestId: input.requestId, kind: "receipt", method: input.method, reference: input.reference, evidence: input.evidence, amountMinor: input.amountMinor, occurredAt: new Date(input.occurredAt), fingerprint, verifiedByUserId: context.internalUserId! }).returning();
     const updatedBalance = await refreshInvoiceBalance(tx, depositInvoice, new Date(input.occurredAt));
     const jobId = updatedBalance.outstandingMinor === 0 ? await instructPaidQuote(tx, quote, depositInvoice.id, payment.id, context.internalUserId!) : null;
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "manual_payment.receipt_verified", resourceType: "client_payment", resourceId: payment.id, metadata: { reviewId: review.id, invoiceId: depositInvoice.id, quoteId, jobId, reference: input.reference, amountMinor: input.amountMinor, currency: quote.currency, method: input.method } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "manual_payment.receipt_verified", resourceType: "client_payment", resourceId: payment.id, metadata: { reviewId: review.id, invoiceId: depositInvoice.id, quoteId, jobId, reference: input.reference, amountMinor: input.amountMinor, currency: quote.currency, method: input.method } }));
     return ok(review, { externallyCompleted: true, fundsTransferred: false, jobId, outstandingMinor: updatedBalance.outstandingMinor });
   });
 }

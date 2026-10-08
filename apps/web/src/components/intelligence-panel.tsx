@@ -1,4 +1,7 @@
 "use client";
+import {WorkspaceAnchor} from "@/components/workspace-anchor";
+
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, ExternalLink, RefreshCw } from "lucide-react";
@@ -52,7 +55,7 @@ function CategoryCard({ item }: { item: IntelligenceCategoryView }) {
     </header>
     {item.stale ? <p className="identity-warning"><AlertTriangle size={14} aria-hidden="true" />Retrieved for an earlier location or identity of this property. Refresh before relying on it.</p> : null}
     {!item.stale && item.newerDataAvailable ? <p className="identity-warning"><AlertTriangle size={14} aria-hidden="true" />A newer version of this dataset is now active. Refresh to check against it.</p> : null}
-    {item.records.length ? <ul className="intel-records">{item.records.map((record) => <li key={record.snapshotId}><RecordSummary category={item.category} record={record} />{record.evidence.length ? <div className="intel-evidence">{record.evidence.map((evidence) => <a key={evidence.url} href={evidence.url} target="_blank" rel="noopener noreferrer">{evidence.label}<ExternalLink size={12} aria-hidden="true" /></a>)}</div> : null}</li>)}</ul> : null}
+    {item.records.length ? <ul className="intel-records">{item.records.map((record) => <li key={record.snapshotId}><RecordSummary category={item.category} record={record} />{record.evidence.length ? <div className="intel-evidence">{record.evidence.map((evidence) => <WorkspaceAnchor key={evidence.url} href={evidence.url} target="_blank" rel="noopener noreferrer">{evidence.label}<ExternalLink size={12} aria-hidden="true" /></WorkspaceAnchor>)}</div> : null}</li>)}</ul> : null}
     {item.message ? <p className="intel-message">{item.message}</p> : null}
     <p className="intel-caveat">{info.caveat}</p>
     <footer className="cell-sub">Retrieved {formatDate(item.retrievedAt)}{item.datasetVersion ? ` · dataset ${item.datasetVersion}` : ""} · coverage {item.coverage.replace(/_/g, " ")}{item.fresh ? "" : " · due for refresh"} · {String(item.licence.attribution ?? item.licence.name ?? "")}</footer>
@@ -71,7 +74,7 @@ export function IntelligencePanel({ propertyId, canRefresh, groups, title }: { p
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/v1/properties/${propertyId}/intelligence`, { cache: "no-store" })
+    workspaceFetch(`/api/v1/properties/${propertyId}/intelligence`, { cache: "no-store" })
       .then(async (response) => ({ response, payload: await response.json().catch(() => null) }))
       .then(({ response, payload }) => {
         if (cancelled) return;
@@ -86,12 +89,12 @@ export function IntelligencePanel({ propertyId, canRefresh, groups, title }: { p
 
   async function refresh() {
     setRefreshing(true); setError(null);
-    const response = await fetch(`/api/v1/properties/${propertyId}/intelligence/refresh`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ idempotencyKey: `ui_${crypto.randomUUID().replace(/-/g, "")}` }) });
+    const response = await workspaceFetch(`/api/v1/properties/${propertyId}/intelligence/refresh`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ idempotencyKey: `ui_${crypto.randomUUID().replace(/-/g, "")}` }) });
     const payload = await response.json().catch(() => null);
     if (!response.ok) { setRefreshing(false); return setError(payload?.error?.message ?? "The refresh could not be started."); }
     const runId = payload.data.runId as string;
     for (let attempt = 0; attempt < 30; attempt += 1) {
-      const status = await fetch(`/api/v1/intelligence/runs/${runId}`, { cache: "no-store" }).then((item) => item.json()).catch(() => null);
+      const status = await workspaceFetch(`/api/v1/intelligence/runs/${runId}`, { cache: "no-store" }).then((item) => item.json()).catch(() => null);
       if (!status?.data || !["queued", "running"].includes(status.data.status)) break;
       await new Promise((resolve) => setTimeout(resolve, 2000));
     }
@@ -124,7 +127,7 @@ export function SourcesPanel({ sources }: { sources: PropertyIntelligence["sourc
     <div className="panel-header"><div><h2 id="sources-heading">Sources and licences</h2><p>Each source stays disabled until its licence, coverage and access terms are verified.</p></div></div>
     <div className="data-table-wrap"><table className="data-table"><thead><tr><th>Source</th><th>Status</th><th>Coverage</th><th>Licence and attribution</th><th>Guardrail</th></tr></thead><tbody>
       {sources.map((source) => <tr key={source.key}>
-        <td data-label="Source"><a href={source.documentationUrl} target="_blank" rel="noopener noreferrer"><strong>{source.name}</strong></a><span className="cell-sub">{source.organisation}</span></td>
+        <td data-label="Source"><WorkspaceAnchor href={source.documentationUrl} target="_blank" rel="noopener noreferrer"><strong>{source.name}</strong></WorkspaceAnchor><span className="cell-sub">{source.organisation}</span></td>
         <td data-label="Status"><StatusDot tone={source.enabled ? "green" : source.registerStatus === "blocked" ? "red" : "slate"}>{source.enabled ? "Enabled" : source.registerStatus === "blocked" ? "Blocked (licence)" : "Disabled: awaiting verification"}</StatusDot><span className="cell-sub">Register checked {source.checkedAt}</span></td>
         <td data-label="Coverage">{source.coverage.join(", ")}<span className="cell-sub">{source.coversProperty ? "Covers this property's country" : "Does not cover this property's country"} · {source.coverageNotes}</span></td>
         <td data-label="Licence">{String(source.licence.name)}<span className="cell-sub">{String(source.licence.attribution)}</span></td>
@@ -138,7 +141,7 @@ export function PropertySourcesTab({ propertyId }: { propertyId: string }) {
   const [sources, setSources] = useState<PropertyIntelligence["sources"] | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    fetch(`/api/v1/properties/${propertyId}/intelligence`, { cache: "no-store" }).then(async (response) => {
+    workspaceFetch(`/api/v1/properties/${propertyId}/intelligence`, { cache: "no-store" }).then(async (response) => {
       const payload = await response.json();
       if (!response.ok) setError(payload?.error?.message ?? "Sources are unavailable.");
       else setSources(payload.data.sources);

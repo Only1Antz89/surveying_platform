@@ -6,6 +6,7 @@ import { ModalKeyboard } from "@/components/modal-keyboard";
 import { appearanceBootstrap } from "@/lib/appearance";
 import "./globals.css";
 import "./surveynt.css";
+import "./workspace-ui.css";
 
 export const metadata: Metadata = {
   title: { default: "Surveynt", template: "%s · Surveynt" },

@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import "server-only";
 import { verifiedSurveyFileOriginalRemoval, verifiedSurveyFileOriginalRemovalDates } from "./survey-file-original-removal-status";
 import { createHash, randomUUID } from "node:crypto";
@@ -57,7 +58,7 @@ export async function confirmDocumentWorks(tx: TenantTransaction, scope: Scope, 
   const [property] = await tx.select().from(properties).where(and(eq(properties.id, scope.propertyId), eq(properties.organisationId, scope.organisationId))).for("share").limit(1);
   if (!property) throw new PreinspectionError(404, "property_unavailable", "Property unavailable.");
   await tx.update(preinspectionDocuments).set({ worksKind: parsed.data.worksKind, associationFingerprint: await propertyFingerprint(property), associatedAt: new Date(), associatedByUserId: context.internalUserId, associationReason: parsed.data.reason }).where(eq(preinspectionDocuments.id, id));
-  await tx.insert(auditEvents).values({ organisationId: scope.organisationId, actorUserId: context.internalUserId, action: "questionnaire.document_works_confirmed", resourceType: "preinspection_document", resourceId: id, metadata: { jobId: scope.jobId, worksKind: parsed.data.worksKind, checksum: row.checksum, reason: parsed.data.reason } });
+  await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: scope.organisationId, actorUserId: context.internalUserId, action: "questionnaire.document_works_confirmed", resourceType: "preinspection_document", resourceId: id, metadata: { jobId: scope.jobId, worksKind: parsed.data.worksKind, checksum: row.checksum, reason: parsed.data.reason } }));
   return { confirmed: true };
 }
 export async function downloadPreinspectionDocument(tx: TenantTransaction, scope: Scope, id: string) {

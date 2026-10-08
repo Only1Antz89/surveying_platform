@@ -526,6 +526,41 @@
       "when": 1791427200000,
       "tag": "0074_questionnaire_answer_disposition",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1791473512863,
+      "tag": "0075_busy_patch",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1791474095071,
+      "tag": "0076_curvy_shadowcat",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1791475903957,
+      "tag": "0077_fuzzy_silverclaw",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1791476100722,
+      "tag": "0078_fearless_rumiko_fujikawa",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1791494947674,
+      "tag": "0079_yellow_warbound",
+      "breakpoints": true
     }
   ]
 }

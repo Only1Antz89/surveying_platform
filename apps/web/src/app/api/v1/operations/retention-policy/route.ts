@@ -19,7 +19,7 @@ export async function PATCH(request: Request) {
   return withTenant(createDatabase(), context.organisationId, async tx => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`retention-policy:${context.organisationId}`},0))`);
     const [member] = await tx.select().from(organisationMemberships).where(and(eq(organisationMemberships.organisationId, context.organisationId), eq(organisationMemberships.userId, context.internalUserId!), eq(organisationMemberships.active, true))).for("share");
-    if (!member || member.role !== context.role || !isManagementRole(member.role)) return problem(403, "forbidden", "Your policy approval permission changed.");
+    if (!member || member.role !== (context.actorRole??context.role) || !isManagementRole(member.role)) return problem(403, "forbidden", "Your policy approval permission changed.");
     const [settings] = await tx.select().from(organisationOperationalSettings).where(eq(organisationOperationalSettings.organisationId, context.organisationId)).for("update");
     const previous = settings?.surveyFileRetentionPolicy ?? null;
     if ((previous?.revision ?? 0) !== parsed.data.expectedRevision) return problem(409, "policy_changed", "Reload and review the current practice policy.");

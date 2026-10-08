@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { z } from "zod";
 import { and,eq } from "drizzle-orm";
 import { auditEvents,backgroundJobs,createDatabase,organisationDocuments,withTenant } from "@surveynt/db";
@@ -37,7 +38,7 @@ export async function POST(request:Request,route:RouteContext<"/api/v1/documents
     const now=new Date(),absent=parsed.data.outcome==="confirm_absent";
     await tx.update(backgroundJobs).set({status:absent?"completed":"cancelled",deduplicationKey:absent?job.deduplicationKey:null,error:null,lockedUntil:null,completedAt:absent?now:null,updatedAt:now}).where(eq(backgroundJobs.id,job.id));
     await tx.update(organisationDocuments).set({purgeStatus:absent?"purged":"retained",purgedAt:absent?now:null,purgeRequestedAt:absent?document.purgeRequestedAt:null,updatedAt:now}).where(eq(organisationDocuments.id,id));
-    await tx.insert(auditEvents).values({organisationId:context.organisationId,actorUserId:context.internalUserId,action:"document.removal_reviewed",resourceType:"organisation_document",resourceId:id,metadata:{jobId:job.id,attemptId:job.leaseToken,outcome:parsed.data.outcome,evidence:parsed.data.evidence,providerOperationsSettled:true,confirmed:true,checksum:document.checksum}});
+    await tx.insert(auditEvents).values(workspaceAudit(context,{organisationId:context.organisationId,actorUserId:context.internalUserId,action:"document.removal_reviewed",resourceType:"organisation_document",resourceId:id,metadata:{jobId:job.id,attemptId:job.leaseToken,outcome:parsed.data.outcome,evidence:parsed.data.evidence,providerOperationsSettled:true,confirmed:true,checksum:document.checksum}}));
     return ok({id,purgeStatus:absent?"purged":"retained",updatedAt:now});
   });
 }

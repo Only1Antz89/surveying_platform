@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { useEffect, useRef, useState } from "react";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -24,7 +25,7 @@ export function PropertyMap({ propertyId }: { propertyId: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/v1/properties/${propertyId}/map`, { cache: "no-store" })
+    workspaceFetch(`/api/v1/properties/${propertyId}/map`, { cache: "no-store" })
       .then(async (response) => ({ response, payload: await response.json().catch(() => null) }))
       .then(({ response, payload }) => {
         if (cancelled) return;

@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -21,7 +22,7 @@ export function DocumentArchive() {
   async function load() {
     setBusy(true); setMessage("");
     try {
-      const response = await fetch("/api/v1/documents?archived=true", { cache: "no-store" });
+      const response = await workspaceFetch("/api/v1/documents?archived=true", { cache: "no-store" });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "The archive could not be loaded.");
       setRows(payload.data);
@@ -32,7 +33,7 @@ export function DocumentArchive() {
     if (!confirm(`Restore ${document.name} to the document register?`)) return;
     setBusy(true); setMessage("");
     try {
-      const response = await fetch(`/api/v1/documents/${document.id}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "restore", expectedChecksum: document.checksum }) });
+      const response = await workspaceFetch(`/api/v1/documents/${document.id}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "restore", expectedChecksum: document.checksum }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "The document could not be restored.");
       setRows(current => current?.filter(row => row.id !== document.id) ?? null);
@@ -48,7 +49,7 @@ export function DocumentArchive() {
     if(!confirm(cancel?`Cancel the pending removal of ${document.name}? Cancellation is possible only before deletion starts.`:`Permanently remove ${document.name}? The stored original cannot be restored after deletion. Audit metadata will remain.`))return;
     setBusy(true);setMessage("");
     try{
-      const response=await fetch(`/api/v1/documents/${document.id}/removal`,{method:cancel?"PATCH":"POST",headers:{"content-type":"application/json"},body:JSON.stringify({expectedChecksum:document.checksum,expectedUpdatedAt:document.updatedAt,reason,confirmed:true})});
+      const response=await workspaceFetch(`/api/v1/documents/${document.id}/removal`,{method:cancel?"PATCH":"POST",headers:{"content-type":"application/json"},body:JSON.stringify({expectedChecksum:document.checksum,expectedUpdatedAt:document.updatedAt,reason,confirmed:true})});
       const payload=await response.json();if(!response.ok)throw new Error(payload.error?.message??"Removal request failed.");
       await load();setMessage(cancel?"Removal cancelled; the original remains archived.":"Removal requested. Refresh the archive to check the worker result.");router.refresh();
     }catch(error){setMessage(error instanceof Error?error.message:"Removal request failed.");}finally{setBusy(false);}
@@ -59,7 +60,7 @@ export function DocumentArchive() {
     if(!confirm("Confirm you checked provider evidence and all storage operations have settled. The server will verify the original's presence or absence before saving this review."))return;
     setBusy(true);setMessage("");
     try{
-      const response=await fetch(`/api/v1/documents/${document.id}/removal-review`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({outcome,expectedChecksum:document.checksum,expectedUpdatedAt:document.updatedAt,expectedAttempts:document.removalReview.attempts,expectedLeaseToken:document.removalReview.leaseToken,evidence,providerOperationsSettled:true,confirmed:true})});
+      const response=await workspaceFetch(`/api/v1/documents/${document.id}/removal-review`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({outcome,expectedChecksum:document.checksum,expectedUpdatedAt:document.updatedAt,expectedAttempts:document.removalReview.attempts,expectedLeaseToken:document.removalReview.leaseToken,evidence,providerOperationsSettled:true,confirmed:true})});
       const payload=await response.json();if(!response.ok)throw new Error(payload.error?.message??"Storage review failed.");
       await load();setMessage(outcome==="keep_original"?"Verified original retained in the archive.":"Original absence verified and review recorded.");router.refresh();
     }catch(error){setMessage(error instanceof Error?error.message:"Storage review failed.");}finally{setBusy(false);}
@@ -68,7 +69,7 @@ export function DocumentArchive() {
     if(!reviewing)return;setBusy(true);setMessage("");
     try{
       const date=String(form.get("retentionUntil")??"");
-      const response=await fetch(`/api/v1/documents/${reviewing.id}/retention`,{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({expectedChecksum:reviewing.checksum,expectedUpdatedAt:reviewing.updatedAt,expectedLegalHold:reviewing.legalHold,expectedRetentionUntil:reviewing.retentionUntil,retentionUntil:date?new Date(date).toISOString():null,legalHold:form.get("legalHold")==="on",reason:form.get("reason"),confirmed:form.get("confirmed")==="on"})});
+      const response=await workspaceFetch(`/api/v1/documents/${reviewing.id}/retention`,{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({expectedChecksum:reviewing.checksum,expectedUpdatedAt:reviewing.updatedAt,expectedLegalHold:reviewing.legalHold,expectedRetentionUntil:reviewing.retentionUntil,retentionUntil:date?new Date(date).toISOString():null,legalHold:form.get("legalHold")==="on",reason:form.get("reason"),confirmed:form.get("confirmed")==="on"})});
       const payload=await response.json();if(!response.ok)throw new Error(payload.error?.message??"Retention review failed.");
       setRows(current=>current?.map(row=>row.id===reviewing.id?{...row,...payload.data}:row)??null);setReviewing(null);setMessage("Retention review recorded. The original remains stored.");router.refresh();
     }catch(error){setMessage(error instanceof Error?error.message:"Retention review failed.");}finally{setBusy(false);}

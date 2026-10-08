@@ -1,0 +1,15 @@
+import "server-only";
+import {lookup} from "node:dns/promises";
+import {request} from "node:https";
+import {isIP} from "node:net";
+/** Administrator entries are restricted to an operator-maintained host allowlist.
+ * Resolve and pin the socket address, reject redirects, and cap every response. */
+export function allowedEndpoint(value:string,allowed=(process.env.SURVEYNT_OUTBOUND_HOSTS??"").split(",")){
+ const url=new URL(value);if(url.protocol!=="https:"||url.username||url.password||url.hash||url.search||url.port&&url.port!=="443"||isIP(url.hostname)||!allowed.map(s=>s.trim().toLowerCase()).includes(url.hostname.toLowerCase()))throw Error("Use an HTTPS endpoint on the approved outbound host list, without credentials or query parameters.");return url;
+}
+export function publicAddress(ip:string){if(isIP(ip)===4){const [a,b]=ip.split(".").map(Number);return !(a===0||a===10||a===127||a===169&&b===254||a===172&&b>=16&&b<=31||a===192&&(b===168||b===0||b===2)||a===100&&b>=64&&b<=127||a>=224||a===198&&(b===18||b===19||b===51)||a===203&&b===0);}if(isIP(ip)===6)return /^2[0-9a-f]{3}:/i.test(ip)&&!ip.toLowerCase().startsWith("2001:db8:");return false;}
+export async function connectionJson(endpoint:string,path:string,{body,secret,query,headers={}}:{body?:unknown;secret?:string;query?:Record<string,string>;headers?:Record<string,string>}={}){
+ const base=allowedEndpoint(endpoint);const url=new URL(base.toString().replace(/\/$/,"")+path);if(url.origin!==base.origin)throw Error("Provider path escaped the approved endpoint.");for(const [key,value] of Object.entries(query??{}))url.searchParams.set(key,value);
+ const addresses=await Promise.race([lookup(url.hostname,{all:true}),new Promise<never>((_,reject)=>{const timer=setTimeout(()=>reject(Error("Provider DNS lookup timed out.")),5000);timer.unref();})]);if(!addresses.length||addresses.some(a=>!publicAddress(a.address)))throw Error("Provider resolved to a restricted address.");const pinned=addresses[0];const encoded=body===undefined?undefined:JSON.stringify(body);
+ return new Promise<unknown>((resolve,reject)=>{const req=request(url,{method:encoded?"POST":"GET",headers:{accept:"application/json",...(encoded?{"content-type":"application/json"}:{}),...(secret?{authorization:`Bearer ${secret}`} : {}),...headers},lookup:(_host,_options,callback)=>callback(null,pinned.address,pinned.family),timeout:15000},res=>{if((res.statusCode??500)<200||(res.statusCode??500)>=300){res.resume();reject(Error("Provider returned an unsuccessful response."));return;}let size=0;const chunks:Buffer[]=[];res.on("data",(chunk:Buffer)=>{size+=chunk.length;if(size>2_000_000){req.destroy(Error("Provider response exceeds limit."));return;}chunks.push(chunk);});res.on("end",()=>{try{resolve(JSON.parse(Buffer.concat(chunks).toString()));}catch{reject(Error("Provider response is not JSON."));}});res.on("error",reject);});req.on("timeout",()=>req.destroy(Error("Provider timed out.")));req.on("error",reject);if(encoded)req.write(encoded);req.end();});
+}

@@ -14,3 +14,9 @@ test-results
 skills-lock.json
 # Copied from node_modules at build time
 apps/web/public/vendor/
+
+# Generated native projects and local Expo state
+apps/mobile/.expo/
+apps/mobile/ios/
+apps/mobile/android/
+apps/mobile/dist/

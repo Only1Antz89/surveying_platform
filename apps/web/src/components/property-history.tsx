@@ -1,4 +1,7 @@
 "use client";
+import {WorkspaceAnchor} from "@/components/workspace-anchor";
+
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { useEffect, useState } from "react";
 import { AlertTriangle, ExternalLink, History } from "lucide-react";
@@ -27,7 +30,7 @@ export function PropertyHistoryPanel({ propertyId }: { propertyId: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/v1/properties/${propertyId}/history`, { cache: "no-store" })
+    workspaceFetch(`/api/v1/properties/${propertyId}/history`, { cache: "no-store" })
       .then(async (response) => ({ response, payload: await response.json().catch(() => null) }))
       .then(({ response, payload }) => {
         if (cancelled) return;
@@ -61,7 +64,7 @@ export function PropertyHistoryPanel({ propertyId }: { propertyId: string }) {
         </dl>
         {event.stale ? <p className="identity-warning"><AlertTriangle size={14} aria-hidden="true" />Retrieved for an earlier location or identity of this property. Refresh before relying on it.</p> : null}
         {event.notes.map((note) => <span key={note} className="cell-sub">{note}</span>)}
-        {event.evidence.length ? <div className="intel-evidence">{event.evidence.filter((item) => item.url.startsWith("https://")).map((item) => <a key={item.url} href={item.url} target="_blank" rel="noopener noreferrer">{item.label}<ExternalLink size={12} aria-hidden="true" /></a>)}</div> : null}
+        {event.evidence.length ? <div className="intel-evidence">{event.evidence.filter((item) => item.url.startsWith("https://")).map((item) => <WorkspaceAnchor key={item.url} href={item.url} target="_blank" rel="noopener noreferrer">{item.label}<ExternalLink size={12} aria-hidden="true" /></WorkspaceAnchor>)}</div> : null}
       </li>)}
     </ol> : <div className="empty-state compact"><strong>No history recorded yet</strong><span>This is not the same as no history: sources may not have been checked, or may not link records to this property.</span></div>}
   </section>;

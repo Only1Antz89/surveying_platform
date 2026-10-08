@@ -12,7 +12,7 @@ export async function currentProfessionalPermission(tx: TenantTransaction, conte
     eq(organisationMemberships.userId, context.internalUserId),
     eq(organisationMemberships.active, true),
   )).for("share").limit(1);
-  if (!membership || membership.role !== context.role) return false;
+  if (!membership || membership.role !== (context.actorRole??context.role)) return false;
   return hasProfessionalPermission(membership.role, permission,
     permission === "record_survey" ? membership.canRecordSurvey : membership.canApproveReports);
 }

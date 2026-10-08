@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { servicePricingInput } from "@/lib/service-pricing-input";
 import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { isManagementRole } from "@surveynt/domain";
@@ -28,7 +29,7 @@ export async function POST(request: Request) {
   const created = await withTenant(createDatabase(), context.organisationId, async (tx) => {
     const [service] = await tx.insert(serviceDefinitions).values({ organisationId: context.organisationId, name: parsed.data.name, defaultFee: (parsed.data.baseAmountMinor / 100).toFixed(2), active: parsed.data.active }).returning();
     const [pricing] = await tx.insert(servicePricingVersions).values({ organisationId: context.organisationId, serviceDefinitionId: service.id, version: 1, baseAmountMinor: parsed.data.baseAmountMinor, vatBasisPoints: parsed.data.vatBasisPoints, depositBasisPoints: parsed.data.depositBasisPoints, durationMinutes: parsed.data.durationMinutes, validityDays: parsed.data.validityDays, surcharges: parsed.data.surcharges, recommendationRules: parsed.data.recommendationRules, active: parsed.data.active, createdByUserId: context.internalUserId }).returning();
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "service_pricing.created", resourceType: "service_definition", resourceId: service.id, metadata: { pricingVersionId: pricing.id } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "service_pricing.created", resourceType: "service_definition", resourceId: service.id, metadata: { pricingVersionId: pricing.id } }));
     return { service, pricing };
   });
   return ok(created);

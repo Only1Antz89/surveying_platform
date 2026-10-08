@@ -1,7 +1,8 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { FormEvent, useEffect, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/workspace-link";
 import { ArrowLeft, ClipboardList } from "lucide-react";
 import { builtInTemplates, serviceLevelLabels, serviceLevels, type ServiceLevel } from "@surveynt/assistant";
 import { ukCountries, ukCountryLabels } from "@surveynt/domain";
@@ -25,7 +26,7 @@ export function SurveyEntry({ slug, jobId, offlineScope, canEdit, canJudge, canA
     (async () => {
       await offlineStore.expireStalePacks().catch(() => 0);
       try {
-        const response = await fetch(`/api/v1/jobs/${jobId}/survey`, { cache: "no-store" });
+        const response = await workspaceFetch(`/api/v1/jobs/${jobId}/survey`, { cache: "no-store" });
         const payload = await response.json();
         if ([401, 403, 404].includes(response.status)) {
           const remembered = await offlineStore.surveyForJob(jobId);
@@ -53,7 +54,7 @@ export function SurveyEntry({ slug, jobId, offlineScope, canEdit, canJudge, canA
     setStarting(true); setError(null);
     const form = new FormData(event.currentTarget);
     const [templateKey, templateVersion] = String(form.get("template") ?? "").split("@");
-    const response = await fetch(`/api/v1/jobs/${jobId}/survey`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ serviceLevel: form.get("serviceLevel"), jurisdiction: form.get("jurisdiction") || undefined, templateKey, templateVersion }) });
+    const response = await workspaceFetch(`/api/v1/jobs/${jobId}/survey`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ serviceLevel: form.get("serviceLevel"), jurisdiction: form.get("jurisdiction") || undefined, templateKey, templateVersion }) });
     const payload = await response.json(); setStarting(false);
     if (!response.ok) return setError(payload?.error?.message ?? "The survey could not be started.");
     await offlineStore.rememberSurveyForJob(jobId, payload.data.surveyId);
