@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, lt, lte, or, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, lt, lte, or, isNull, sql } from "drizzle-orm";
 import { auditEvents, backgroundJobs, communicationDeliveries, createDatabase, type Database, organisationMemberships, organisationOperationalSettings, organisations, subscriptions, users } from "@surveynt/db";
 import { applicationUrl, EmailDeliveryError, emailDeliveryConfigured, type EmailJobType, emailJobTypes, renderEmail, sendEmail } from "./email";
 import { shouldSendNotification } from "./notification-preferences";
@@ -75,8 +75,10 @@ export async function completeEmailDelivery(db: Database, jobId: string, leaseTo
   });
 }
 
-export async function recoverEmailLeases(db: Database, now = new Date()) {
+export async function recoverEmailLeases(db: Database) {
   return db.transaction(async tx => {
+    const clock = await tx.execute(sql`select clock_timestamp()::text as "now"`);
+    const now = new Date(clock.rows[0].now as string);
     const rows = await tx.select().from(backgroundJobs).where(and(eq(backgroundJobs.queue,"email"),inArray(backgroundJobs.status,["processing","sending"]),or(lte(backgroundJobs.lockedUntil,now),and(isNull(backgroundJobs.lockedUntil),lte(backgroundJobs.updatedAt,new Date(now.getTime()-leaseMs)))))).for("update",{skipLocked:true}).limit(100);
     for (const job of rows) {
       // Older workers had no attempt token and may already have sent the message.
@@ -96,15 +98,15 @@ export async function processEmailQueue(limit = 20) {
   if (!process.env.DATABASE_ADMIN_URL) throw new Error("DATABASE_ADMIN_URL is required for email delivery.");
   if (!emailDeliveryConfigured()) return {configured:false,claimed:0,completed:0,retried:0,failed:0,verificationRequired:0,recovered:0,suppressed:0};
   const startedAt = Date.now();
-  const db = createDatabase(process.env.DATABASE_ADMIN_URL), now = new Date();
-  const recovered = await recoverEmailLeases(db,now);
+  const db = createDatabase(process.env.DATABASE_ADMIN_URL);
+  const recovered = await recoverEmailLeases(db);
   const bound = Number.isFinite(limit) ? Math.max(1,Math.min(Math.floor(limit),50)) : 20;
-  const candidates = await db.select().from(backgroundJobs).where(and(eq(backgroundJobs.queue,"email"),eq(backgroundJobs.status,"queued"),lte(backgroundJobs.availableAt,now),lt(backgroundJobs.attempts,maximumAttempts))).orderBy(asc(backgroundJobs.availableAt),asc(backgroundJobs.createdAt)).limit(bound*2);
+  const candidates = await db.select().from(backgroundJobs).where(and(eq(backgroundJobs.queue,"email"),eq(backgroundJobs.status,"queued"),lte(backgroundJobs.availableAt,sql`clock_timestamp()`),lt(backgroundJobs.attempts,maximumAttempts))).orderBy(asc(backgroundJobs.availableAt),asc(backgroundJobs.createdAt)).limit(bound*2);
   let claimed=0,completed=0,retried=0,failed=0,verificationRequired=0,suppressed=0;
   for (const candidate of candidates) {
     if (claimed >= bound || Date.now()-startedAt > 40000) break;
     const token = crypto.randomUUID();
-    const [job] = await db.update(backgroundJobs).set({status:"processing",attempts:candidate.attempts+1,leaseToken:token,lockedUntil:new Date(Date.now()+leaseMs),error:null,updatedAt:new Date()}).where(and(eq(backgroundJobs.id,candidate.id),eq(backgroundJobs.status,"queued"),eq(backgroundJobs.attempts,candidate.attempts))).returning();
+    const [job] = await db.update(backgroundJobs).set({status:"processing",attempts:candidate.attempts+1,leaseToken:token,lockedUntil:sql`clock_timestamp() + interval '5 minutes'`,error:null,updatedAt:sql`clock_timestamp()`}).where(and(eq(backgroundJobs.id,candidate.id),eq(backgroundJobs.status,"queued"),eq(backgroundJobs.attempts,candidate.attempts),lte(backgroundJobs.availableAt,sql`clock_timestamp()`))).returning();
     if (!job) continue;
     claimed++;
     let dispatched=false,accepted=false;

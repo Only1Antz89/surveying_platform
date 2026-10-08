@@ -26,6 +26,26 @@ describe.skipIf(!integrationEnabled)("durable email dispatch recovery",()=>{
     const [operator]=await db.insert(platformStaff).values({clerkUserId:"email-operator",role:"super_admin"}).returning();state.operator.platformStaffId=operator.id;
   },120000);
   afterAll(async()=>{vi.unstubAllEnvs();await database?.drop();await stopRelay();});
+  it("uses the database clock for a newly available job when the worker clock is behind",async()=>{
+    const {record}=await job();state.send.mockReset().mockResolvedValue({providerMessageId:"mail-clock-skew"});
+    vi.useFakeTimers({toFake:["Date"]});vi.setSystemTime(new Date(Date.now()-60000));
+    try {
+      await processEmailQueue();
+      expect(state.send).toHaveBeenCalledTimes(1);
+      const current=await stored(record.id);
+      expect(current.status).toBe("completed");
+    } finally {vi.useRealTimers();}
+  });
+  it("does not recover a live lease when the worker clock runs ahead",async()=>{
+    const {record}=await job({status:"sending",attempts:1,leaseToken:crypto.randomUUID(),lockedUntil:new Date(Date.now()+300000)});
+    vi.useFakeTimers({toFake:["Date"]});vi.setSystemTime(new Date(Date.now()+3600000));
+    try {
+      expect(await recoverEmailLeases(db)).toBe(0);
+      expect(await stored(record.id)).toMatchObject({status:"sending",leaseToken:record.leaseToken,lockedUntil:record.lockedUntil});
+    } finally {vi.useRealTimers();}
+    // Finish this fictional attempt so later recovery tests remain independent.
+    expect(await completeEmailDelivery(db,record.id,record.leaseToken!,"mail-live-lease")).toBe(true);
+  });
   it("claims a concurrent job once and commits provider acceptance with delivery and audit",async()=>{
     const {record,delivery}=await job();state.send.mockReset().mockResolvedValue({providerMessageId:"mail-concurrent"});
     await Promise.all([processEmailQueue(),processEmailQueue()]);expect(state.send).toHaveBeenCalledTimes(1);expect(await stored(record.id)).toMatchObject({status:"completed",providerMessageId:"mail-concurrent",lockedUntil:null});
