@@ -27,5 +27,5 @@ export async function resumeReviewedSurveyFileRemoval(tx: TenantTransaction, org
   const leaseToken = randomUUID(), lockedUntil = new Date(Date.now() + 300000), attempts = request.attempts + 1;
   await tx.update(surveyFileRemovals).set({ status: "dispatched", leaseToken, lockedUntil, attempts, error: null, updatedAt: new Date() }).where(eq(surveyFileRemovals.id, request.id));
   await tx.insert(auditEvents).values({ organisationId, actorUserId: userId, action: "job.original_removal_resumption_reviewed", resourceType: "survey_file_removal", resourceId: request.id, metadata: { jobId, manifestVersion: request.manifestVersion, reason: decision.reason, confirmed: true, attemptId: leaseToken, remainingOriginalCount: remaining.length, storageRemoved: false } });
-  return { id: request.id, leaseToken, lockedUntil, attempts, manifest: prepared.manifest };
+  return { id: request.id, leaseToken, lockedUntil, attempts, manifest: prepared.manifest, remaining };
 }
