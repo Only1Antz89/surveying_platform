@@ -9,7 +9,6 @@ import { jobStageLabels } from "@surveynt/domain";
 import { PageHeader } from "@/components/page-header";
 import { loadOverview } from "@/lib/data";
 import { requireFirmAccess } from "@/lib/access";
-import { MyWork } from "@/components/my-work";
 import {redirectWorkspace as redirect} from "@/lib/workspace-redirect";
 
 export const metadata = { title: "Overview" };
@@ -21,7 +20,6 @@ export default async function OverviewPage({ params }: { params: Promise<{ organ
   const access = await requireFirmAccess(organisationSlug);
   if (access.userRole === "finance") await redirect(`/app/${organisationSlug}/finance`);
   if(access.workspaceMode==="administration")return <PracticeAdministration slug={organisationSlug}/>;
-  if (access.userRole === "surveyor") return <MyWork slug={organisationSlug} />;
   const [context, overview] = await Promise.all([
     requireFirmAccess(organisationSlug),
     loadOverview(organisationSlug),
@@ -31,7 +29,7 @@ export default async function OverviewPage({ params }: { params: Promise<{ organ
   const metrics = [
     { label: "Active jobs", value: String(overview.activeJobs), foot: "Current live workload", icon: BriefcaseBusiness, href: `/app/${organisationSlug}/jobs` },
     { label: "Inspections this week", value: String(overview.inspectionsThisWeek), foot: "Confirmed appointments", icon: CalendarDays, href: `/app/${organisationSlug}/calendar` },
-    { label: "Customers", value: String(overview.openClients), foot: "Active customer records", icon: Users, href: `/app/${organisationSlug}/customers` },
+    { label: "Customers", value: String(overview.openClients), foot: "Active customer records", icon: Users, href: access.workspaceMode === "manager" ? `/app/${organisationSlug}/jobs` : `/app/${organisationSlug}/customers` },
     { label: "Fees in progress", value: currency.format(overview.feesInProgress), foot: "Across active work", icon: CirclePoundSterling, href: `/app/${organisationSlug}/jobs` },
   ];
 

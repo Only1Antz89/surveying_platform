@@ -102,3 +102,39 @@
 @media(max-width:800px){.new-ui .sidebar{width:min(280px,88vw);}.new-ui .instance-switch{flex-shrink:0;}.new-ui .sidebar-top{flex-shrink:0;}}
 .new-ui .instance-switch{margin:0 0 14px;}
 .new-ui .profile-mini strong{color:var(--ink);}
+.workspace-switcher-control{position:relative;width:100%}
+.workspace-switch-trigger{width:100%;border:0;background:transparent;font:inherit;text-align:left;cursor:pointer;display:flex;align-items:center;gap:11px}
+.workspace-switch-trigger-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:540}
+.workspace-switch-chevron{margin-left:auto;color:var(--muted);transition:transform 0.16s ease,color 0.16s ease;flex-shrink:0}
+.workspace-switch-trigger:hover .workspace-switch-chevron,.workspace-switch-chevron.open{color:var(--ink);transform:translateX(2px)}
+.workspace-flyout{position:absolute;left:calc(100% + 10px);bottom:-30px;width:290px;background:var(--surface,#fff);border:1px solid var(--border,#dce5f2);border-radius:6px;box-shadow:0 14px 40px rgba(16,35,70,0.16),0 2px 8px rgba(16,35,70,0.08);padding:8px;z-index:100;display:flex;flex-direction:column;gap:4px;animation:workspaceFlyoutAppear 0.18s cubic-bezier(0.16,1,0.3,1)}
+[data-theme="dark"] .workspace-flyout{background:var(--surface,#142238);border-color:var(--border,#2c3e57);box-shadow:0 16px 44px rgba(0,0,0,0.55),0 2px 8px rgba(0,0,0,0.3)}
+@keyframes workspaceFlyoutAppear{from{opacity:0;transform:translateX(12px) scale(0.98)}to{opacity:1;transform:translateX(0) scale(1)}}
+.workspace-flyout-header{display:flex;align-items:center;justify-content:space-between;padding:6px 8px 8px;border-bottom:1px solid var(--border,#dce5f2);margin-bottom:4px}
+.workspace-flyout-header span{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted)}
+.workspace-flyout-badge{font-size:9px!important;font-weight:600!important;letter-spacing:0.4px!important;padding:2px 6px;background:#f0f4ff;color:var(--blue,#2455dc)!important;border-radius:3px}
+[data-theme="dark"] .workspace-flyout-badge{background:#1e3355;color:#93c5fd!important}
+.workspace-options-list{display:flex;flex-direction:column;gap:3px}
+.workspace-option-item{width:100%;display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:4px;border:1px solid transparent;background:transparent;color:var(--ink);cursor:pointer;text-align:left;font:inherit;transition:background 0.15s ease,border-color 0.15s ease}
+.workspace-option-item:hover:not(:disabled){background:#f4f7fc}
+[data-theme="dark"] .workspace-option-item:hover:not(:disabled){background:#182942}
+.workspace-option-item.active{background:var(--nav-active,#eaf0ff);border-color:#dae4ff}
+[data-theme="dark"] .workspace-option-item.active{background:var(--nav-active,#20355d);border-color:#2c4777}
+.workspace-option-icon{display:grid;place-items:center;width:28px;height:28px;border-radius:4px;background:#f0f4ff;color:var(--blue,#2455dc);flex-shrink:0}
+[data-theme="dark"] .workspace-option-icon{background:#1e3355;color:#93c5fd}
+.workspace-option-item.active .workspace-option-icon{background:var(--blue,#2455dc);color:white}
+.workspace-option-info{flex:1;min-width:0}
+.workspace-option-title{display:block;font-size:12px;font-weight:600;color:var(--ink);line-height:1.3}
+.workspace-option-desc{display:block;font-size:10px;color:var(--muted);line-height:1.3;margin-top:2px}
+.workspace-option-check{color:var(--blue,#2455dc);flex-shrink:0}
+[data-theme="dark"] .workspace-option-check{color:#93c5fd}
+.workspace-option-spinner{color:var(--blue,#2455dc);flex-shrink:0;animation:spin 0.8s linear infinite}
+.workspace-flyout-status{padding:6px 10px;font-size:11px;color:var(--muted);background:#f8faff;border-radius:4px;border:1px solid var(--border);margin-top:2px}
+[data-theme="dark"] .workspace-flyout-status{background:#182942}
+.workspace-flyout-error{padding:6px 10px;font-size:11px;border-radius:4px;margin-top:2px}
+.workspace-flyout-footer{padding:6px 8px 2px;border-top:1px solid var(--border,#dce5f2);margin-top:4px}
+.workspace-flyout-footer small{font-size:10px;color:var(--muted);display:block}
+@media (max-width: 800px){
+  .workspace-flyout{left:0;right:0;bottom:calc(100% + 8px);width:auto;animation:workspaceFlyoutAppearMobile 0.18s cubic-bezier(0.16,1,0.3,1)}
+  @keyframes workspaceFlyoutAppearMobile{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+}

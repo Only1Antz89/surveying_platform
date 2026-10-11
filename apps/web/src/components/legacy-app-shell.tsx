@@ -19,7 +19,7 @@ import { platformRoleLabels, roleLabels, type OrganisationRole, type PlatformRol
 
 type Item = { label: string; href: string; icon: LucideIcon };
 
-const firmItems = (slug: string): Item[] => [
+const firmItems = (slug: string, isManager?: boolean): Item[] => [
   { label: "Overview", href: `/app/${slug}/overview`, icon: House },
   { label: "Clients", href: `/app/${slug}/clients`, icon: Users },
   { label: "Properties", href: `/app/${slug}/properties`, icon: Building2 },
@@ -32,7 +32,7 @@ const firmItems = (slug: string): Item[] => [
   { label: "Report templates", href: `/app/${slug}/report-templates`, icon: FileCheck2 },
   { label: "Documents", href: `/app/${slug}/documents`, icon: FolderLock },
   { label: "Wording", href: `/app/${slug}/wording`, icon: BookOpenCheck },
-  { label: "Team", href: `/app/${slug}/team`, icon: ShieldCheck },
+  { label: isManager ? "Surveyors" : "Team", href: `/app/${slug}/team`, icon: ShieldCheck },
   { label: "Settings", href: `/app/${slug}/settings`, icon: Settings },
 ];
 
@@ -65,10 +65,12 @@ const initials = (value: string) => value.split(/\s+/).map((part) => part[0]).jo
 export function LegacyAppShell({ children, mode, slug = "north-star-surveying", workspace, platformWorkspace }: { children: React.ReactNode; mode: "firm" | "platform"; slug?: string; workspace?: FirmWorkspace; platformWorkspace?: PlatformWorkspace }) {
   const instance=useWorkspace();const pathname = workspaceRoute(usePathname()).canonical;const role=instance?resolveWorkspace(instance.actorRole,instance.workspaceMode)?.effectiveRole:workspace?.userRole;
   const [open, setOpen] = useState(false);
-  const items = mode === "firm" ? firmItems(slug).filter(item => {
+  const isManager = instance?.workspaceMode === "manager" || role === "manager";
+  const items = mode === "firm" ? firmItems(slug, isManager).filter(item => {
+    if (isManager && ["Fieldwork planner", "Finance", "Performance", "Customers", "Clients"].includes(item.label)) return false;
     if (role === "finance") return item.label === "Finance";
     if (["Finance", "Performance", "Settings"].includes(item.label)) return ["owner", "administrator", "manager"].includes(role ?? "");
-    if (item.label === "Team") return ["owner", "administrator"].includes(role ?? "");
+    if (item.label === "Team" || item.label === "Surveyors") return ["owner", "administrator", "manager"].includes(role ?? "");
     return true;
   }) : platformItems;
   const isDemo = !process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
@@ -83,15 +85,14 @@ export function LegacyAppShell({ children, mode, slug = "north-star-surveying", 
           <button className="mobile-close" aria-label="Close navigation" onClick={() => setOpen(false)}><X size={18} /></button>
         </div>
         <div className="nav-label">{mode === "firm" ? "Workspace" : "Platform operations"}</div>
-        {mode==="firm"?<WorkspaceInstanceSwitch/>:null}
           <nav className="nav-list" aria-label={mode === "firm" ? "Firm workspace" : "Platform administration"}>
           {items.map((item) => {
             const active = pathname === item.href || (item.href !== "/platform/tenants" && pathname.startsWith(`${item.href}/`));
-            return <Fragment key={item.href}>{item.label==="Settings"?<ThemeCycleButton/>:null}<Link className={`nav-link ${active ? "active" : ""}`} href={item.href} onClick={() => setOpen(false)}><item.icon />{item.label}</Link></Fragment>;
+            return <Fragment key={item.href}>{item.label==="Settings"?<>{mode==="firm"?<WorkspaceInstanceSwitch/>:null}<ThemeCycleButton/></>:null}<Link className={`nav-link ${active ? "active" : ""}`} href={item.href} onClick={() => setOpen(false)}><item.icon />{item.label}</Link></Fragment>;
           })}
         </nav>
         <div className="sidebar-footer">
-          {!items.some(item=>item.label==="Settings")?<ThemeCycleButton/>:null}
+          {!items.some(item=>item.label==="Settings")?<>{mode==="firm"?<WorkspaceInstanceSwitch/>:null}<ThemeCycleButton/></>:null}
           <div className="profile-mini">
             <div className="avatar">{mode === "firm" ? initials(workspace?.userName ?? "Practice user") : initials(platformWorkspace?.userName ?? "Platform operator")}</div>
             <div><strong>{mode === "firm" ? workspace?.userName ?? "Practice user" : platformWorkspace?.userName ?? "Platform operator"}</strong><span>{mode === "firm" ? roleLabels[instance?.actorRole??workspace?.userRole ?? "read_only"] : platformRoleLabels[platformWorkspace?.userRole ?? "support"]}</span></div>
