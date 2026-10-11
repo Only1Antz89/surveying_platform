@@ -23,3 +23,7 @@ The currently implemented PDF route creates watermarked review copies only. Form
 References: [RICS licences](https://www.rics.org/profession-standards/home-surveys-licences), [RICS software-provider and template FAQs](https://www.rics.org/profession-standards/rics-standards-and-guidance/sector-standards/building-surveying-standards/home-surveys/home-survey-standards/home-survey-standard-frequently-asked-questions).
 
 This request has been prepared for review; it has not been sent to anyone.
+
+## Current operational status — 11 October 2026
+
+Production migrations through 0081 are now applied and checksum-verified; see [migration record](../product-polish/production-migrations-2026-10-11.md). The [prepared provider enquiry](rics-provider-enquiry.md) is ready for review and sending. No enquiry has been sent, agreement obtained, or authorised assets provisioned.
