@@ -8,6 +8,10 @@ describe("SurvAI placement", () => {
  it("allows the collapsed symbol to move near the top without clipping it", () => {
   expect(constrainSurvaiPlacement({ x: 1300, y: -900, dock: null }, { ...desktop, expanded: false })).toEqual({ x: 1300, y: -620, dock: null });
  });
+ it("leaves room for the collapsed symbol caption at the bottom", () => {
+  const position = constrainSurvaiPlacement({ x: 1300, y: 5000, dock: null }, { ...desktop, expanded: false });
+  expect(position.y + desktop.height + 16).toBeLessThanOrEqual(desktop.viewportHeight - 12);
+ });
  it("snaps only near an edge and preserves a floating centre position", () => {
   expect(snapSurvaiPlacement({ x: 30, y: 40, dock: null }, desktop).dock).toBe("left");
   expect(snapSurvaiPlacement({ x: 980, y: 40, dock: null }, desktop).dock).toBe("right");

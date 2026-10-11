@@ -10,7 +10,7 @@ export function constrainSurvaiPlacement(placement: SurvaiPlacement, bounds: Sur
  const symbolOffset = bounds.expanded ? 0 : Math.max(0, bounds.height - 68);
  const maxX = Math.max(GAP, bounds.viewportWidth - visibleWidth - GAP);
  const minY = GAP - symbolOffset;
- const maxY = Math.max(minY, bounds.viewportHeight - bounds.height - GAP);
+ const maxY = Math.max(minY, bounds.viewportHeight - bounds.height - (bounds.expanded ? GAP : GAP + 16));
  const x = placement.dock === "left" ? GAP : placement.dock === "right" ? maxX : Math.min(maxX, Math.max(GAP, placement.x));
  return { x, y: Math.min(maxY, Math.max(minY, placement.y)), dock: placement.dock };
 }
