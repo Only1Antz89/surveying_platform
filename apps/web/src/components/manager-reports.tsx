@@ -88,7 +88,7 @@ export function ManagerReports({ slug, organisationSlug }: ManagerReportsProps) 
           <span className="manager-rep-eyebrow">Business Reporting</span>
           <h1>See where time and capacity go.</h1>
           <p>
-            Operational insights combine job status, staff capacity and Surveyant assistance activity.
+            Operational insights combine job status, staff capacity and SurvAI assistance activity.
           </p>
         </div>
 
@@ -174,7 +174,7 @@ export function ManagerReports({ slug, organisationSlug }: ManagerReportsProps) 
         </article>
 
         <article className="manager-rep-kpi-card">
-          <small>Surveyant Assisted</small>
+          <small>SurvAI Assisted</small>
           <div className="manager-rep-kpi-val">
             42 <i>checks</i>
           </div>
@@ -269,13 +269,13 @@ export function ManagerReports({ slug, organisationSlug }: ManagerReportsProps) 
           )}
         </section>
 
-        {/* Surveyant Insight Card */}
+        {/* SurvAI Insight Card */}
         <section className="manager-rep-panel manager-rep-surveyant-card">
           <div>
             <div className="manager-rep-bot-badge">
               <Bot size={22} />
             </div>
-            <small className="label">Surveyant Insight</small>
+            <small className="label">SurvAI Insight</small>
             <h3>Preparation is smoothing the morning handover.</h3>
             <p>
               Most assisted checks are completed before the first site visit. 7 items still need a surveyor decision.
@@ -402,7 +402,7 @@ export function ManagerReports({ slug, organisationSlug }: ManagerReportsProps) 
 
             <div className="manager-rep-modal-body">
               <p>
-                Select your preferred format for the {selectedPeriod} operational summary. Reports include surveyor allocations, job completion rates, and Surveyant activity logs.
+                Select your preferred format for the {selectedPeriod} operational summary. Reports include surveyor allocations, job completion rates, and SurvAI activity logs.
               </p>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>

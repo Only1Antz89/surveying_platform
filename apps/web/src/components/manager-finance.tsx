@@ -283,14 +283,14 @@ export function ManagerFinance({ slug }: { slug: string }) {
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <Bot size={20} color="#2563eb" />
               <div className="fin-assist-text">
-                <strong>Surveyant finance brief</strong>
+                <strong>SurvAI finance brief</strong>
                 <small>Two sample invoices are overdue. Review linked case records before reminders.</small>
               </div>
             </div>
             <button
               className="manager-btn-secondary"
               style={{ fontSize: 11, padding: "4px 10px" }}
-              onClick={() => showNotice("Surveyant: Draft reminder prepared for Morgan Lewis.")}
+              onClick={() => showNotice("SurvAI: Draft reminder prepared for Morgan Lewis.")}
             >
               Review
             </button>

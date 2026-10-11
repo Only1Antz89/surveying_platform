@@ -71,7 +71,7 @@ export function AssistantPanel({ surveyId, pack, sectionKey, fieldPath, hideSugg
 
   if (fieldPath && !proposals.length && !discrepancies.length) return null;
   return <section className="panel assistant-panel" aria-labelledby={headingId}>
-    {!fieldPath ? <div className="panel-header"><div><h2 id={headingId}>Surveyant · pre-fill assistance</h2><p>Load existing property evidence and historical weather for the saved inspection date. Review each answer before applying it; your recorded answers are never replaced.</p><p className="form-help">EPC: property type and approximate build period, when configured. Planning/heritage/flood layers: local context, not an inspection assessment. Extension and conversion completion dates need documentary evidence or manual entry.</p></div>
+    {!fieldPath ? <div className="panel-header"><div><h2 id={headingId}>SurvAI · pre-fill assistance</h2><p>Load existing property evidence and historical weather for the saved inspection date. Review each answer before applying it; your recorded answers are never replaced.</p><p className="form-help">EPC: property type and approximate build period, when configured. Planning/heritage/flood layers: local context, not an inspection assessment. Extension and conversion completion dates need documentary evidence or manual entry.</p></div>
       {canEdit && enabled ? <button type="button" className="button button-quiet" onClick={() => void refresh()} disabled={!online || busy !== null}><RefreshCw size={14} />Load evidence</button> : null}
     </div> : <h3 id={headingId}>Review source suggestions</h3>}
     {!online ? <p className="identity-warning">Reviewing suggestions needs a connection, so the server can check they are still current.</p> : null}

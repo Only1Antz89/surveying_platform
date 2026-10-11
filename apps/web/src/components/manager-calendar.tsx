@@ -283,13 +283,13 @@ export function ManagerCalendar({ slug }: { slug: string }) {
               <Bot size={18} color="#2563eb" />
               <strong style={{ margin: 0 }}>Schedule intelligence</strong>
             </div>
-            <p>Surveyant can summarise clashes, gaps and preparation tasks by case.</p>
+            <p>SurvAI can summarise clashes, gaps and preparation tasks by case.</p>
           </div>
           <button
             className="manager-btn-primary"
-            onClick={() => showNotice("Surveyant: No scheduling conflicts detected for today's visits.")}
+            onClick={() => showNotice("SurvAI: No scheduling conflicts detected for today's visits.")}
           >
-            Ask Surveyant &rarr;
+            Ask SurvAI &rarr;
           </button>
         </div>
       </div>
