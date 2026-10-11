@@ -3,7 +3,7 @@ import {workspaceFetch} from "@/lib/workspace-request";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CloudOff, History, RefreshCw, Trash2 } from "lucide-react";
-import { serviceLevelLabels, type FieldValue, type InspectionStatus, type SyncOperation, type SyncResult } from "@surveynt/assistant";
+import { composeReport, listFields, resolveField, validateFieldValue, serviceLevelLabels, type FieldValue, type InspectionStatus, type SyncOperation, type SyncResult } from "@surveynt/assistant";
 import type { SurveyPack } from "@/lib/surveys";
 import { newOperationId, offlineStore, type OutboxEntry, type UploadEntry } from "@/lib/offline-store";
 import { SurveyElementCard, type EarlierPhotoView, type ElementView, type ObservationView, type PhotoView } from "./survey-element-card";
@@ -26,8 +26,7 @@ function describeValue(value: unknown) {
 
 export function SurveyWorkspace({ surveyId, canEdit: initialCanEdit, canJudge: initialCanJudge, canApprove }: { surveyId: string; canEdit: boolean; canJudge: boolean; canApprove: boolean }) {
   const [recordingRevoked, setRecordingRevoked] = useState(false);
-  const canEdit = initialCanEdit && !recordingRevoked;
-  const canJudge = initialCanJudge && !recordingRevoked;
+
   const [pack, setPack] = useState<SurveyPack | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [outbox, setOutbox] = useState<OutboxEntry[]>([]);
@@ -35,6 +34,12 @@ export function SurveyWorkspace({ surveyId, canEdit: initialCanEdit, canJudge: i
   const [online, setOnline] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [demo, setDemo] = useState(false);
+  const canEdit = (initialCanEdit || demo) && !recordingRevoked;
+  const canJudge = (initialCanJudge || demo) && !recordingRevoked;
+  const [mode, setMode] = useState<"form" | "questionnaire">("form");
+  const [questionIndex, setQuestionIndex] = useState(0);
+  const [reviewed, setReviewed] = useState<string[]>([]);
+  const questions = useMemo(() => pack ? [...listFields(pack.template)] : [], [pack]);
   const [notice, setNotice] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [section, setSection] = useState<string | null>(null);
@@ -86,7 +91,7 @@ export function SurveyWorkspace({ surveyId, canEdit: initialCanEdit, canJudge: i
   }, []);
 
   const sync = useCallback(async () => {
-    if (syncingRef.current || !navigator.onLine || recordingRevoked) return;
+    if (demo || syncingRef.current || !navigator.onLine || recordingRevoked) return;
     syncingRef.current = true;
     setSyncing(true);
     try {
@@ -114,7 +119,7 @@ export function SurveyWorkspace({ surveyId, canEdit: initialCanEdit, canJudge: i
         const response = await workspaceFetch(`/api/v1/surveys/${surveyId}/sync`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ operations: batch.map((entry) => entry.operation) }) });
         if (!response.ok) { const payload = await response.json().catch(() => null); if (response.status === 403) setRecordingRevoked(true); setNotice(payload?.error?.message ?? "Changes could not be synced yet. They are safe on this device."); break; }
         const payload = await response.json();
-        if (payload.meta?.demo) setNotice("Demo workspace: changes are not saved to a server.");
+        if (payload.meta?.demo) {setDemo(true);setNotice("Preview changes remain saved on this device.");return;}
         for (const result of payload.data.results as SyncResult[]) {
           const entry = batch.find((item) => item.operationId === result.operationId);
           if (!entry) continue;
@@ -131,7 +136,7 @@ export function SurveyWorkspace({ surveyId, canEdit: initialCanEdit, canJudge: i
       setSyncing(false);
       await refreshLocal();
     }
-  }, [surveyId, fetchPack, refreshLocal, recordingRevoked]);
+  }, [surveyId, fetchPack, refreshLocal, recordingRevoked, demo]);
 
   const pendingCount = outbox.filter((entry) => entry.status === "pending").length + uploads.filter((upload) => upload.status === "pending").length;
   useEffect(() => {
@@ -145,7 +150,7 @@ export function SurveyWorkspace({ surveyId, canEdit: initialCanEdit, canJudge: i
   }, [sync]);
 
   /** Saves locally first. A newer unsent edit to the same field or element replaces the older one, keeping the original base. */
-  const queue = useCallback(async (operation: SyncOperation) => {
+  const queue = useCallback(async (operation: SyncOperation, previewOrigin?: string) => {
     const existing = await offlineStore.outbox(surveyId);
     for (const entry of existing) {
       if (entry.status !== "pending") continue;
@@ -154,7 +159,7 @@ export function SurveyWorkspace({ surveyId, canEdit: initialCanEdit, canJudge: i
       if (sameField && operation.type === "set_field" && entry.operation.type === "set_field") { operation.baseValueId = entry.operation.baseValueId; await offlineStore.removeOperation(entry.operationId); }
       if (sameElement && operation.type === "set_element" && entry.operation.type === "set_element") { operation.baseVersion = entry.operation.baseVersion; await offlineStore.removeOperation(entry.operationId); }
     }
-    await offlineStore.enqueue({ operationId: operation.operationId, surveyId, operation, createdAt: new Date().toISOString(), status: "pending" });
+    await offlineStore.enqueue({ operationId: operation.operationId, surveyId, operation, previewOrigin, createdAt: new Date().toISOString(), status: "pending" });
     await refreshLocal();
   }, [surveyId, refreshLocal]);
 
@@ -165,9 +170,9 @@ export function SurveyWorkspace({ surveyId, canEdit: initialCanEdit, canJudge: i
     const stored = values.get(path);
     if (stored?.value.retentionRemoved === true) return { value: null, pending: false, origin: stored.origin, contentRemoved: true };
     const pending = [...outbox].reverse().find((entry) => entry.status === "pending" && entry.operation.type === "set_field" && entry.operation.fieldPath === path);
-    if (pending && pending.operation.type === "set_field") return { value: pending.operation.value, pending: true, origin: "surveyor_entry" };
+    if (pending && pending.operation.type === "set_field") return { value: pending.operation.value, pending: true, deviceOnly:demo, origin: pending.previewOrigin ?? "surveyor_entry" };
     return { value: (stored?.value as FieldValue | undefined) ?? null, pending: false, origin: stored?.origin ?? null };
-  }, [outbox, values]);
+  }, [outbox, values, demo]);
 
   const elementView = useCallback((sectionKey: string, key: string): ElementView => {
     const row = elementRows.get(elementKey(sectionKey, key)) ?? pack?.elements.find(element => element.sectionKey === sectionKey && element.elementKey === key && element.locationLabel === `retention-removed:${element.id}` && element.limitationReason === "Content removed after retention review");
@@ -184,7 +189,31 @@ export function SurveyWorkspace({ surveyId, canEdit: initialCanEdit, canJudge: i
 
   const attention = outbox.filter((entry) => entry.status !== "pending");
   const openTasks = pack.tasks.filter((task) => task.status === "open" && task.kind === "reinspect");
-  const activeSection = pack.template.sections.find((item) => item.key === section) ?? pack.template.sections[0];
+  const question = questions[Math.min(questionIndex, questions.length - 1)];
+  const activeSection = mode === "questionnaire" && question ? question.section : pack.template.sections.find((item) => item.key === section) ?? pack.template.sections[0];
+  const assistantPack = demo ? {...pack, proposals: pack.proposals.filter(proposal => !reviewed.includes(proposal.id) && !fieldDisplay(proposal.fieldPath).value)} : pack;
+  async function previewReview(proposalId: string, body: Record<string, unknown>) {
+    const proposal = pack!.proposals.find(item => item.id === proposalId);
+    if (!proposal) throw new Error("This suggestion is no longer available.");
+    if (body.decision !== "reject") {
+      if (fieldDisplay(proposal.fieldPath).value) throw new Error("An answer already exists. Keep it or edit it in the form.");
+      const resolved = resolveField(pack!.template, proposal.fieldPath);
+      if (!resolved) throw new Error("The field is not in this template.");
+      if (resolved.field.fieldClass === "professional_assessment" && body.confirmProfessional !== true) throw new Error("Confirm your professional review first.");
+      const checked = validateFieldValue(resolved.field, body.decision === "edit" ? body.value : proposal.proposedValue);
+      if (!checked.ok) throw new Error(checked.message);
+      await queue({type:"set_field",operationId:newOperationId(),fieldPath:proposal.fieldPath,value:checked.value,baseValueId:null}, body.decision === "edit" ? "surveyor_entry" : proposal.originClass);
+    }
+    setReviewed(previous => [...previous, proposalId]);
+  }
+  const composePreview = () => composeReport({
+    template: pack.template, serviceLevel:pack.survey.serviceLevel,jurisdiction:pack.survey.jurisdiction,job:pack.job,property:pack.property,
+    values:questions.flatMap(item => {const value=fieldDisplay(item.path).value;return value ? [{id:values.get(item.path)?.id ?? item.path,fieldPath:item.path,value}] : [];}),
+    elements:pack.template.sections.flatMap(section => section.elements.filter(element => element.inspectable).map(element => {const view=elementView(section.key,element.key);return {id:view.serverId ?? `${section.key}.${element.key}`,sectionKey:section.key,elementKey:element.key,locationLabel:"",inspectionStatus:view.inspectionStatus,limitationReason:view.limitationReason};})),
+    observations:[...pack.observations,...outbox.flatMap(entry=>entry.status==="pending" && entry.operation.type==="add_observation" ? [{id:entry.operationId,elementId:entry.operation.element ? elementRows.get(elementKey(entry.operation.element.sectionKey,entry.operation.element.elementKey))?.id ?? `${entry.operation.element.sectionKey}.${entry.operation.element.elementKey}` : null,kind:entry.operation.kind,text:entry.operation.text,locationLabel:entry.operation.element?.locationLabel ?? null,structured:{...(entry.operation.measurement?{measurement:entry.operation.measurement}:{}),...(entry.operation.defect?{defect:entry.operation.defect}:{})},version:1}] : [])],evidence:pack.evidence,media:pack.media,clauses:[],
+  }).report;
+  const completionPack:SurveyPack = demo ? {...pack,values:questions.flatMap(item=>{const value=fieldDisplay(item.path).value;return value?[{id:values.get(item.path)?.id ?? item.path,fieldPath:item.path,value:value as unknown as Record<string,unknown>,origin:fieldDisplay(item.path).origin === "surveyor_entry" ? "surveyor_entry" as const : "accepted_proposal" as const,sourceKind:"preview",sourceRef:null,createdAt:pack.survey.createdAt}]:[];}),elements:pack.template.sections.flatMap(section=>section.elements.filter(element=>element.inspectable).map(element=>{const view=elementView(section.key,element.key);return {id:view.serverId??`${section.key}.${element.key}`,sectionKey:section.key,elementKey:element.key,locationLabel:"",inspectionStatus:view.inspectionStatus,limitationReason:view.limitationReason,version:view.version??1};}))} : pack;
+  const goToSection = (key:string) => {setSection(key);const index=questions.findIndex(item=>item.section.key===key);if(index>=0)setQuestionIndex(index);};
 
   async function resolveConflict(entry: OutboxEntry, keepMine: boolean) {
     await offlineStore.removeOperation(entry.operationId);
@@ -203,35 +232,37 @@ export function SurveyWorkspace({ surveyId, canEdit: initialCanEdit, canJudge: i
     await refreshLocal();
   }
 
-  const syncLabel = !online ? `Offline. ${pendingCount} change${pendingCount === 1 ? "" : "s"} saved on this device.` : syncing ? "Syncing…" : pendingCount ? `${pendingCount} change${pendingCount === 1 ? "" : "s"} waiting to sync` : attention.length ? `${attention.length} change${attention.length === 1 ? "" : "s"} need attention` : "All changes synced";
+  const syncLabel = demo ? `${pendingCount} preview changes saved on this device` : !online ? `Offline. ${pendingCount} change${pendingCount === 1 ? "" : "s"} saved on this device.` : syncing ? "Syncing…" : pendingCount ? `${pendingCount} change${pendingCount === 1 ? "" : "s"} waiting to sync` : attention.length ? `${attention.length} change${attention.length === 1 ? "" : "s"} need attention` : "All changes synced";
 
   return <div className="survey-workspace">
     <header className="page-header"><div><span className="eyebrow">{pack.job.reference} · {serviceLevelLabels[pack.survey.serviceLevel]}</span><h1>{pack.property.line1}</h1><p>{[pack.property.city, pack.property.postcode].filter(Boolean).join(" · ")} · Template {pack.survey.templateKey} {pack.survey.templateVersion}</p></div></header>
-    {demo ? <p className="address-demo-label">Demo workspace: representative form, nothing is saved to a server.</p> : null}
+    {demo ? <p className="address-demo-label">Demo workspace: answers stay on this device. Simulated evidence and draft reports cannot be issued.</p> : null}
     <div className={`sync-bar ${!online ? "offline" : attention.length ? "attention" : ""}`} role="status" aria-live="polite">
       {!online ? <CloudOff size={15} aria-hidden="true" /> : <RefreshCw size={15} aria-hidden="true" className={syncing ? "spin" : ""} />}
       <span>{syncLabel}</span>
       {savedAt ? <small>Device copy saved {new Date(savedAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</small> : null}
-      <div className="row-actions"><button type="button" className="button button-quiet" onClick={() => void sync()} disabled={!online || syncing}>Sync now</button><button type="button" className="button button-quiet danger" onClick={() => void removeOfflineCopy()}><Trash2 size={14} />Remove offline copy</button></div>
+      <div className="row-actions"><button type="button" className="button button-quiet" onClick={() => void sync()} disabled={demo || !online || syncing}>Sync now</button><button type="button" className="button button-quiet danger" onClick={() => void removeOfflineCopy()}><Trash2 size={14} />Remove offline copy</button></div>
     </div>
     {notice ? <p className="form-success" role="status">{notice}</p> : null}
     {canEdit && !demo && pack.survey.status === "in_progress" ? <TemplateUpgrade pack={pack} disabled={!online || syncing || outbox.length > 0 || uploads.length > 0} onChanged={fetchPack}/> : null}
     {attention.length ? <section className="panel attention-panel" aria-labelledby="attention-heading"><div className="panel-header"><div><h2 id="attention-heading">Changes needing attention</h2><p>Nothing is overwritten silently. Choose which value to keep.</p></div></div><ul>{attention.map((entry) => <li key={entry.operationId}><strong>{entry.operation.type === "set_field" ? entry.operation.fieldPath : entry.operation.type.replace(/_/g, " ")}</strong><span>{entry.message}</span>{entry.status === "conflict" && entry.operation.type === "set_field" ? <span className="cell-sub">Yours: {describeValue(entry.operation.value)} · Current: {describeValue(entry.current?.value)}</span> : null}<div className="row-actions">{entry.status === "conflict" ? <><button type="button" className="button button-secondary" onClick={() => void resolveConflict(entry, true)}>Keep mine</button><button type="button" className="button button-quiet" onClick={() => void resolveConflict(entry, false)}>Use current</button></> : <button type="button" className="button button-quiet danger" onClick={() => void resolveConflict(entry, false)}>Discard</button>}</div></li>)}</ul></section> : null}
     {openTasks.length ? <section className="panel tasks-panel" aria-labelledby="tasks-heading"><div className="panel-header"><div><h2 id="tasks-heading">Reminders from earlier surveys</h2><p>Historical context only. These are not current findings.</p></div><History size={17} color="#3b82f6" aria-hidden="true" /></div><ul>{openTasks.map((task) => <li key={task.id}><strong>{task.title}</strong><span>{task.detail}</span></li>)}</ul></section> : null}
-    <SurveyEvidenceProvider surveyId={surveyId} pack={pack} canEdit={canEdit && pack.survey.status === "in_progress"} canJudge={canJudge} online={online && outbox.length === 0 && uploads.length === 0} onChanged={fetchPack}><div className="survey-layout">
+    <SurveyEvidenceProvider surveyId={surveyId} pack={assistantPack} onPreviewReview={demo ? previewReview : undefined} canEdit={canEdit && pack.survey.status === "in_progress"} canJudge={canJudge} online={online && (demo || (outbox.length === 0 && uploads.length === 0))} onChanged={fetchPack}><div className="survey-layout">
 
     <div className="survey-main">
+    <div className="survey-view-toolbar"><div className="row-actions" role="group" aria-label="Recording view"><button type="button" className={`button ${mode === "form" ? "button-primary" : "button-secondary"}`} aria-pressed={mode === "form"} onClick={() => {setSection(activeSection.key);setMode("form");}}>Section form</button><button type="button" className={`button ${mode === "questionnaire" ? "button-primary" : "button-secondary"}`} aria-pressed={mode === "questionnaire"} onClick={() => {const index=questions.findIndex(item=>item.section.key===activeSection.key);setQuestionIndex(Math.max(0,index));setMode("questionnaire");}}>Guided questionnaire</button></div><p><span className="prefill-key">Blue: accepted pre-fill</span> · Black: surveyor entry</p></div>
     <nav className="workspace-tabs survey-sections" role="tablist" aria-label="Survey sections">
-      {pack.template.sections.map((item, index) => <button key={item.key} id={`survey-tab-${item.key}`} type="button" role="tab" tabIndex={item.key === activeSection.key ? 0 : -1} aria-controls="survey-section-panel" aria-selected={item.key === activeSection.key} className={`workspace-tab ${item.key === activeSection.key ? "active" : ""}`} onClick={() => setSection(item.key)} onKeyDown={event => {
+      {pack.template.sections.map((item, index) => <button key={item.key} id={`survey-tab-${item.key}`} type="button" role="tab" tabIndex={item.key === activeSection.key ? 0 : -1} aria-controls="survey-section-panel" aria-selected={item.key === activeSection.key} className={`workspace-tab ${item.key === activeSection.key ? "active" : ""}`} onClick={() => goToSection(item.key)} onKeyDown={event => {
         const count = pack.template.sections.length;
         const next = event.key === "ArrowRight" ? (index + 1) % count : event.key === "ArrowLeft" ? (index + count - 1) % count : event.key === "Home" ? 0 : event.key === "End" ? count - 1 : null;
         if (next === null) return;
-        event.preventDefault(); setSection(pack.template.sections[next].key);
+        event.preventDefault(); goToSection(pack.template.sections[next].key);
         document.getElementById(`survey-tab-${pack.template.sections[next].key}`)?.focus();
       }}>{item.label}</button>)}
     </nav>
     <div id="survey-section-panel" role="tabpanel" aria-labelledby={`survey-tab-${activeSection.key}`} tabIndex={0} className="survey-section">
-      {activeSection.elements.map((element) => {
+      {mode === "questionnaire" && question ? <div className="questionnaire-progress"><p>Question {questionIndex + 1} of {questions.length} · {questions.filter(item => fieldDisplay(item.path).value).length} answers recorded</p><progress max={questions.length} value={questionIndex + 1}/><h2>{question.field.label}</h2><p>{question.element.label} · {question.section.label}</p><div className="row-actions"><button type="button" className="button button-secondary" disabled={questionIndex === 0} onClick={() => setQuestionIndex(index=>index-1)}>Previous</button><button type="button" className="button button-secondary" disabled={questionIndex === questions.length-1} onClick={() => setQuestionIndex(index=>index+1)}>Next question</button><button type="button" className="button button-quiet" onClick={()=>{const index=questions.findIndex(item=>!fieldDisplay(item.path).value);if(index>=0)setQuestionIndex(index);}}>First unanswered</button></div></div> : null}
+      {(mode === "questionnaire" && question ? [{...question.element, fields:[question.field]}] : activeSection.elements).map((element) => {
         const view = elementView(activeSection.key, element.key);
         // Observations may sit on located rows of the same element (for example "rear elevation").
         const elementRowIds = new Set(pack.elements.filter((row) => row.sectionKey === activeSection.key && row.elementKey === element.key).map((row) => row.id));
@@ -243,8 +274,8 @@ export function SurveyWorkspace({ surveyId, canEdit: initialCanEdit, canJudge: i
         const pendingObservations: ObservationView[] = outbox.flatMap((entry) => entry.status === "pending" && entry.operation.type === "add_observation" && entry.operation.element?.sectionKey === activeSection.key && entry.operation.element.elementKey === element.key ? [{ key: entry.operationId, text: entry.operation.text, kind: entry.operation.kind, pending: true, measurement: entry.operation.measurement ?? null, locationLabel: entry.operation.element.locationLabel || null, defect: entry.operation.defect ?? null, evidenceCount: pendingLinks({ observationOperationId: entry.operationId }) }] : []);
         const linkedMedia = new Set(pack.evidence.filter((link) => link.evidenceType === "media" && link.targetType === "element" && link.targetId === view.serverId).map((link) => link.evidenceId));
         const photos: PhotoView[] = [
-          ...pack.media.filter((media) => media.kind === "photo" && linkedMedia.has(media.id)).map((media) => ({ key: media.id, src: demo ? null : `/api/v1/media/${media.id}`, pending: false, label: `Photo of ${element.label}`, quality: media.analysis?.status === "completed" ? ((media.analysis.result as { messages?: string[] }).messages ?? []) : [] })),
-          ...uploads.filter((upload) => upload.context.sectionKey === activeSection.key && upload.context.elementKey === element.key).map((upload) => ({ key: upload.clientId, src: photoUrls.get(upload.clientId) ?? null, pending: upload.status === "pending", label: upload.status === "failed" ? `Upload failed: ${upload.message ?? ""}` : `Photo of ${element.label}` })),
+          ...pack.media.filter((media) => (media.kind === "photo" || media.kind === "video") && linkedMedia.has(media.id)).map((media) => ({ key: media.id, kind: media.kind as "photo" | "video", src: demo ? null : `/api/v1/media/${media.id}`, pending: false, label: `${media.kind === "video" ? "Video" : "Photo"} of ${element.label}`, quality: media.analysis?.status === "completed" ? ((media.analysis.result as { messages?: string[] }).messages ?? []) : [] })),
+          ...uploads.filter((upload) => upload.context.sectionKey === activeSection.key && upload.context.elementKey === element.key).map((upload) => ({ key: upload.clientId, kind: upload.type.startsWith("video/") ? "video" as const : "photo" as const, src: photoUrls.get(upload.clientId) ?? null, pending: upload.status === "pending", label: upload.status === "failed" ? `Upload failed: ${upload.message ?? ""}` : `${upload.type.startsWith("video/") ? "Video" : "Photo"} of ${element.label}` })),
         ];
         return <SurveyElementCard
           key={element.key}
@@ -276,10 +307,10 @@ export function SurveyWorkspace({ surveyId, canEdit: initialCanEdit, canJudge: i
     </div>
     </div>
     <aside className="survey-side" aria-label="Checks, suggestions, documents and report">
-      <CompletionPanel pack={pack} pendingCount={pendingCount} onGoTo={(sectionKey, elementKey) => { setSection(sectionKey); window.setTimeout(() => document.getElementById(`element-${sectionKey}-${elementKey}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 50); }} />
+      <CompletionPanel pack={completionPack} pendingCount={demo ? 0 : pendingCount} onGoTo={(sectionKey, elementKey) => { goToSection(sectionKey); if(mode==="questionnaire"){const index=questions.findIndex(item=>item.section.key===sectionKey && item.element.key===elementKey);if(index>=0)setQuestionIndex(index);} window.setTimeout(() => document.getElementById(`element-${sectionKey}-${elementKey}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 50); }} />
       <DocumentsPanel surveyId={surveyId} pack={pack} canEdit={canEdit && pack.survey.status === "in_progress"} online={online} demo={demo} onChanged={fetchPack} />
-      <AssistantPanel surveyId={surveyId} pack={pack} hideSuggestions sectionKey={activeSection.key} canEdit={canEdit && pack.survey.status === "in_progress"} canJudge={canJudge} online={online && outbox.length === 0 && uploads.length === 0} onChanged={fetchPack} />
-      <ReportPanel surveyId={surveyId} canEdit={canEdit} canJudge={canApprove} online={online} demo={demo} onChanged={fetchPack} />
+      <AssistantPanel surveyId={surveyId} pack={assistantPack} onPreviewReview={demo ? previewReview : undefined} hideSuggestions sectionKey={activeSection.key} canEdit={canEdit && pack.survey.status === "in_progress"} canJudge={canJudge} online={online && (demo || (outbox.length === 0 && uploads.length === 0))} onChanged={fetchPack} />
+      <ReportPanel recordingTemplate={{key:pack.template.key,version:pack.template.version}} templateReviewed={pack.template.reviewStatus === "surveyor_reviewed"} surveyId={surveyId} canEdit={canEdit} canJudge={canApprove} online={online} demo={demo} composePreview={demo ? composePreview : undefined} onChanged={fetchPack} />
       <SharedCasesPanel pack={pack} sectionKey={activeSection.key} online={online} />
     </aside>
     </div></SurveyEvidenceProvider>

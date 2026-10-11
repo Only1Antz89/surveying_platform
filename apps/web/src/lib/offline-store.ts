@@ -7,7 +7,7 @@ import type { SyncOperation } from "@surveynt/assistant";
 // device and browser profile protection; see docs/assistant/offline.md.
 
 export type OutboxStatus = "pending" | "conflict" | "rejected";
-export type OutboxEntry = { operationId: string; surveyId: string; operation: SyncOperation; createdAt: string; status: OutboxStatus; message?: string; current?: Record<string, unknown> | null };
+export type OutboxEntry = { operationId: string; surveyId: string; operation: SyncOperation; createdAt: string; status: OutboxStatus; previewOrigin?: string; message?: string; current?: Record<string, unknown> | null };
 export type UploadEntry = { clientId: string; surveyId: string; blob: Blob; name: string; type: string; capturedAt: string | null; context: { sectionKey?: string; elementKey?: string; locationLabel?: string; caption?: string }; status: "pending" | "failed"; message?: string; createdAt: string };
 export type StoredPack<T> = { surveyId: string; pack: T; savedAt: string };
 

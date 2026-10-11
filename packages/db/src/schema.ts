@@ -76,7 +76,7 @@ export const surveyStatus = pgEnum("survey_status", ["in_progress", "in_review",
 export const observationKind = pgEnum("observation_kind", ["current_observation", "measurement", "client_claim", "historical_reference", "external_record"]);
 export const observationStatus = pgEnum("observation_status", ["recorded", "superseded", "withdrawn"]);
 export const valueOrigin = pgEnum("value_origin", ["surveyor_entry", "accepted_proposal", "edited_proposal", "clerical_prefill"]);
-export const mediaKind = pgEnum("media_kind", ["photo", "document"]);
+export const mediaKind = pgEnum("media_kind", ["photo", "document", "video"]);
 export const quoteStatus = pgEnum("quote_status", ["draft", "issued", "viewed", "accepted", "expired", "cancelled", "converted"]);
 export const appointmentStatus = pgEnum("appointment_status", ["provisional", "confirmed", "completed", "cancelled", "conflict"]);
 export const invoiceStatus = pgEnum("invoice_status", ["draft", "open", "part_paid", "paid", "void", "overdue"]);
@@ -333,6 +333,7 @@ export const providerResponseCache = pgTable("provider_response_cache", {
 }, (table) => [index("provider_response_cache_expiry_idx").on(table.expiresAt), index("provider_response_cache_source_idx").on(table.sourceKey)]);
 
 export const jobs = pgTable("jobs", {
+  surveyFileArchiveUntil: timestamp("survey_file_archive_until", { withTimezone: true }),
   id: uuid("id").primaryKey().defaultRandom(),
   organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
   clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "restrict" }),
@@ -442,6 +443,7 @@ export const organisationOperationalSettings = pgTable("organisation_operational
   publicQuotesEnabled: boolean("public_quotes_enabled").notNull().default(false),
   clientPaymentsEnabled: boolean("client_payments_enabled").notNull().default(false),
   surveyEvidenceEnabled: boolean("survey_evidence_enabled").notNull().default(false),
+  reportTemplateSettings: jsonb("report_template_settings").$type<{ templates: { templateKey: string; templateVersion: string; serviceNames: string[]; licenceReference: string; licenceExpiresOn: string | null }[] }>(),
   reportIdentity: jsonb("report_identity").$type<{ companyName?: string; address?: string; email?: string; phone?: string }>().notNull().default({}),
   ...timestamps,
 }, (table) => [uniqueIndex("organisation_operational_settings_org_uidx").on(table.organisationId)]);

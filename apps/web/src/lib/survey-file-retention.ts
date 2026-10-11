@@ -6,6 +6,7 @@ export const surveyFileRetentionPolicy = {
 } as const;
 
 export type SurveyFileRetentionBasis = {
+  archiveUntil?: Date | null;
   jobId: string;
   jobVersion: number;
   closedAt: Date | null;
@@ -51,13 +52,14 @@ export function surveyFileRetentionExpiry(anchor: Date): Date {
 /** Eligibility for human review only; this result never authorises storage deletion. */
 export function assessSurveyFileRetention(basis: SurveyFileRetentionBasis, now = new Date()) {
   if (!Number.isFinite(now.getTime())) throw new Error("A valid review time is required.");
-  const dates = [basis.closedAt, basis.finalDeliveredAt];
+  const dates = [basis.closedAt, basis.finalDeliveredAt, basis.archiveUntil ?? null];
   const validDates = dates.every(date => date === null || Number.isFinite(date.getTime()));
   const completeDates = validDates && basis.closedAt !== null && basis.finalDeliveredAt !== null;
   const anchor = completeDates
     ? new Date(Math.max(basis.closedAt!.getTime(), basis.finalDeliveredAt!.getTime()))
     : null;
-  const retentionUntil = anchor ? surveyFileRetentionExpiry(anchor) : null;
+  const defaultUntil = anchor ? surveyFileRetentionExpiry(anchor) : null;
+  const retentionUntil = defaultUntil && basis.archiveUntil ? new Date(Math.max(defaultUntil.getTime(),basis.archiveUntil.getTime())) : defaultUntil;
   const reviewVersion = createHash("sha256").update(JSON.stringify({
     policy: surveyFileRetentionPolicy.version,
     ...basis,
@@ -71,6 +73,8 @@ export function assessSurveyFileRetention(basis: SurveyFileRetentionBasis, now =
     : !anchor || anchor > now ? "date_review_required"
     : retentionUntil! > now ? "retention_active"
     : "manager_review_required";
-  return { policyVersion: surveyFileRetentionPolicy.version, anchor, retentionUntil, reviewVersion, reason,
+  const daysUntilDeletionReview = retentionUntil ? Math.max(0,Math.ceil((retentionUntil.getTime()-now.getTime())/86_400_000)) : null;
+  const archiveOffer = daysUntilDeletionReview !== null && daysUntilDeletionReview <= 30 && ["retention_active","manager_review_required"].includes(reason);
+  return { archiveUntil:basis.archiveUntil??null, daysUntilDeletionReview, archiveOffer, policyVersion: surveyFileRetentionPolicy.version, anchor, retentionUntil, reviewVersion, reason,
     eligibleForManagerReview: reason === "manager_review_required", removalAuthorised: false as const };
 }

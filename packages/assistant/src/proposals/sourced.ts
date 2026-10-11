@@ -29,7 +29,7 @@ export type SourcedInput = {
   template: FormTemplate;
   snapshots: SnapshotEvidence[];
   currentValues: Map<string, CurrentValue>;
-  job: { id: string; reference: string; targetDate: string | null };
+  job: { id: string; reference: string; targetDate: string | null; propertyAddress?: string; recordPrefill?: boolean };
   weather?: { contextId: string; inspectionDate: string; summary: string; retrievedAt: string; attribution: string; url: string };
   questionnaire?: { id: string; version: number; submittedAt: string; answers: PreinspectionAnswers; propertyFingerprint?: string };
   documents?: { id: string; name: string; context: string; worksKind: "extension" | "conversion"; completionDate: string; page: number; excerpt: string }[];
@@ -67,7 +67,7 @@ function candidates(input: SourcedInput): { candidates: Candidate[]; conflicts: 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(document.completionDate)) continue;
     found.push({ fieldPath: `c.details.${document.worksKind === "extension" ? "extended_year" : "converted_year"}`, value: { state: "provided", value: `Document states: ${document.completionDate.slice(0, 4)}` }, sourceKeys: ["confirmed_completion_document"], origin: "document_extraction", evidence: [{ type: "document_span", id: document.id, context: document.context, date: document.completionDate, label: `${document.name}, page ${document.page}: ${document.excerpt}` }], limitations: ["Explicit works-completion date from an uploaded document with surveyor-confirmed property/works association. Check the original and date before applying; not proof of legal compliance or present condition."] });
   }
-  if (input.template.version === "1.2.0" && input.identity) {
+  if ((input.template.version === "1.2.0" || input.job.recordPrefill && input.template.key.startsWith("surveynt-home-survey-")) && input.identity) {
     const add = (path: string, value: unknown, type: "practitioner_profile" | "firm_report_identity", id: string, context: string) => {
       if (typeof value !== "string" || !value.trim()) return;
       found.push({ fieldPath: path, value: { state: "provided", value }, sourceKeys: [type], origin: "practice_record", evidence: [{ type, id, context, label: type === "practitioner_profile" ? "Recording practitioner's personal report identity" : "Approved firm report identity" }], limitations: ["Review the reusable identity before applying. RICS membership numbers are self-declared, not independently verified. Qualifications, signature and declaration remain manual."] });
@@ -165,6 +165,11 @@ function candidates(input: SourcedInput): { candidates: Candidate[]; conflicts: 
   if (conservationMatches.length) found.push({ fieldPath: "about.property.conservation_area", value: { state: "provided", value: "in_area" }, evidence: conservationMatches.map(({ source, snapshot }) => snapshotRef(snapshot, `${source.label}: ${String(snapshot.data.name ?? "conservation area")}`)), sourceKeys: conservationMatches.map(({ source }) => source.sourceKey), origin: "external_record", limitations: ["Confirm with the local planning authority; boundaries and records can lag."] });
   else if (conservationChecked.length) found.push({ fieldPath: "about.property.conservation_area", value: { state: "provided", value: "no_record_found" }, evidence: conservationChecked.map(({ source, snapshot }) => snapshotRef(snapshot, `${source.label}: no matching record`)), sourceKeys: conservationChecked.map(({ source }) => source.sourceKey), origin: "external_record", limitations: ["Coverage varies by local planning authority. This is not proof that the property is outside a conservation area."] });
 
+  if (input.job.recordPrefill && input.template.key.startsWith("surveynt-home-survey-")) {
+    const addJob = (fieldPath:string,value:string,label:string) => found.push({fieldPath,value:{state:"provided",value},evidence:[{type:"job",id:input.job.id,label,context:canonicalJson({reference:input.job.reference,propertyAddress:input.job.propertyAddress??null})}],sourceKeys:["job_record"],origin:"job_record",limitations:["From this job’s linked records. Confirm before using in the report."]});
+    addJob("a.details.report_reference",input.job.reference,`Job ${input.job.reference}`);
+    if(input.job.propertyAddress) addJob("a.details.property_address",input.job.propertyAddress,"Property linked to this job");
+  }
   if (input.job.targetDate) found.push({ fieldPath: "inspection.visit.inspection_date", value: { state: "provided", value: input.job.targetDate }, evidence: [{ type: "job", id: input.job.id, label: `Job ${input.job.reference} target date`, date: input.job.targetDate }], sourceKeys: ["job_record"], origin: "job_record", limitations: ["Scheduled date from the job record. Confirm the date the inspection actually took place."] });
   return { candidates: found, conflicts };
 }
@@ -180,7 +185,8 @@ export async function generateSourcedProposals(input: SourcedInput): Promise<{ p
   for (const candidate of found) {
     const resolved = resolveField(input.template, candidate.fieldPath);
     if (!resolved) continue;
-    const allowed = candidate.origin === "job_record" ? resolved.field.fieldClass === "clerical" : candidate.sourceKeys.every((key) => resolved.field.proposalSources?.includes(key));
+    const reusableIdentity = input.job.recordPrefill && candidate.origin === "practice_record" && resolved.field.fieldClass === "clerical" && candidate.sourceKeys.every(key=>["practitioner_profile","firm_report_identity"].includes(key));
+    const allowed = reusableIdentity || (candidate.origin === "job_record" ? resolved.field.fieldClass === "clerical" : candidate.sourceKeys.every((key) => resolved.field.proposalSources?.includes(key)));
     if (!allowed) continue;
     const validation = validateFieldValue(resolved.field, candidate.value);
     if (!validation.ok) continue;

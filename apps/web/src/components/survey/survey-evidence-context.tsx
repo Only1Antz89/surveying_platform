@@ -3,7 +3,7 @@ import {workspaceFetch} from "@/lib/workspace-request";
 import { createContext, useEffect, useState, type ReactNode } from "react";
 import type { SurveyPack } from "@/lib/surveys";
 export type EvidenceSource = { key: string; name: string; status: string; coverageNotes: string; guardrail: string; categories: { category: string; status: string; coverage: string; retrievedAt: string; fresh: boolean; evidence: { label: string; url: string }[] }[] };
-export type EvidenceContextProps = { surveyId: string; pack: SurveyPack; canEdit: boolean; canJudge: boolean; online: boolean; onChanged: () => Promise<void> };
+export type EvidenceContextProps = { surveyId: string; pack: SurveyPack; canEdit: boolean; canJudge: boolean; online: boolean; onPreviewReview?: (id:string, body:Record<string,unknown>)=>Promise<void>; onChanged: () => Promise<void> };
 export const SurveyEvidenceContext = createContext<(EvidenceContextProps & { sources: EvidenceSource[] | null; fieldContexts: Map<string, string[]>; error: string | null; preview: boolean }) | null>(null);
 export const sourceStatusLabels: Record<string, string> = { available: "Evidence available", setup_required: "Setup required", unavailable: "Unavailable", not_checked: "Not checked", stale: "Stale — refresh and review", no_record_found: "No record found — absence not established" };
 export function SurveyEvidenceProvider({ children, ...props }: EvidenceContextProps & { children: ReactNode }) {

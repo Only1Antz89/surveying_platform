@@ -27,7 +27,7 @@ const workspaceIcons: Record<WorkspaceMode, LucideIcon> = {
 };
 
 const workspaceDescriptions: Record<WorkspaceMode, string> = {
-  administration: "Practice configuration, team & billing",
+  administration: "Configuration, team & billing",
   manager: "Fieldwork, jobs & operational oversight",
   surveyor: "Assigned surveys, evidence & routes",
 };

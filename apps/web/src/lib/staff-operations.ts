@@ -4,7 +4,7 @@ import {clerkClient} from "@clerk/nextjs/server";
 import {and,eq,notInArray} from "drizzle-orm";
 import {createDatabase,withTenant,businessLocations,staffCapabilities,organisationMemberships,serviceDefinitions,users,userProfiles,jobs,auditEvents} from "@surveynt/db";
 import {z} from "zod";
-import {members} from "./demo-data";
+import {members,jobs as demoJobs} from "./demo-data";
 import type {WorkspaceMode} from "./workspace-mode";
 export const locationInput=z.object({name:z.string().trim().min(2).max(120),address:z.string().trim().min(3).max(500),latitude:z.number().min(-90).max(90).nullable(),longitude:z.number().min(-180).max(180).nullable(),active:z.boolean(),version:z.number().int().positive().optional()}).refine(v=>(v.latitude===null)===(v.longitude===null),{message:"Provide both coordinates or leave both unset."});
 export const capabilityInput=z.object({primaryLocationId:z.uuid().nullable(),serviceIds:z.array(z.uuid()).max(100),locationIds:z.array(z.uuid()).max(100),coverageRadiusKm:z.number().positive().max(500).nullable(),membershipGrade:z.string().trim().max(80).nullable(),registrationStatus:z.enum(["unset","declared","reviewed"]),contactPhone:z.string().trim().max(50).nullable(),capacityJobs:z.number().int().positive().max(1000).nullable(),version:z.number().int().positive()});
@@ -12,7 +12,7 @@ export type OperationsContext={organisationId:string;internalUserId:string|null;
 export async function listLocations(context:OperationsContext){if(context.demo)return [];return withTenant(createDatabase(),context.organisationId,tx=>tx.select().from(businessLocations).where(eq(businessLocations.organisationId,context.organisationId)));}
 export async function staffProfile(context:OperationsContext,membershipId:string){
  const isManager=context.workspaceMode==="manager"||context.role==="manager";
- if(context.demo){const m=members.find(m=>m.id===membershipId&&m.status==="Active");if(!m)return null;if(isManager&&m.role!=="surveyor")return null;return {...m,userId:m.id,ricsNumber:null,portraitUrl:null as string|null,capability:null,locations:[],services:[],activeJobs:Number(m.workload.split(" ")[0])};}
+ if(context.demo){const m=members.find(m=>m.id===membershipId&&m.status==="Active");if(!m)return null;if(isManager&&m.role!=="surveyor")return null;return {...m,userId:m.id,ricsNumber:null,portraitUrl:null as string|null,capability:null,locations:[],services:[],activeJobs:demoJobs.filter(job=>job.assignee===m.name && !["paid","archived"].includes(job.stage)).length};}
  const data=await withTenant(createDatabase(),context.organisationId,async tx=>{
   const [member]=await tx.select({membership:organisationMemberships,user:users}).from(organisationMemberships).innerJoin(users,eq(users.id,organisationMemberships.userId)).where(and(eq(organisationMemberships.organisationId,context.organisationId),eq(organisationMemberships.id,membershipId),eq(organisationMemberships.active,true))).limit(1);
   if(!member)return null;

@@ -8,6 +8,6 @@ export async function requireWorkspacePageAccess(slug: string, area: string) {
   if (context.userRole === "finance" && !["account", "finance", "overview", ""].includes(area)) notFound();
   if (["settings", "performance", "demo"].includes(area) && !isManagementRole(context.userRole)) notFound();
   if (["team","staff","fieldwork","services","locations"].includes(area) && !isManagementRole(context.userRole)) notFound();
-  if (context.workspaceMode === "manager" && ["locations", "routes", "services", "performance", "finance", "customers", "clients"].includes(area)) notFound();
+  if (context.workspaceMode === "manager" && ["locations", "routes", "services"].includes(area)) notFound();
   return context;
 }

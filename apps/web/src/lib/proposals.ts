@@ -2,7 +2,7 @@ import {workspaceAudit} from "@/lib/workspace-audit";
 import { and, desc, eq, inArray, isNull, ne } from "drizzle-orm";
 import { assistantTasks, auditEvents, createDatabase, enrichmentRuns, evidenceLinks, fieldProposals, jobs, organisations, organisationOperationalSettings, preinspectionDocuments, preinspectionSubmissions, properties, propertyIntelligenceSnapshots, surveyElements, surveyFieldValues, surveys, withTenant, type TenantTransaction } from "@surveynt/db";
 import { inspectionWeather, type InspectionWeatherResult } from "@surveynt/property-data";
-import { generateSourcedProposals, preinspectionAnswersSchema, resolveField, validateFieldValue, type EvidenceRef, type FieldValue, type SnapshotEvidence } from "@surveynt/assistant";
+import { canonicalJson, generateSourcedProposals, preinspectionAnswersSchema, resolveField, validateFieldValue, type EvidenceRef, type FieldValue, type SnapshotEvidence } from "@surveynt/assistant";
 import { propertyFingerprint } from "./fingerprint";
 import { assistantEnabled } from "./assistant-flags";
 import { canRecordProfessionalJudgement, pinnedTemplate, type SurveyContext } from "./surveys";
@@ -77,9 +77,9 @@ export async function refreshSurveyProposals(context: Pick<SurveyContext, "organ
       }),
       snapshots: property ? await currentSnapshots(tx, context.organisationId, property) : [],
       currentValues: new Map(values.map((value) => [value.fieldPath, { id: value.id, value: value.value as unknown as FieldValue }])),
-      job: { id: job.id, reference: job.reference, targetDate: job.targetDate },
+      job: { id: job.id, reference: job.reference, targetDate: job.targetDate, recordPrefill:true, propertyAddress: property ? [property.line1,property.city,property.postcode].filter(Boolean).join(", ") : undefined },
       questionnaire: submission && answers.success && property ? { id: submission.submission.id, version: submission.submission.version, submittedAt: submission.submission.createdAt.toISOString(), answers: answers.data, propertyFingerprint: await propertyFingerprint(property) } : undefined,
-      identity: template.version === "1.2.0" ? await reportIdentityEvidence(tx, context.organisationId, context.internalUserId) : undefined,
+      identity: await reportIdentityEvidence(tx, context.organisationId, context.internalUserId),
       weather: weatherCurrent && weather?.status === "available" && weatherInput ? { ...weather, inspectionDate: weather.date, contextId: `${weatherInput.dateId}|${weatherInput.fingerprint}` } : undefined,
     });
     const pending = await tx.select({ id: fieldProposals.id, dedupeKey: fieldProposals.dedupeKey, evidence: fieldProposals.evidenceRefs }).from(fieldProposals).where(and(eq(fieldProposals.surveyId, surveyId), eq(fieldProposals.organisationId, context.organisationId), eq(fieldProposals.reviewStatus, "pending")));
@@ -167,6 +167,11 @@ export async function reviewProposal(context: SurveyContext, surveyId: string, p
     if (!validation.ok) return { kind: "invalid", message: validation.message };
     const evidence = proposal.evidenceRefs as unknown as EvidenceRef[];
     const [property] = await tx.select().from(properties).where(and(eq(properties.id, survey.propertyId), eq(properties.organisationId, context.organisationId))).for("share").limit(1);
+    if(evidence.some(ref=>ref.type === "job" && ref.context)) {
+      const [job]=await tx.select().from(jobs).where(and(eq(jobs.id,survey.jobId),eq(jobs.organisationId,context.organisationId))).limit(1);
+      const sourceContext=canonicalJson({reference:job?.reference,propertyAddress:property ? [property.line1,property.city,property.postcode].filter(Boolean).join(", ") : null});
+      if(evidence.some(ref=>ref.type === "job" && ref.context && (ref.id!==job?.id || ref.context!==sourceContext)))return {kind:"conflict",message:"The job or linked property record changed. Load evidence again."};
+    }
     const snapshotIds = new Set(property ? (await currentSnapshots(tx, context.organisationId, property)).map(item => item.snapshotId) : []);
     const [inspectionDate] = await tx.select().from(surveyFieldValues).where(and(eq(surveyFieldValues.surveyId, surveyId), eq(surveyFieldValues.fieldPath, "a.details.inspection_date"), isNull(surveyFieldValues.supersededAt))).limit(1);
     const weatherContext = property && inspectionDate ? `${inspectionDate.id}|${await propertyFingerprint(property)}` : null;

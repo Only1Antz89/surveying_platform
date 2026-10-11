@@ -1,4 +1,5 @@
 "use client";
+import { reportDocument } from "@/lib/report-document";
 import {workspaceFetch} from "@/lib/workspace-request";
 
 import { useCallback, useEffect, useState } from "react";
@@ -23,7 +24,10 @@ function Block({ block }: { block: ReportBlock }) {
  * wording; preview it with every block's sources; and sign it off. Sign-off
  * is always a person's explicit decision on one exact version.
  */
-export function ReportPanel({ surveyId, canEdit, canJudge, online, demo, onChanged }: { surveyId: string; canEdit: boolean; canJudge: boolean; online: boolean; demo: boolean; onChanged: () => Promise<void> }) {
+export function ReportPanel({ surveyId, canEdit, canJudge, online, demo, onChanged, composePreview, templateReviewed = false, recordingTemplate }: { surveyId: string; canEdit: boolean; canJudge: boolean; online: boolean; demo: boolean; composePreview?: ()=>ComposedReport; templateReviewed?: boolean; recordingTemplate?: {key:string;version:string}; onChanged: () => Promise<void> }) {
+  const [ricsPdfAvailable,setRicsPdfAvailable]=useState(false);
+  useEffect(()=>{let cancelled=false;if(!online)return;workspaceFetch("/api/v1/report-templates/catalogue").then(response=>response.ok?response.json():null).then(payload=>{if(!cancelled)setRicsPdfAvailable(Boolean(payload?.data?.templates?.some((item:{templateKey:string;templateVersion:string;outputStatus:string})=>item.templateKey===recordingTemplate?.key && item.templateVersion===recordingTemplate?.version && item.outputStatus==="draft_preview_available")));}).catch(()=>undefined);return()=>{cancelled=true;};},[online,recordingTemplate?.key,recordingTemplate?.version]);
+  async function downloadRicsPdf(){setBusy(true);try{const response=await workspaceFetch(`/api/v1/surveys/${surveyId}/report/pdf`);if(!response.ok){const payload=await response.json();throw new Error(payload.error?.message??"Could not export the PDF.");}const url=URL.createObjectURL(await response.blob());const link=document.createElement("a");link.href=url;link.download="home-survey-review.pdf";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(error){setMessage({tone:"error",text:error instanceof Error?error.message:"Could not export the PDF."});}finally{setBusy(false);}}
   const [state, setState] = useState<ReportState | null>(null);
   const [preview, setPreview] = useState<ComposedReport | null>(null);
   const [busy, setBusy] = useState(false);
@@ -49,6 +53,7 @@ export function ReportPanel({ surveyId, canEdit, canJudge, online, demo, onChang
   }, [online, fetchState]);
 
   async function compose() {
+    if (demo && composePreview) {setPreview(composePreview());setMessage({tone:"success",text:"Draft assembled from your device answers. Surveyant’s central RICS output must be provisioned and verified before issue."});return;}
     setBusy(true); setMessage(null); setConfirmed(false);
     const response = await workspaceFetch(`/api/v1/surveys/${surveyId}/report`, { method: "POST" });
     const payload = await response.json().catch(() => null);
@@ -83,7 +88,7 @@ export function ReportPanel({ surveyId, canEdit, canJudge, online, demo, onChang
 
   const latest = state?.versions[0] ?? null;
   const approved = state?.surveyStatus === "approved";
-  const canSignOff = Boolean(canJudge && online && latest && latest.current && !latest.approval && !approved && !demo);
+  const canSignOff = Boolean(canJudge && templateReviewed && online && latest && latest.current && !latest.approval && !approved && !demo);
 
   return <section className="panel report-panel" aria-labelledby="report-heading">
     <div className="panel-header"><div><h2 id="report-heading">Report</h2><p>Assembled from recorded values, current observations and your firm&apos;s approved wording only. Nothing is generated.</p></div>
@@ -97,6 +102,10 @@ export function ReportPanel({ surveyId, canEdit, canJudge, online, demo, onChang
       {version.contentRemoved ? <StatusDot tone="slate">Content removed</StatusDot> : !version.current ? <StatusDot tone="slate">Out of date</StatusDot> : null}
     </li>)}</ul> : null}
     {approved ? <div className="report-signed"><p><FileCheck2 size={15} aria-hidden="true" /> Signed off. Capture is closed for this survey.</p>{canJudge && !latest?.contentRemoved ? <button type="button" className="button button-quiet" disabled={busy || !online} onClick={() => void reopen()}>Reopen for changes</button> : null}</div> : null}
+    {preview ? <div className="row-actions"><button type="button" className="button button-secondary" onClick={() => {
+      const blob=new Blob([reportDocument(preview)],{type:"text/html;charset=utf-8"});const url=URL.createObjectURL(blob);const link=document.createElement("a");link.href=url;link.download=`${preview.jobReference.replace(/[^a-z0-9-]/gi,"-")}-draft.html`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    }}>Download printable draft</button><p className="form-help">Black answers, purple report headings. This draft is not the licensed RICS document.</p></div> : null}
+    {ricsPdfAvailable && !demo && latest?.current && !latest.contentRemoved ? <button type="button" className="button button-secondary" disabled={busy||!online} onClick={()=>void downloadRicsPdf()}>Download central RICS PDF review copy</button> : null}
     {preview ? <article className="report-preview" aria-label="Report preview">
       <header><h3>{preview.title}</h3><p>{preview.property.line1}{preview.property.city ? `, ${preview.property.city}` : ""} · {preview.jobReference} · template {preview.templateVersion}</p></header>
       {preview.ratingSummary.length ? <div className="report-ratings">{preview.ratingSummary.map((group) => <div key={group.rating}><strong>{group.label}</strong><span>{group.elements.map((element) => element.title).join(", ")}</span></div>)}</div> : null}
@@ -107,6 +116,7 @@ export function ReportPanel({ surveyId, canEdit, canJudge, online, demo, onChang
       {preview.recommendations.length ? <section><h4>Recommendations</h4>{preview.recommendations.map((block) => <Block key={block.id} block={block} />)}</section> : null}
       {preview.omissions.length ? <section className="report-omissions"><h4>Left out of this version</h4><ul>{preview.omissions.map((item) => <li key={item}>{item}</li>)}</ul></section> : null}
     </article> : <p className="form-help assistant-empty">{latest?.contentRemoved ? "Report content was removed after retention review. Version and approval records remain." : "No report composed yet."}</p>}
+    {!demo && !templateReviewed ? <p className="identity-warning intel-inline">Formal issue is unavailable until Surveyant’s centrally supplied RICS template and recording workflow have been professionally verified. Company licence selection alone does not enable sign-off.</p> : null}
     {canSignOff && latest ? <div className="report-signoff">
       <label className="check-field"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /> {REPORT_SIGN_OFF_STATEMENT}</label>
       <input className="input" value={note} onChange={(event) => setNote(event.target.value)} maxLength={1000} placeholder="Note (optional)" aria-label="Sign-off note" />

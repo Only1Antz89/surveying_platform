@@ -13,6 +13,7 @@ import {
   mediaAnalyses,
   mediaAssets,
   observations,
+  organisationOperationalSettings,
   practicePackVersions,
   properties,
   propertyIntelligenceSnapshots,
@@ -42,6 +43,8 @@ import {
 import { canConfirmPropertyIdentity, type OrganisationRole, type UkCountry } from "@surveynt/domain";
 import { assistantEnabled } from "./assistant-flags";
 import { getObjectStorage, maxUploadBytes } from "./storage";
+import {validVideoHeader} from "./video-evidence";
+import { activeReportTemplates, defaultReportTemplate } from "./report-template-settings";
 import { wholeFormEvidenceEnabled } from "./whole-form-evidence";
 
 export type SurveyContext = { organisationId: string; internalUserId: string | null; role: OrganisationRole; actorRole?:OrganisationRole; canRecordSurvey?: boolean; canApproveReports?: boolean };
@@ -85,7 +88,13 @@ export async function createSurvey(context: SurveyContext, jobId: string, input:
     const [property] = await tx.select().from(properties).where(and(eq(properties.id, job.propertyId), eq(properties.organisationId, context.organisationId))).limit(1);
     const jurisdiction = input.jurisdiction ?? property?.country ?? null;
     if (!jurisdiction) return { kind: "invalid" as const, message: "Set the property's country or choose the jurisdiction before starting the survey." };
-    const template = input.templateKey && input.templateVersion ? await resolveTemplate(tx, input.templateKey, input.templateVersion) : defaultTemplate;
+    const [settings] = await tx.select({configuration:organisationOperationalSettings.reportTemplateSettings}).from(organisationOperationalSettings).where(eq(organisationOperationalSettings.organisationId,context.organisationId)).limit(1);
+    const configured = settings?.configuration ?? null;
+    const matched = defaultReportTemplate(configured,job.serviceName,input.serviceLevel);
+    const selectedKey = input.templateKey ?? matched?.templateKey;
+    const selectedVersion = input.templateVersion ?? matched?.templateVersion;
+    const template = selectedKey && selectedVersion ? await resolveTemplate(tx,selectedKey,selectedVersion) : defaultTemplate;
+    if (configured && template?.key.startsWith("surveynt-home-survey-") && !activeReportTemplates(configured).some(row=>row.templateKey===template.key && row.templateVersion===template.version)) return {kind:"invalid" as const,message:"This template is not enabled with a current company licence. Ask Admin to configure report templates."};
     if (!template) return { kind: "invalid" as const, message: "That form template is not published." };
     if (template.version === "1.2.0" && template.key.startsWith("surveynt-home-survey-") && !await wholeFormEvidenceEnabled(tx, context.organisationId)) return { kind: "invalid" as const, message: "Whole-form evidence is enabled for flagged private demos only." };
     if (!template.jurisdictions.includes(jurisdiction)) return { kind: "invalid" as const, message: "That template does not cover the property's jurisdiction." };
@@ -365,6 +374,7 @@ export async function applySyncOperations(context: SurveyContext, surveyId: stri
 
 const photoTypes = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
 const documentTypes = ["application/pdf"];
+const videoTypes = ["video/mp4", "video/webm"];
 
 export type StoreMediaInput = { file: File; clientGeneratedId: string; capturedAt?: string | null; captureContext?: Record<string, unknown> };
 
@@ -372,9 +382,9 @@ export type StoreMediaInput = { file: File; clientGeneratedId: string; capturedA
 export async function storeSurveyMedia(context: SurveyContext, surveyId: string, input: StoreMediaInput) {
   if (!canRecordProfessionalJudgement(context.actorRole??context.role, context.canRecordSurvey)) return { kind: "invalid" as const, message: "Professional recording permission is required." };
   const storage = getObjectStorage();
-  if (!storage) return { kind: "not_configured" as const, message: "Photo and document storage is not configured. Text capture continues to work." };
-  const kind = photoTypes.includes(input.file.type) ? "photo" as const : documentTypes.includes(input.file.type) ? "document" as const : null;
-  if (!kind) return { kind: "invalid" as const, message: "Upload a JPEG, PNG, WebP or HEIC photo, or a PDF document." };
+  if (!storage) return { kind: "not_configured" as const, message: "Photo, video and document storage is not configured. Text capture continues to work." };
+  const kind = photoTypes.includes(input.file.type) ? "photo" as const : documentTypes.includes(input.file.type) ? "document" as const : videoTypes.includes(input.file.type) ? "video" as const : null;
+  if (!kind) return { kind: "invalid" as const, message: "Upload a JPEG, PNG, WebP or HEIC photo, a PDF document, or an MP4/WebM video." };
   if (input.file.size > maxUploadBytes() || input.file.size === 0) return { kind: "invalid" as const, message: `Files must be between 1 byte and ${Math.round(maxUploadBytes() / 1048576)} MB.` };
   const db = createDatabase();
   const survey = await withTenant<{ row?: typeof surveys.$inferSelect; duplicate?: typeof mediaAssets.$inferSelect }>(db, context.organisationId, async (tx) => {
@@ -388,6 +398,7 @@ export async function storeSurveyMedia(context: SurveyContext, surveyId: string,
   if (survey.duplicate) return { kind: "stored" as const, media: survey.duplicate, duplicate: true };
   if (survey.row.status !== "in_progress") return { kind: "invalid" as const, message: "This survey is no longer open for capture." };
   const body = await input.file.arrayBuffer();
+  if(kind === "video" && !validVideoHeader(input.file.type,new Uint8Array(body)))return {kind:"invalid" as const,message:"The video content does not match its MP4/WebM format."};
   const digest = await crypto.subtle.digest("SHA-256", body);
   const sha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
   const mediaId = crypto.randomUUID();

@@ -24,7 +24,7 @@ export function CustomerRecords({
   invoices: Invoice[];
 }) {
   const [reports, setReports] = useState<
-    { id: string; version: number; approvedAt: string; content: ComposedReport }[]
+    { id: string; version: number; approvedAt: string; accessExpiresAt: string; content: ComposedReport }[]
   >([]);
   const [error, setError] = useState("");
   const [confirming, setConfirming] = useState<string | null>(null);
@@ -130,7 +130,7 @@ export function CustomerRecords({
                 <FileText size={16} style={{ color: "var(--blue)" }} />
                 <span>
                   Approved report · version {r.version} ·{" "}
-                  {new Date(r.approvedAt).toLocaleDateString("en-GB")}
+                  {new Date(r.approvedAt).toLocaleDateString("en-GB")} · Customer access ends {new Date(r.accessExpiresAt).toLocaleDateString("en-GB")}
                 </span>
               </div>
             </summary>

@@ -16,7 +16,7 @@ it("renders removed observations without stale text or evidence controls", () =>
   }));
   expect(html).toContain("Observation content removed after retention review");
   expect(html).not.toContain("Fictional stale private text");
-  expect(html).not.toContain("Link a photo as evidence");
+  expect(html).not.toContain("Link media as evidence");
 });
 
 it("hides stale limitation notes and disables editing for removed elements", () => {

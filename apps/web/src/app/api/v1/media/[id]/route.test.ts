@@ -18,3 +18,16 @@ it("retains not-found behavior for unavailable or foreign originals", async () =
 it("does not read persistent storage in an isolated preview", async () => {
   state.context.demo = true; expect((await GET(request, route)).status).toBe(404); expect(state.read).not.toHaveBeenCalled();
 });
+
+it("serves authenticated partial video playback without shared caching", async () => {
+  state.read.mockResolvedValue({media:{kind:"video",contentType:"video/mp4",byteSize:6},object:{stream:new Blob([new Uint8Array([0,1,2,3,4,5])]).stream()}});
+  const response=await GET(new Request("http://surveynt.test/media",{headers:{range:"bytes=2-4"}}),route);
+  expect(response.status).toBe(206);expect(response.headers.get("content-range")).toBe("bytes 2-4/6");
+  expect(response.headers.get("cache-control")).toBe("private, no-store");
+  expect([...new Uint8Array(await response.arrayBuffer())]).toEqual([2,3,4]);
+});
+it("rejects unsatisfiable video ranges", async () => {
+  state.read.mockResolvedValue({media:{kind:"video",contentType:"video/mp4",byteSize:6},object:{stream:new Blob([new Uint8Array([0,1,2,3,4,5])]).stream()}});
+  const response=await GET(new Request("http://surveynt.test/media",{headers:{range:"bytes=8-"}}),route);
+  expect(response.status).toBe(416);expect(response.headers.get("content-range")).toBe("bytes */6");
+});

@@ -1,16 +1,17 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { Camera, MessageSquarePlus } from "lucide-react";
+import { Camera, Video, MessageSquarePlus } from "lucide-react";
 import { inspectionStatusLabels, inspectionStatuses, nextActionLabels, nextActions, type ElementDefinition, type FieldValue, type FormTemplate, type InspectionStatus, type NextAction, type SectionDefinition } from "@surveynt/assistant";
 import { SurveyField, type FieldDisplay } from "./survey-field";
 
 export type ElementView = { serverId: string | null; version: number | null; inspectionStatus: InspectionStatus | null; limitationReason: string | null; pending: boolean; contentRemoved?: boolean };
 export type ObservationView = { key: string; text: string; kind: string; pending: boolean; contentRemoved?: boolean; measurement?: { value: number; unit: string } | null; locationLabel?: string | null; defect?: { nextAction: string } | null; evidenceCount?: number };
-export type PhotoView = { key: string; src: string | null; pending: boolean; label: string; quality?: string[] };
+export type PhotoView = { kind?: "photo" | "video"; key: string; src: string | null; pending: boolean; label: string; quality?: string[] };
 export type EarlierPhotoView = { mediaId: string; jobReference: string; surveyDate: string; locationLabel: string | null };
 
 function PhotoThumb({ photo }: { photo: PhotoView }) {
+  if(photo.kind === "video" && photo.src)return <video controls playsInline preload="metadata" src={photo.src} aria-label={photo.label}/>;
   if (!photo.src) return <span className="photo-placeholder">{photo.label}</span>;
   // Private, authenticated originals and on-device object URLs cannot go through the image optimiser.
   // eslint-disable-next-line @next/next/no-img-element
@@ -88,10 +89,11 @@ export function SurveyElementCard({ section, element, template, view, fieldDispl
     </div>
     {element.inspectable ? <div className="survey-evidence">
       <div className="survey-evidence-header">
-        <h4>Observations and photos</h4>
+        <h4>Observations, photos and video</h4>
         {editable ? <div className="row-actions">
           <button type="button" className="button button-quiet" onClick={() => setAdding((value) => !value)}><MessageSquarePlus size={14} />Add observation</button>
           <label className="button button-quiet file-button"><Camera size={14} />Add photo<input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" capture="environment" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (file) onPhoto(file); event.target.value = ""; }} /></label>
+          <label className="button button-quiet file-button"><Video size={14} />Add video<input type="file" accept="video/mp4,video/webm" capture="environment" className="sr-only" onChange={event=>{const file=event.target.files?.[0];if(file)onPhoto(file);event.target.value="";}}/></label>
         </div> : null}
       </div>
       {adding ? <form className="observation-form" onSubmit={addObservation}>
@@ -109,7 +111,7 @@ export function SurveyElementCard({ section, element, template, view, fieldDispl
         <p>{observation.locationLabel ? <b>{observation.locationLabel}: </b> : null}{observation.text}{observation.measurement ? ` (${observation.measurement.value} ${observation.measurement.unit})` : ""}</p>
         {observation.pending ? <small>Saved on this device</small> : null}
         {observation.defect ? <small>{observation.evidenceCount ? `${observation.evidenceCount} item${observation.evidenceCount === 1 ? "" : "s"} of evidence` : "No evidence linked yet"}</small> : null}
-        {observation.defect && editable && onLinkPhoto && photos.length ? <select className="select observation-link" aria-label="Link a photo as evidence" value="" onChange={(event) => { if (event.target.value) onLinkPhoto(observation.key, observation.pending, event.target.value); }}><option value="">Link a photo as evidence…</option>{photos.map((photo, index) => <option key={photo.key} value={photo.key}>Photo {index + 1}{photo.pending ? " (waiting to upload)" : ""}</option>)}</select> : null}
+        {observation.defect && editable && onLinkPhoto && photos.length ? <select className="select observation-link" aria-label="Link media as evidence" value="" onChange={(event) => { if (event.target.value) onLinkPhoto(observation.key, observation.pending, event.target.value); }}><option value="">Link media as evidence…</option>{photos.map((photo, index) => <option key={photo.key} value={photo.key}>{photo.kind === "video" ? "Video" : "Photo"} {index + 1}{photo.pending ? " (waiting to upload)" : ""}</option>)}</select> : null}
       </li>)}</ul> : null}
       {photos.length ? <ul className="photo-strip">{photos.map((photo) => <li key={photo.key}><PhotoThumb photo={photo} />{photo.pending ? <small>Waiting to upload</small> : null}{photo.quality?.map((message) => <small key={message} className="photo-quality">{message}</small>)}</li>)}</ul> : null}
       {onLoadEarlier ? <div className="earlier-photos">

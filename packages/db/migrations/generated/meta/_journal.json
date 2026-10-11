@@ -561,6 +561,20 @@
       "when": 1791494947674,
       "tag": "0079_yellow_warbound",
       "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1791731152159,
+      "tag": "0080_brown_goblin_queen",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1791735938116,
+      "tag": "0081_solid_onslaught",
+      "breakpoints": true
     }
   ]
 }

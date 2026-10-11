@@ -7,6 +7,8 @@ import { BriefcaseBusiness, CalendarDays, CirclePoundSterling, Users } from "luc
 import { StatusDot } from "@surveynt/ui";
 import { jobStageLabels } from "@surveynt/domain";
 import { PageHeader } from "@/components/page-header";
+import { SurveyorCapacityView } from "@/components/surveyor-capacity";
+import { loadSurveyorCapacity } from "@/lib/load-surveyor-capacity";
 import { loadOverview } from "@/lib/data";
 import { requireFirmAccess } from "@/lib/access";
 import {redirectWorkspace as redirect} from "@/lib/workspace-redirect";
@@ -24,12 +26,13 @@ export default async function OverviewPage({ params }: { params: Promise<{ organ
     requireFirmAccess(organisationSlug),
     loadOverview(organisationSlug),
   ]);
+  const capacity = access.workspaceMode === "manager" ? await loadSurveyorCapacity({organisationId:access.organisationId,internalUserId:access.internalUserId,role:access.userRole,workspaceMode:access.workspaceMode,demo:access.userId==="demo_user"}) : [];
   const firstName = context.userName.split(/\s+/)[0];
   const today = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "Europe/London" }).format(new Date());
   const metrics = [
     { label: "Active jobs", value: String(overview.activeJobs), foot: "Current live workload", icon: BriefcaseBusiness, href: `/app/${organisationSlug}/jobs` },
     { label: "Inspections this week", value: String(overview.inspectionsThisWeek), foot: "Confirmed appointments", icon: CalendarDays, href: `/app/${organisationSlug}/calendar` },
-    { label: "Customers", value: String(overview.openClients), foot: "Active customer records", icon: Users, href: access.workspaceMode === "manager" ? `/app/${organisationSlug}/jobs` : `/app/${organisationSlug}/customers` },
+    { label: "Customers", value: String(overview.openClients), foot: "Active customer records", icon: Users, href: `/app/${organisationSlug}/customers` },
     { label: "Fees in progress", value: currency.format(overview.feesInProgress), foot: "Across active work", icon: CirclePoundSterling, href: `/app/${organisationSlug}/jobs` },
   ];
 
@@ -39,6 +42,7 @@ export default async function OverviewPage({ params }: { params: Promise<{ organ
     <section className="metric-grid" aria-label="Practice summary">
       {metrics.map((metric) => <Link className="metric" key={metric.label} href={metric.href}><div className="metric-head"><span>{metric.label}</span><span className="metric-icon"><metric.icon /></span></div><div className="metric-value">{metric.value}</div><div className="metric-foot"><strong>{metric.foot}</strong></div></Link>)}
     </section>
+    {access.workspaceMode === "manager" ? <SurveyorCapacityView people={capacity} slug={organisationSlug} compact/> : null}
     <div className="dashboard-grid">
       <div>
         <section className="panel">

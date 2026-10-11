@@ -127,9 +127,9 @@ export async function loadOverviewForOrganisation(organisationId: string): Promi
     const [clientSummary] = await tx.select({ openClients: count(clients.id) })
       .from(clients)
       .where(and(eq(clients.organisationId, organisationId), isNull(clients.archivedAt)));
-    const [onboardingSummary] = await tx.select({ completed: count(onboardingSteps.id) })
+    const [onboardingSummary] = await tx.select({ completed: sql<number>`count(*) filter (where ${onboardingSteps.completedAt} is not null)`.mapWith(Number), total: count(onboardingSteps.id) })
       .from(onboardingSteps)
-      .where(and(eq(onboardingSteps.organisationId, organisationId), isNotNull(onboardingSteps.completedAt)));
+      .where(eq(onboardingSteps.organisationId, organisationId));
     const recentRows = await tx.select({
       job: jobs,
       clientName: clients.displayName,
@@ -171,7 +171,7 @@ export async function loadOverviewForOrganisation(organisationId: string): Promi
       inspectionsThisWeek: visitSummary?.total ?? 0,
       openClients: clientSummary?.openClients ?? 0,
       feesInProgress: jobSummary?.feesInProgress ?? 0,
-      onboardingProgress: Math.min(100, Math.round(((onboardingSummary?.completed ?? 0) / 4) * 100)),
+      onboardingProgress: Math.min(100, Math.round(((onboardingSummary?.completed ?? 0) / Math.max(1,onboardingSummary?.total ?? 4)) * 100)),
       workQueue: mappedJobs.slice(0, 4),
       inspectionsToday: todaysVisits.map(row=>({id:row.job.id,reference:row.job.reference,client:row.clientName,address:`${row.address}, ${row.city}`,service:row.job.serviceName,stage:row.job.stage,assignee:[row.firstName,row.lastName].filter(Boolean).join(" ")||"Unassigned",target:row.appointment.startsAt.toLocaleTimeString("en-GB",{timeZone:"Europe/London",hour:"2-digit",minute:"2-digit"}),fee:Number(row.job.fee??0),priority:row.job.priority==="high"?"High":"Normal"})),
       recentActivity: activityRows.map((activity) => ({

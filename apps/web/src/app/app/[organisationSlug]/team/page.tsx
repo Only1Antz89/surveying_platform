@@ -17,7 +17,7 @@ export async function generateMetadata({ params }: { params: Promise<{ organisat
 
 export default async function TeamPage({ params }: { params: Promise<{ organisationSlug: string }> }) {
   const { organisationSlug } = await params; await requireWorkspacePageAccess(organisationSlug, "team");
-  const [members, access, supportRequests] = await Promise.all([loadMembers(organisationSlug), requireFirmAccess(organisationSlug), loadPendingSupportRequests(organisationSlug)]);
+  const access = await requireFirmAccess(organisationSlug);
   const isManager = access.workspaceMode === "manager" || access.userRole === "manager";
 
   if (isManager) {
@@ -27,6 +27,8 @@ export default async function TeamPage({ params }: { params: Promise<{ organisat
       </main>
     );
   }
+
+  const [members,supportRequests]=await Promise.all([loadMembers(organisationSlug),loadPendingSupportRequests(organisationSlug)]);
 
   return <main className="page">
     <PageHeader

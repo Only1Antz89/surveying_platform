@@ -1,7 +1,7 @@
 import type {OrganisationRole} from "@surveynt/domain";
 export const workspaceModes=["administration","manager","surveyor"] as const;
 export type WorkspaceMode=typeof workspaceModes[number];
-export const workspaceLabels:Record<WorkspaceMode,string>={administration:"Practice administration",manager:"Manager workspace",surveyor:"Surveyor workspace"};
+export const workspaceLabels:Record<WorkspaceMode,string>={administration:"Administration",manager:"Manager workspace",surveyor:"Surveyor workspace"};
 export function defaultWorkspaceMode(role:OrganisationRole):WorkspaceMode{return role==="owner"||role==="administrator"?"administration":role==="surveyor"?"surveyor":"manager";}
 export function availableWorkspaces(role:OrganisationRole):WorkspaceMode[]{return role==="owner"||role==="administrator"?[...workspaceModes]:role==="manager"?["manager","surveyor"]:role==="surveyor"?["surveyor"]:[];}
 export function resolveWorkspace(role:OrganisationRole,requested?:string|null){
@@ -27,7 +27,7 @@ export function rememberedWorkspaceHref(value:string|null,options:Parameters<typ
  const fallback=workspaceHref(`/app/${options.slug}/overview`,options);if(!value||value.length>2000||/[\\\r\n]/.test(value))return fallback;
  const base=`/app/${options.slug}/`;if(!value.startsWith(base)||value.includes("//")||/%(?:2f|5c|2e)/i.test(value)||value.split(/[/?#]/).includes(".."))return fallback;
  const canonical=workspaceRoute(value).canonical;const area=canonical.slice(base.length).split(/[/?#]/)[0];
- const allowed=options.workspaceMode==="surveyor"?["overview","customers","clients","jobs","properties","reports","documents","calendar","routes","account"]:options.workspaceMode==="manager"?["overview","fieldwork","team","staff","jobs","properties","reports","documents","calendar","account","settings"]:["overview","fieldwork","team","staff","customers","clients","jobs","properties","reports","documents","calendar","finance","performance","services","locations","routes","account","settings","demo","wording","report-templates"];
+ const allowed=options.workspaceMode==="surveyor"?["overview","customers","clients","jobs","properties","reports","documents","calendar","routes","account"]:options.workspaceMode==="manager"?["overview","fieldwork","team","staff","customers","clients","jobs","properties","reports","documents","calendar","finance","performance","account","settings"]:["overview","fieldwork","team","staff","customers","clients","jobs","properties","reports","documents","calendar","finance","performance","services","locations","routes","account","settings","demo","wording","report-templates"];
  if(allowed&&!allowed.includes(area)||options.workspaceMode==="manager"&&/\/settings\/(billing|website-form)(?:[/?#]|$)/.test(canonical))return fallback;
  return workspaceHref(value,options);
 }

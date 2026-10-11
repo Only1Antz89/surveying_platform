@@ -50,8 +50,9 @@ export function AppShell({ children, mode, slug = "clifton-surveyors", workspace
   const searchRequests=useRef(createWorkspaceReadScope()); const dialog = useRef<HTMLDialogElement>(null); const menuButton = useRef<HTMLButtonElement>(null); const sidebar = useRef<HTMLElement>(null);
   const items = mode === "firm"
     ? firmItems(slug, isManager)
+        .filter((item) => !["Services", "Locations & routing"].includes(item.label) || ["owner", "administrator"].includes(role))
         .filter((item) => role === "finance" ? item.label === "Finance" : !["Finance", "Reports & insights"].includes(item.label) || (item.label === "Finance" ? ["owner", "administrator", "manager", "finance"].includes(role ?? "read_only") : ["owner", "administrator", "manager"].includes(role ?? "read_only")))
-        .filter((item) => !["Daily fieldwork", "Surveyors & staff", "Surveyors", "Services", "Locations & routing", "CRM suite", "Jobs", "Calendar", "Finance", "Reports & insights"].includes(item.label) || ["owner", "administrator", "manager"].includes(role ?? ""))
+        .filter((item) => !["Daily fieldwork", "Surveyors & staff", "Surveyors", "Services", "Locations & routing", "CRM suite", "Jobs", "Calendar", "Finance", "Reports & insights"].includes(item.label) || ["owner", "administrator", "manager"].includes(role ?? "") || (["Jobs", "Calendar"].includes(item.label) && role === "surveyor"))
     : platformItems;
   if (mode === "firm" && role === "surveyor") items.push({ label: "Route planning", href: `/app/${slug}/routes`, icon: MapPin });
   const base = `/app/${slug}`;
