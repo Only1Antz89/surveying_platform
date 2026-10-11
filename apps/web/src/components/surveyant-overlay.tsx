@@ -5,7 +5,8 @@ import {workspaceLabels} from "@/lib/workspace-mode";
 import {workspaceFetch} from "@/lib/workspace-request";
 import {useEffect,useRef,useState} from "react";
 import {usePathname} from "next/navigation";
-import {Send,X,FileCheck2,ClipboardCheck,ArrowRight,ChevronRight,BookOpen,Ruler} from "lucide-react";
+import {Send,X,FileCheck2,ClipboardCheck,ArrowRight,ChevronRight,BookOpen,Ruler,PanelLeftClose,PanelRightClose,GripHorizontal} from "lucide-react";
+import {useSurvaiPlacement} from "./use-survai-placement";
 type Message={role:string;content:string;citations?:{id:string;label:string;href:string}[]};
 export function SurveyantOverlay({mode,slug,quoteId,token,name}:{mode:"firm"|"platform"|"case";slug?:string;quoteId?:string;token?:string;name:string}){
  const workspace=useWorkspace();const audience=workspace?.workspaceMode;
@@ -15,13 +16,14 @@ export function SurveyantOverlay({mode,slug,quoteId,token,name}:{mode:"firm"|"pl
  const contextKey=`${audience}:${endpointPlaceholder(mode,quoteId,supportId)}:${jobId??""}:${token??""}`;
  const [messageContext,setMessageContext]=useState(contextKey);const [phase,setPhase]=useState<"closed"|"opening"|"open"|"closing">("closed"),[messages,setMessages]=useState<Message[]>([]),[text,setText]=useState(""),[error,setError]=useState(""),[busy,setBusy]=useState(false);const dialog=useRef<HTMLDialogElement>(null),trigger=useRef<HTMLButtonElement>(null),composer=useRef<HTMLTextAreaElement>(null),messageList=useRef<HTMLDivElement>(null),requestId=useRef(0),historyController=useRef<AbortController|null>(null);
  const open=phase!=="closed";
+ const tool=useRef<HTMLDivElement>(null);const movement=useSurvaiPlacement(tool,open);
  const endpoint=mode==="platform"?supportId?`/api/platform/support/${supportId}/surveyant`:"/api/platform/surveyant":mode==="case"?`/api/v1/public/quotes/${quoteId}/assistant`:"/api/v1/surveyant";const storageKey=`surveynt:overlay:${mode}:${slug??quoteId??"platform"}`;
  useEffect(()=>{const timer=setTimeout(()=>setPhase(sessionStorage.getItem(storageKey)==="open"?"open":"closed"),0);return()=>clearTimeout(timer);},[storageKey]);
  useEffect(()=>{if(open&&!dialog.current?.open)dialog.current?.show();if(!open&&dialog.current?.open)dialog.current?.close();},[open,storageKey]);
  useEffect(()=>{requestId.current++;const reset=setTimeout(()=>{setMessageContext(contextKey);setMessages([]);setError("");setBusy(false);setText("");},0);if(mode==="case"&&!token)return()=>clearTimeout(reset);let active=true;const controller=new AbortController();historyController.current=controller;workspaceFetch(`${endpoint}${jobId?`?jobId=${jobId}`:""}`,{headers:{...(token?{"x-quote-token":token}:{}),...(slug?{"x-demo-organisation-slug":slug}:{})},signal:controller.signal}).then(async r=>{const p=await r.json();if(!r.ok)throw Error(p.error?.message??"Conversation unavailable.");if(active){setMessageContext(contextKey);setMessages(p.data.messages??[]);}}).catch(e=>{if(active&&e.name!=="AbortError")setError(e.message);});return()=>{active=false;controller.abort();clearTimeout(reset);};},[endpoint,jobId,token,slug,mode,audience,contextKey]);
  async function send(e:React.FormEvent){e.preventDefault();historyController.current?.abort();const turn=++requestId.current;const question=text.trim();if(!question||busy)return;setBusy(true);setError("");setMessages(v=>[...v,{role:"user",content:question}]);setText("");try{const r=await workspaceFetch(endpoint,{method:"POST",headers:{"content-type":"application/json",...(token?{"x-quote-token":token}:{}),...(slug?{"x-demo-organisation-slug":slug}:{})},body:JSON.stringify({message:question,...(jobId?{jobId}:{})})});const p=await r.json();if(!r.ok)throw Error(p.error?.message??"SurvAI is unavailable.");if(requestId.current===turn)setMessages(v=>[...v,p.data.message]);}catch(e){if(requestId.current===turn)setError((e as Error).message);}finally{if(requestId.current===turn)setBusy(false);}}
- function close(){sessionStorage.setItem(storageKey,"closed");setPhase(window.matchMedia("(prefers-reduced-motion: reduce)").matches?"closed":"closing");trigger.current?.focus();}
- function launch(){if(open){close();return;}sessionStorage.setItem(storageKey,"open");setPhase(window.matchMedia("(prefers-reduced-motion: reduce)").matches?"open":"opening");}
+ function close(){if(phase==="closed"||phase==="closing")return;sessionStorage.setItem(storageKey,"closed");setPhase(window.matchMedia("(prefers-reduced-motion: reduce)").matches?"closed":"closing");trigger.current?.focus();}
+ function launch(){if(movement.consumeDragClick())return;if(open){close();return;}movement.prepareOpen();sessionStorage.setItem(storageKey,"open");setPhase(window.matchMedia("(prefers-reduced-motion: reduce)").matches?"open":"opening");}
  useEffect(()=>{
   if(phase!=="opening"&&phase!=="closing")return;
   const timer=setTimeout(()=>setPhase(phase==="opening"?"open":"closed"),phase==="opening"?1000:650);
@@ -43,12 +45,20 @@ export function SurveyantOverlay({mode,slug,quoteId,token,name}:{mode:"firm"|"pl
   {icon:ArrowRight,label:"Find the next action",question:"What needs my attention next in this workspace? Use available records and cite sources."},
  ];
  useEffect(()=>{messageList.current?.scrollTo({top:messageList.current.scrollHeight,behavior:"auto"});},[messages,busy,error]);
- return <div className="survai-tool" data-phase={phase}>
+ return <div ref={tool} className="survai-tool" data-phase={phase} data-dock={movement.placement?.dock??"floating"} data-dragging={movement.dragging||undefined} style={movement.placement?{left:movement.placement.x,top:movement.placement.y,right:"auto",bottom:"auto"}:undefined}>
   <div className="survai-tape" aria-hidden="true"/>
   <div className="survai-tape-case" aria-hidden="true"><Ruler size={22}/></div>
-  <button ref={trigger} className="surveyant-toggle" aria-label={open?"Close SurvAI":"Open SurvAI, your surveying companion"} title="SurvAI · your surveying companion" aria-haspopup="dialog" aria-expanded={open} onClick={launch} onKeyDown={e=>{if(e.key==="Escape"&&open){e.preventDefault();close();}}}><SurveyantMark/><span>SurvAI</span></button>
-  <dialog ref={dialog} className="surveyant-overlay" inert={phase!=="open"} aria-labelledby="surveyant-heading" onKeyDown={e=>{if(e.key==="Escape"){e.preventDefault();close();}}} onCancel={e=>{e.preventDefault();close();}} onClose={()=>setPhase("closed")}>
-   <header><div className="surveyant-identity"><SurveyantMark/><div><h2 id="surveyant-heading">SurvAI</h2><p>Your surveying companion</p></div></div><button className="icon-button" aria-label="Close SurvAI" onClick={close}><X size={19}/></button></header>
+  <button ref={trigger} className="surveyant-toggle" aria-label={open?"Close SurvAI":"Open SurvAI, your surveying companion"} title="SurvAI · your surveying companion" aria-haspopup="dialog" aria-expanded={open} {...movement.dragHandlers} onClick={launch} onKeyDown={e=>{if(e.key==="Escape"&&open){e.preventDefault();close();}}}><SurveyantMark/><span>SurvAI</span></button>
+  <dialog ref={dialog} className="surveyant-overlay" inert={phase==="closing"} aria-labelledby="surveyant-heading" onKeyDown={e=>{if(e.key==="Escape"){e.preventDefault();close();}}} onCancel={e=>{e.preventDefault();close();}} onClose={()=>setPhase("closed")}>
+   <header {...movement.dragHandlers} title="Drag to move SurvAI; drop near an edge to dock">
+    <div className="surveyant-identity"><SurveyantMark/><div><h2 id="surveyant-heading">SurvAI</h2><p>Your surveying companion</p></div></div>
+    <div className="survai-header-actions">
+     <button type="button" className="survai-header-button survai-move-handle" aria-label="Move SurvAI with arrow keys" title="Move SurvAI (arrow keys)" {...movement.dragHandlers} onKeyDown={e=>{const step=e.shiftKey?40:16;const moves:Record<string,[number,number]>={ArrowLeft:[-step,0],ArrowRight:[step,0],ArrowUp:[0,-step],ArrowDown:[0,step]};if(moves[e.key]){e.preventDefault();movement.moveBy(...moves[e.key]);}}}><GripHorizontal size={18}/></button>
+     <button type="button" className="survai-header-button" aria-label="Dock SurvAI left" title="Dock left" aria-pressed={movement.placement?.dock==="left"} onClick={()=>movement.dock("left")}><PanelLeftClose size={17}/></button>
+     <button type="button" className="survai-header-button" aria-label="Dock SurvAI right" title="Dock right" aria-pressed={movement.placement?.dock==="right"} onClick={()=>movement.dock("right")}><PanelRightClose size={17}/></button>
+     <button type="button" className="survai-header-button survai-close-button" aria-label="Close SurvAI" title="Close SurvAI" onClick={close}><X size={19}/></button>
+    </div>
+   </header>
    <div className="surveyant-context"><span aria-hidden="true"/>{scope}</div>
    <div ref={messageList} className="surveyant-messages" aria-live="polite">
     <div className={`surveyant-welcome${visibleMessages.length?" has-conversation":""}`}><div className="surveyant-drawing"><SurveyantMark/></div><h3>A second pair of eyes.</h3><p>{mode==="case"?"Understand your survey, explore your records, and plan your next step.":mode==="platform"?"Review operations, trace the evidence, and plan your next step.":"Prepare for inspection, trace the evidence, and plan your next step."}</p></div>

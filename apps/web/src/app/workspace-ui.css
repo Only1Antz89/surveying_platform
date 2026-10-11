@@ -169,3 +169,17 @@
 }
 
 .app-shell.new-ui .survai-tool .surveyant-overlay form .button{border-radius:50%;}
+
+/* Scope companion controls to avoid global icon-button sizing and theme overrides. */
+.survai-tool .surveyant-overlay{box-sizing:border-box;color-scheme:light;}
+.survai-tool .surveyant-overlay header{cursor:grab;touch-action:none;user-select:none;gap:8px;padding-right:12px;}
+.survai-tool[data-dragging] .surveyant-overlay header,.survai-tool[data-dragging] .surveyant-toggle{cursor:grabbing;}
+.survai-tool .surveyant-toggle{touch-action:none;}
+.survai-tool .surveyant-identity{min-width:0;}.survai-tool .surveyant-identity p{font-size:11px;}
+.survai-header-actions{display:flex;gap:4px;align-items:center;flex-shrink:0;}
+.survai-tool .survai-header-button{box-sizing:border-box;display:grid;place-items:center;width:32px;min-width:32px;max-width:32px;height:36px;min-height:36px;max-height:36px;padding:0;margin:0;flex:0 0 32px;border:1px solid #ffffff30;border-radius:8px;background:#ffffff10;color:#fff;cursor:pointer;line-height:1;}
+.survai-tool .survai-close-button{width:36px;min-width:36px;max-width:36px;flex-basis:36px;border-radius:50%;aspect-ratio:1;}
+.survai-tool .survai-header-button:hover,.survai-tool .survai-header-button[aria-pressed="true"]{background:#ffffff28;border-color:#ffffff70;}
+.survai-tool .survai-header-button:focus-visible{outline:2px solid #fff;outline-offset:2px;}
+.survai-tool .survai-move-handle{cursor:grab;touch-action:none;}
+@media(max-width:420px){.survai-tool .surveyant-overlay header{padding-left:40px;padding-right:8px;gap:4px;}.survai-header-actions{gap:2px;}.survai-tool .survai-header-button:not(.survai-close-button){width:28px;min-width:28px;max-width:28px;flex-basis:28px;}.survai-tool .surveyant-identity p{max-width:110px;line-height:1.4;}}
