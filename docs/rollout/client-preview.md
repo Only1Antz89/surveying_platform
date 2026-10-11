@@ -1,8 +1,8 @@
 # Client review demo
 
-Refreshed on 11 October 2026 from commit `33b1fde` on the separate Vercel project `surveynt-client-demo`. Deployment `dpl_9sKuxQPN4XfSKRDsWafo54Q29eKu` was built, checked and promoted to the existing public demo domain.
+Refreshed on 11 October 2026 from commit `ad69ef6` on the separate Vercel project `surveynt-client-demo`. Deployment `dpl_Hsh2Z5xSkiUp89edMn3e3ENCMGiq` was built, checked and promoted to the existing public demo domain.
 
-All four links below include SurvAI: the surveying-instrument symbol, notch-only tape measure, upward extension followed by the fieldbook reveal, reverse closing motion, reduced-motion support and workspace-specific prompts. Public page checks returned HTTP 200 for every link; the deployed assistant was opened and its editable inspection prompt and closing behavior were checked in the browser.
+All four links below include SurvAI: the surveying-instrument symbol, notch-only tape measure, upward extension followed by the fieldbook reveal, reverse closing motion, reduced-motion support and workspace-specific prompts. The companion can be dragged by its header or collapsed symbol, docked on either edge with pointer or keyboard controls, and remembers its device position. The close control has fixed circular sizing and returns focus to the launcher. Viewport constraints keep the expanded panel and collapsed caption visible. Public page checks returned HTTP 200 for every link; the deployed assistant was opened and its editable inspection prompt and closing behavior were checked in the browser.
 
 ## Shareable links
 
