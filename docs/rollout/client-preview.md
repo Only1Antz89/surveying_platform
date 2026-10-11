@@ -1,6 +1,8 @@
 # Client review demo
 
-Published on 8 October 2026 from commit `bff9e10` to the separate Vercel project `surveynt-client-demo`.
+Refreshed on 11 October 2026 from commit `33b1fde` on the separate Vercel project `surveynt-client-demo`. Deployment `dpl_9sKuxQPN4XfSKRDsWafo54Q29eKu` was built, checked and promoted to the existing public demo domain.
+
+All four links below include SurvAI: the surveying-instrument symbol, notch-only tape measure, upward extension followed by the fieldbook reveal, reverse closing motion, reduced-motion support and workspace-specific prompts. Public page checks returned HTTP 200 for every link; the deployed assistant was opened and its editable inspection prompt and closing behavior were checked in the browser.
 
 ## Shareable links
 
