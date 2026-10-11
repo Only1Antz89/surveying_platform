@@ -115,7 +115,7 @@ export function LegacyAppShell({ children, mode, slug = "north-star-surveying", 
         {isDemo ? <div className="demo-banner">Demo workspace — connect Clerk, Neon and Stripe to enable production-backed access and billing.</div> : null}
         <div key={instance?.workspaceMode}>{children}</div>
       </div>
-      <SurveyantOverlay mode={mode} slug={mode==="firm"?slug:undefined} name={workspace?.name??"Surveynt"}/>
+      <SurveyantOverlay role={role} platformRole={platformWorkspace?.userRole} mode={mode} slug={mode==="firm"?slug:undefined} name={workspace?.name??"Surveynt"}/>
     </div>
   );
 }
