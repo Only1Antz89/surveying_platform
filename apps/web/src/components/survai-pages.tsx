@@ -26,7 +26,7 @@ export function SurvaiPages({ children, revision, followUpdates }: { children: R
    }
    chrome -= root.getBoundingClientRect().height;
    const viewport = window.visualViewport?.height ?? window.innerHeight;
-   const available = Math.max(64, Math.floor(viewport - 48 - chrome));
+   const available = Math.max(64, Math.floor(viewport - 24 - chrome));
    const natural = Math.ceil(sizing.getBoundingClientRect().height);
    const paged = natural > available;
    const height = paged ? Math.max(64, available - 40) : natural;

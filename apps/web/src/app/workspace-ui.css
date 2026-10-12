@@ -201,5 +201,6 @@
 .survai-page-controls button:focus-visible{outline:2px solid #2455dc;outline-offset:2px;}
 .survai-tool .surveyant-overlay textarea{field-sizing:content;min-height:36px;max-height:min(180px,25dvh);overflow-y:auto;scrollbar-width:none;}
 .survai-tool .surveyant-overlay textarea::-webkit-scrollbar{display:none;}
+@media(max-height:780px){.survai-tool .surveyant-drawing{height:80px;}.survai-tool .surveyant-drawing .surveyant-mark{width:76px;height:76px;}}
 @media(max-height:650px){.survai-tool .surveyant-drawing,.survai-tool .surveyant-welcome h3{display:none;}.survai-tool .surveyant-overlay header{min-height:80px;padding-top:12px;padding-bottom:12px;}.survai-tool .surveyant-welcome{margin-bottom:10px;}.survai-tool .surveyant-messages{padding:12px 20px;}.survai-tool .surveyant-prompts{gap:6px;}.survai-tool .surveyant-prompts button{padding:10px 12px;}}
 @media(prefers-reduced-motion:reduce){.survai-tool{transition:none!important;}}
