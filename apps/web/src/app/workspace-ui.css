@@ -270,3 +270,16 @@
 .survai-tool[data-side="right"][data-view="results"] .surveyant-overlay{border-radius:24px 12px 12px 24px;}
 
 .survai-tool .surveyant-overlay header:focus-visible{outline:2px solid #fff;outline-offset:-4px;border-radius:20px 20px 0 0;}
+
+/* Dock travel uses FLIP transforms; the pointer stays in control while dragging. */
+.survai-tool[data-motion]{transition:none!important;}
+.survai-home-dock::after{content:"";position:absolute;inset:-3px;border:1px solid #204bc4;border-radius:inherit;opacity:0;pointer-events:none;}
+.survai-home-dock[data-motion="docking"]::after{animation:survai-dock-confirm .44s ease-out;}
+.survai-home-dock[data-motion="undocking"]>svg,.survai-home-dock[data-motion="undocking"]>span{animation:survai-dock-release .22s ease-out;}
+.survai-tool[data-motion="docking"] .survai-tape-case>svg{animation:survai-case-settle .42s ease-out;}
+.survai-tool[data-motion="undocking"] .surveyant-toggle .surveyant-mark{animation:survai-case-release .22s ease-out;}
+@keyframes survai-dock-confirm{from{opacity:.65;transform:scale(.96)}to{opacity:0;transform:scale(1.1)}}
+@keyframes survai-dock-release{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
+@keyframes survai-case-settle{0%{transform:scale(.92)}55%{transform:scale(1.04)}100%{transform:scale(1)}}
+@keyframes survai-case-release{from{transform:scale(.96)}to{transform:scale(1)}}
+@media(prefers-reduced-motion:reduce){.survai-home-dock::after,.survai-home-dock>svg,.survai-home-dock>span,.survai-tool .survai-tape-case>svg,.survai-tool .surveyant-toggle .surveyant-mark{animation:none!important;}}
