@@ -9,6 +9,7 @@ import {Suspense,useEffect,useRef,useState} from "react";
 import {usePathname,useSearchParams} from "next/navigation";
 import {Send,X,FileCheck2,ClipboardCheck,CalendarDays,ArrowRight,ChevronRight,BookOpen,Ruler,PanelLeftClose,PanelRightClose,GripHorizontal} from "lucide-react";
 import {useSurvaiPlacement} from "./use-survai-placement";
+import {SurvaiPages} from "./survai-pages";
 type Message={role:string;content:string;citations?:{id:string;label:string;href:string}[]};
 type OverlayProps={role?:OrganisationRole;platformRole?:PlatformRole;mode:"firm"|"platform"|"case";slug?:string;quoteId?:string;token?:string;name:string};
 export function SurveyantOverlay(props:OverlayProps){return <Suspense fallback={null}><SurvaiOverlay {...props}/></Suspense>;}
@@ -18,7 +19,7 @@ function SurvaiOverlay({mode,slug,quoteId,token,name,role,platformRole}:OverlayP
  const supportId=mode==="platform"?pathname.match(/\/platform\/support\/([\da-f-]{36})(?:\/|$)/i)?.[1]:undefined;
  const scope=mode==="case"?`Case ${name}`:mode==="platform"?supportId?"Surveynt · active support session (read only)":"Surveynt · platform operations":jobId?`${name} · current case`:`${name} · ${audience?workspaceLabels[audience]:"business records"}${audience==="surveyor"?" · your assignments":""}`;
  const contextKey=`${effectiveRole}:${platformRole}:${pageContext.page}:${pageContext.resourceId??""}:${audience}:${endpointPlaceholder(mode,quoteId,supportId)}:${jobId??""}:${token??""}`;
- const [messageContext,setMessageContext]=useState(contextKey);const [phase,setPhase]=useState<"closed"|"opening"|"open"|"closing">("closed"),[messages,setMessages]=useState<Message[]>([]),[text,setText]=useState(""),[error,setError]=useState(""),[busy,setBusy]=useState(false);const dialog=useRef<HTMLDialogElement>(null),trigger=useRef<HTMLButtonElement>(null),composer=useRef<HTMLTextAreaElement>(null),messageList=useRef<HTMLDivElement>(null),requestId=useRef(0),sending=useRef(false),historyController=useRef<AbortController|null>(null);
+ const [messageContext,setMessageContext]=useState(contextKey);const [phase,setPhase]=useState<"closed"|"opening"|"open"|"closing">("closed"),[messages,setMessages]=useState<Message[]>([]),[text,setText]=useState(""),[error,setError]=useState(""),[busy,setBusy]=useState(false);const dialog=useRef<HTMLDialogElement>(null),trigger=useRef<HTMLButtonElement>(null),composer=useRef<HTMLTextAreaElement>(null),requestId=useRef(0),sending=useRef(false),historyController=useRef<AbortController|null>(null);
  const open=phase!=="closed";
  const tool=useRef<HTMLDivElement>(null);const movement=useSurvaiPlacement(tool,open);
  const endpoint=mode==="platform"?supportId?`/api/platform/support/${supportId}/surveyant`:"/api/platform/surveyant":mode==="case"?`/api/v1/public/quotes/${quoteId}/assistant`:"/api/v1/surveyant";const storageKey=`surveynt:overlay:${mode}:${slug??quoteId??"platform"}`;
@@ -44,7 +45,15 @@ function SurvaiOverlay({mode,slug,quoteId,token,name,role,platformRole}:OverlayP
  useEffect(()=>{if(phase==="open")dialog.current?.querySelector<HTMLButtonElement>("[aria-label='Close SurvAI']")?.focus();},[phase]);
  const visibleMessages=messageContext===contextKey?messages:[];
  const prompts=pageCopy.actions.map(action=>({...action,icon:action.kind==="next"?ArrowRight:action.kind==="review"?FileCheck2:["calendar","availability","routes","fieldwork"].includes(pageContext.page)?CalendarDays:ClipboardCheck}));
- useEffect(()=>{messageList.current?.scrollTo({top:messageList.current.scrollHeight,behavior:"auto"});},[messages,busy,error]);
+ useEffect(()=>{
+  const fieldbook=dialog.current,measure=tool.current;if(!fieldbook||!measure)return;
+  const observer=new ResizeObserver(()=>{
+   if(!fieldbook.open)return;let height=2;
+   for(const child of fieldbook.children){const style=getComputedStyle(child);height+=child.getBoundingClientRect().height+parseFloat(style.marginTop)+parseFloat(style.marginBottom);}
+   measure.style.setProperty("--survai-height",`${Math.ceil(height)}px`);
+  });
+  for(const child of fieldbook.children)observer.observe(child);return()=>observer.disconnect();
+ },[]);
  return <div ref={tool} className="survai-tool" data-phase={phase} data-dock={movement.placement?.dock??"floating"} data-dragging={movement.dragging||undefined} style={movement.placement?{left:movement.placement.x,top:movement.placement.y,right:"auto",bottom:"auto"}:undefined}>
   <div className="survai-tape" aria-hidden="true"/>
   <div className="survai-tape-case" aria-hidden="true"><Ruler size={22}/></div>
@@ -60,12 +69,12 @@ function SurvaiOverlay({mode,slug,quoteId,token,name,role,platformRole}:OverlayP
     </div>
    </header>
    <div className="surveyant-context"><span aria-hidden="true"/>{scope} · {pageCopy.title}</div>
-   <div ref={messageList} className="surveyant-messages" aria-live="polite">
+   <div className="surveyant-messages" aria-live="polite"><SurvaiPages key={contextKey} followUpdates={visibleMessages.length>0} revision={`${contextKey}:${open}:${visibleMessages.length}:${busy}:${error}`}>
     <div className={`surveyant-welcome${visibleMessages.length?" has-conversation":""}`}><div className="surveyant-drawing"><SurveyantMark/></div><h3>{pageCopy.title}</h3><p>{pageCopy.description}</p></div>
     {prompts.length>0&&<div className="surveyant-prompts">{prompts.map(({icon:Icon,label,question})=><button key={label} type="button" disabled={busy} onClick={()=>void ask(question)}><Icon size={20}/><span>{label}</span><ChevronRight size={17}/></button>)}</div>}
     {visibleMessages.map((m,i)=><div key={i} className={`surveyant-message ${m.role}`}><strong>{m.role==="user"?"You":"SurvAI"}</strong><p>{m.content}</p>{m.citations?.map(c=><Link key={c.id} href={!c.href.startsWith("/")&&!c.href.startsWith("#")?`/app/${slug}/${c.href}`:c.href}><FileCheck2 size={13}/>{c.label}</Link>)}</div>)}
     {busy&&messageContext===contextKey?<p className="surveyant-reviewing" role="status"><FileCheck2 size={16}/>Reviewing permitted records…</p>:null}{error&&messageContext===contextKey?<p className="form-error" role="alert">{error}</p>:null}
-   </div>
+   </SurvaiPages></div>
    <form onSubmit={send}><label className="sr-only" htmlFor="surveyant-message">Message SurvAI</label><textarea ref={composer} id="surveyant-message" value={text} disabled={!pageCopy.allowed} onChange={e=>setText(e.target.value)} required maxLength={4000} rows={2} placeholder="Ask SurvAI a question…"/><button className="button button-primary" disabled={busy||!text.trim()||!pageCopy.allowed} aria-label="Send message"><Send size={18}/></button></form>
    <footer><BookOpen size={15}/><span>Answers grounded in your authorised records.<small>Professional findings remain yours to approve.</small></span></footer>
   </dialog>

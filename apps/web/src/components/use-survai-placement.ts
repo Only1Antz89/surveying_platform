@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type PointerEvent, type RefObject } from "
 import { constrainSurvaiPlacement, parseSurvaiPlacement, snapSurvaiPlacement, type SurvaiBounds, type SurvaiDock, type SurvaiPlacement } from "@/lib/survai-placement";
 
 const POSITION_KEY = "surveynt:survai:placement:v1";
+const viewportHeight = () => window.visualViewport ? window.visualViewport.height + window.visualViewport.offsetTop : window.innerHeight;
 
 export function useSurvaiPlacement(tool: RefObject<HTMLDivElement | null>, expanded: boolean) {
  const [placement, setPlacement] = useState<SurvaiPlacement | null>(null);
@@ -16,7 +17,7 @@ export function useSurvaiPlacement(tool: RefObject<HTMLDivElement | null>, expan
   const timer = setTimeout(() => {
    const rect = tool.current?.getBoundingClientRect();
    if (!rect || !current.current) return;
-   const next = constrainSurvaiPlacement(current.current, { width: rect.width, height: rect.height, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight, expanded });
+   const next = constrainSurvaiPlacement(current.current, { width: rect.width, height: rect.height, viewportWidth: window.innerWidth, viewportHeight: viewportHeight(), expanded });
    current.current = next;
    setPlacement(next);
   }, 0);
@@ -25,7 +26,7 @@ export function useSurvaiPlacement(tool: RefObject<HTMLDivElement | null>, expan
 
  function bounds(forceExpanded = expandedRef.current): SurvaiBounds | null {
   const rect = tool.current?.getBoundingClientRect();
-  return rect ? { width: rect.width, height: rect.height, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight, expanded: forceExpanded } : null;
+  return rect ? { width: rect.width, height: rect.height, viewportWidth: window.innerWidth, viewportHeight: viewportHeight(), expanded: forceExpanded } : null;
  }
  function remember(value: SurvaiPlacement) {
   current.current = value;
@@ -84,10 +85,17 @@ export function useSurvaiPlacement(tool: RefObject<HTMLDivElement | null>, expan
   return suppressed;
  }
  useEffect(() => {
+  let previousHeight = tool.current?.getBoundingClientRect().height ?? 0;
   function fit() {
    const rect = tool.current?.getBoundingClientRect();
-   if (!rect || !current.current) return;
-   const next = constrainSurvaiPlacement(current.current, { width: rect.width, height: rect.height, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight, expanded: expandedRef.current });
+   if (!rect) return;
+   const height = parseFloat(tool.current?.style.getPropertyValue("--survai-height") ?? "") || rect.height;
+   const heightChange = previousHeight - height;
+   previousHeight = height;
+   if (!current.current) return;
+   // Extend upwards from the tape case, including after a manual move or dock.
+   const next = constrainSurvaiPlacement({ ...current.current, y: current.current.y + heightChange }, { width: rect.width, height, viewportWidth: window.innerWidth, viewportHeight: viewportHeight(), expanded: expandedRef.current });
+   if(next.x===current.current.x&&next.y===current.current.y&&next.dock===current.current.dock)return;
    current.current = next;
    setPlacement(next);
   }
@@ -98,7 +106,8 @@ export function useSurvaiPlacement(tool: RefObject<HTMLDivElement | null>, expan
   const observer = new ResizeObserver(fit);
   if (tool.current) observer.observe(tool.current);
   window.addEventListener("resize", fit);
-  return () => { clearTimeout(restore); observer.disconnect(); window.removeEventListener("resize", fit); };
+  window.visualViewport?.addEventListener("resize", fit);
+  return () => { clearTimeout(restore); observer.disconnect(); window.removeEventListener("resize", fit); window.visualViewport?.removeEventListener("resize", fit); };
  }, [tool]);
  return { placement, dragging, prepareOpen, dock, moveBy, consumeDragClick, dragHandlers: { onPointerDown: pointerDown, onPointerMove: pointerMove, onPointerUp: pointerEnd, onPointerCancel: pointerEnd } };
 }
