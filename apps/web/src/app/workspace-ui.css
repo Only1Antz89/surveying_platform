@@ -181,7 +181,7 @@
 .survai-tool .survai-close-button{width:36px;min-width:36px;max-width:36px;flex-basis:36px;border-radius:50%;aspect-ratio:1;}
 .survai-tool .survai-header-button:hover,.survai-tool .survai-header-button[aria-pressed="true"]{background:#ffffff28;border-color:#ffffff70;}
 .survai-tool .survai-header-button:focus-visible{outline:2px solid #fff;outline-offset:2px;}
-.survai-tool .survai-move-handle{cursor:grab;touch-action:none;}
+
 @media(max-width:420px){.survai-tool .surveyant-overlay header{padding-left:40px;padding-right:8px;gap:4px;}.survai-header-actions{gap:2px;}.survai-tool .survai-header-button:not(.survai-close-button){width:28px;min-width:28px;max-width:28px;flex-basis:28px;}.survai-tool .surveyant-identity p{max-width:110px;line-height:1.4;}}
 
 /* The fieldbook extends with its contents; screen-length replies turn into pages. */
@@ -268,3 +268,5 @@
 @media(prefers-reduced-motion:reduce){.survai-home-dock,.survai-edge-guide{transition:none;}}
 
 .survai-tool[data-side="right"][data-view="results"] .surveyant-overlay{border-radius:24px 12px 12px 24px;}
+
+.survai-tool .surveyant-overlay header:focus-visible{outline:2px solid #fff;outline-offset:-4px;border-radius:20px 20px 0 0;}

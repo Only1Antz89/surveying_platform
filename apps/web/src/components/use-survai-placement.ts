@@ -51,7 +51,7 @@ export function useSurvaiPlacement(tool: RefObject<HTMLDivElement | null>, expan
   if (value && area) remember(constrainSurvaiPlacement({ ...value, x: value.x + dx, y: value.y + dy, dock: null, side: survaiSide(value) }, area));
  }
  function pointerDown(event: PointerEvent<HTMLElement>) {
-  if (!event.isPrimary || event.button !== 0 || ((event.target as Element).closest(".survai-header-actions") && !event.currentTarget.classList.contains("survai-move-handle"))) return;
+  if (!event.isPrimary || event.button !== 0 || (event.target as Element).closest(".survai-header-actions")) return;
   const value = origin();
   if (!value) return;
   event.stopPropagation();

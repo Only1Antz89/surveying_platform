@@ -6,7 +6,7 @@ import {workspaceLabels,resolveWorkspace} from "@/lib/workspace-mode";
 import {workspaceFetch} from "@/lib/workspace-request";
 import {Suspense,useEffect,useRef,useState} from "react";
 import {usePathname,useSearchParams} from "next/navigation";
-import {Send,X,FileCheck2,ClipboardCheck,CalendarDays,ArrowRight,ChevronRight,BookOpen,Ruler,GripHorizontal} from "lucide-react";
+import {Send,X,FileCheck2,ClipboardCheck,CalendarDays,ArrowRight,ChevronRight,BookOpen,Ruler,PanelBottomClose} from "lucide-react";
 import {survaiSide} from "@/lib/survai-placement";
 import {useSurvaiPlacement} from "./use-survai-placement";
 import {SurvaiPages} from "./survai-pages";
@@ -50,7 +50,8 @@ function SurvaiOverlay({mode,slug,quoteId,token,name,role,platformRole}:OverlayP
  }
  function send(e:React.FormEvent){e.preventDefault();void ask(text,true);}
  function close(){if(phase==="closed"||phase==="closing")return;sessionStorage.setItem(storageKey,"closed");setPhase(window.matchMedia("(prefers-reduced-motion: reduce)").matches?"closed":"closing");trigger.current?.focus();}
- function returnToHome(){movement.returnHome();if(open)dialog.current?.querySelector<HTMLButtonElement>(".survai-move-handle")?.focus();else trigger.current?.focus();}
+ function moveWithKeys(e:React.KeyboardEvent<HTMLElement>){if(e.target!==e.currentTarget)return;const step=e.shiftKey?40:16;const moves:Record<string,[number,number]>={ArrowLeft:[-step,0],ArrowRight:[step,0],ArrowUp:[0,-step],ArrowDown:[0,step]};if(moves[e.key]){e.preventDefault();movement.moveBy(...moves[e.key]);}else if(e.key==="Home"){e.preventDefault();returnToHome();}}
+ function returnToHome(){movement.returnHome();if(open)dialog.current?.querySelector<HTMLButtonElement>(".survai-dock-button")?.focus();else trigger.current?.focus();}
  function launch(){if(movement.consumeDragClick())return;if(open){close();return;}movement.prepareOpen();sessionStorage.setItem(storageKey,"open");setPhase(window.matchMedia("(prefers-reduced-motion: reduce)").matches?"open":"opening");}
  useEffect(()=>{
   if(phase!=="opening"&&phase!=="closing")return;
@@ -88,10 +89,10 @@ function SurvaiOverlay({mode,slug,quoteId,token,name,role,platformRole}:OverlayP
   <div className="survai-tape-case" aria-hidden="true"><Ruler size={22}/></div>
   <button ref={trigger} className="surveyant-toggle" aria-label={open?"Close SurvAI":"Open SurvAI, your surveying companion"} title="SurvAI · your surveying companion" aria-haspopup="dialog" aria-expanded={open} {...movement.dragHandlers} onClick={launch} onKeyDown={e=>{if(e.key==="Escape"&&open){e.preventDefault();close();}}}><SurveyantMark/><span>SurvAI</span></button>
   <dialog ref={dialog} className="surveyant-overlay" inert={phase==="closing"} aria-labelledby="surveyant-heading" onKeyDown={e=>{if(e.key==="Escape"){e.preventDefault();close();}}} onCancel={e=>{e.preventDefault();close();}} onClose={()=>setPhase("closed")}>
-   <header {...movement.dragHandlers} title="Drag to move SurvAI; drop near an edge to dock">
+   <header {...movement.dragHandlers} tabIndex={0} onKeyDown={moveWithKeys} aria-label="Move SurvAI: drag or use arrow keys; Home returns to dock" title="Drag to move; drop near an edge to dock">
     <div className="surveyant-identity"><SurveyantMark/><div><h2 id="surveyant-heading">SurvAI</h2><p>Your surveying companion</p></div></div>
     <div className="survai-header-actions">
-     <button type="button" className="survai-header-button survai-move-handle" aria-label="Move SurvAI with arrow keys" title="Move with arrow keys; Home returns to the dock" {...movement.dragHandlers} onKeyDown={e=>{const step=e.shiftKey?40:16;const moves:Record<string,[number,number]>={ArrowLeft:[-step,0],ArrowRight:[step,0],ArrowUp:[0,-step],ArrowDown:[0,step]};if(moves[e.key]){e.preventDefault();movement.moveBy(...moves[e.key]);}else if(e.key==="Home"){e.preventDefault();movement.returnHome();}}}><GripHorizontal size={18}/></button>
+     <button type="button" className="survai-header-button survai-dock-button" aria-label="Return SurvAI to dock" title="Return to dock" onClick={returnToHome}><PanelBottomClose size={18}/></button>
      <button type="button" className="survai-header-button survai-close-button" aria-label="Close SurvAI" title="Close SurvAI" onClick={close}><X size={19}/></button>
     </div>
    </header>
