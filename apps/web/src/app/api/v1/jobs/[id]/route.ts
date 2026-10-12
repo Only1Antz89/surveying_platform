@@ -4,7 +4,7 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import { canMutateOperations, canTransitionJob, jobStages } from "@surveynt/domain";
 import { auditEvents, createDatabase, jobAssignments, jobs, jobStageEvents, organisationMemberships, users } from "@surveynt/db";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
-import { ok, parseBody, problem } from "@/lib/api";
+import { ok, parseBody, problem, invalidId } from "@/lib/api";
 import { checkOverrides } from "@surveynt/assistant";
 import { enforceStageGate, gatedStages, stageGateProblem, type StageGateOutcome } from "@/lib/completion";
 import { completionReportFromPack } from "@/lib/completion-input";
@@ -36,6 +36,7 @@ export async function GET(request: Request, context: RouteContext<"/api/v1/jobs/
   const accessDenial = await workspaceApiGuard(request, session);
   if (accessDenial) return accessDenial;
   const { id } = await context.params;
+  const invalid = invalidId(session, id); if (invalid) return invalid;
   if (session.demo) {
     const job = demoJobs.find((item) => item.id === id);
     if (!job) return problem(404, "job_not_found", "The job could not be found.");
@@ -67,6 +68,7 @@ export async function PATCH(request: Request, context: RouteContext<"/api/v1/job
   const parsed = await parseBody(request, patchJob);
   if (!parsed.success) return problem(400, "invalid_request", "The requested job changes are invalid.", parsed.error.flatten());
   const { id } = await context.params;
+  const invalid = invalidId(session, id); if (invalid) return invalid;
   if (session.demo) {
     const job = demoJobs.find((item) => item.id === id);
     if (!job) return problem(404, "job_not_found", "The job could not be found.");

@@ -4,7 +4,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { canMutateOperations } from "@surveynt/domain";
 import { auditEvents, clients, createDatabase, jobs, properties } from "@surveynt/db";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
-import { ok, parseBody, problem } from "@/lib/api";
+import { ok, parseBody, problem, invalidId } from "@/lib/api";
 import { jobs as demoJobs, properties as demoProperties } from "@/lib/demo-data";
 
 const patchProperty = z.object({
@@ -23,6 +23,7 @@ export async function GET(request: Request, route: RouteContext<"/api/v1/propert
   const accessDenial = await workspaceApiGuard(request, context);
   if (accessDenial) return accessDenial;
   const { id } = await route.params;
+  const invalid = invalidId(context, id); if (invalid) return invalid;
   if (context.demo) {
     const property = demoProperties.find((item) => item.id === id);
     return property ? ok({
@@ -52,6 +53,7 @@ export async function PATCH(request: Request, route: RouteContext<"/api/v1/prope
   const parsed = await parseBody(request, patchProperty);
   if (!parsed.success) return problem(400, "invalid_request", "The property changes are invalid.", parsed.error.flatten());
   const { id } = await route.params;
+  const invalid = invalidId(context, id); if (invalid) return invalid;
   if (context.demo) return ok({ id, ...parsed.data, version: parsed.data.version + 1 }, { demo: true, persisted: false });
   const db = createDatabase();
   const result = await db.transaction(async (tx) => {

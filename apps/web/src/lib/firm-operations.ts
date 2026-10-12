@@ -91,7 +91,11 @@ export async function createPublicQuote(input: { organisationId: string; request
   });
 }
 
+// Public quote links are untrusted input: a malformed identifier or token is simply not found,
+// before any query (Postgres would otherwise reject a non-UUID id as a server error).
+const publicQuoteId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export async function readPublicQuote(id: string, token: string) {
+  if (!publicQuoteId.test(id) || !token || token.length > 200) return null;
   if (!process.env.DATABASE_ADMIN_URL) throw new Error("PUBLIC_QUOTE_STORAGE_UNAVAILABLE");
   const db = createDatabase(process.env.DATABASE_ADMIN_URL);
   const [quote] = await db.select().from(customerQuotes).where(and(eq(customerQuotes.id, id), eq(customerQuotes.accessTokenHash, tokenHash(token)), isNull(customerQuotes.tokenRevokedAt))).limit(1);

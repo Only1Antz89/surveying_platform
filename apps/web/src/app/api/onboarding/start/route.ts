@@ -3,6 +3,7 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { auditEvents, createDatabase, onboardingSteps, organisationBranding, organisationMemberships, organisations, users } from "@surveynt/db";
 import { ok, parseBody, problem } from "@/lib/api";
+import { isClerkConfigured } from "@/lib/access";
 
 const startSchema = z.object({
   firmName: z.string().trim().min(2).max(160),
@@ -14,6 +15,7 @@ const startSchema = z.object({
 const seatsForTeamSize = { "1-5": 5, "6-15": 15, "16-50": 50, "51+": 100 } as const;
 
 export async function POST(request: Request) {
+  if (!isClerkConfigured()) return problem(503, "provisioning_unavailable", "Workspace provisioning needs account sign-in, which is not configured here.");
   const session = await auth();
   if (!session.userId) return problem(401, "unauthorised", "A verified account is required before creating a workspace.");
   const parsed = await parseBody(request, startSchema);

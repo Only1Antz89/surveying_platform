@@ -5,6 +5,7 @@ import { ok, parseBody, problem } from "@/lib/api";
 const schema = z.object({ organisationSlug: z.string().trim().min(2).max(80).optional(), serviceId: z.uuid().optional(), firstName: z.string().trim().min(1).max(80).optional(), lastName: z.string().trim().min(1).max(80).optional(), email: z.email().optional(), phone: z.string().trim().max(40).optional(), answers: z.record(z.string(), z.unknown()).optional(), surchargeKeys: z.array(z.string().max(80)).max(20).optional() });
 
 export async function POST(request: Request) {
+  if (!process.env.DATABASE_APP_URL && !process.env.DATABASE_URL) return problem(503, "quotes_not_configured", "Online quoting is not available here. Please contact the practice directly.");
   const parsed = await parseBody(request, schema);
   if (!parsed.success) return problem(400, "invalid_request", "The quote request is invalid.", parsed.error.flatten());
   const organisation = await resolvePublicOrganisation(request, parsed.data.organisationSlug);

@@ -9,5 +9,5 @@ export default async function Page() {
   const operator = await requirePlatformAccess();
   const demo = !process.env.DATABASE_ADMIN_URL || operator.userId === "demo_platform_user";
   const sources = demo ? demoDataSourceView() : await loadDataSourceAdmin();
-  return <DataSourceManager sources={sources} canOperate={canOperateDataSources(operator.role)} demo={demo} />;
+  return <main className="page"><DataSourceManager sources={sources} canOperate={canOperateDataSources(operator.role)} demo={demo} /></main>;
 }

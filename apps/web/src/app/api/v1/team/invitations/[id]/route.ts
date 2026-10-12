@@ -4,7 +4,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { canManageTeam } from "@surveynt/domain";
 import { auditEvents, createDatabase, invitations } from "@surveynt/db";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
-import { ok, problem } from "@/lib/api";
+import { ok, problem, invalidId } from "@/lib/api";
 
 async function pendingInvitation(organisationId: string, id: string) {
   const db = createDatabase();
@@ -23,6 +23,7 @@ export async function DELETE(request: Request, route: RouteContext<"/api/v1/team
   if (!canWriteWorkspace(context)) return problem(402, "workspace_read_only", "Restore billing before changing team access.");
   if (!canManageTeam(context.role)) return problem(403, "forbidden", "Only owners and administrators can revoke invitations.");
   const { id } = await route.params;
+  const invalid = invalidId(context, id); if (invalid) return invalid;
   if (context.demo) return ok({ id, revoked: true }, { demo: true, persisted: false });
   const invitation = await pendingInvitation(context.organisationId, id);
   if (!invitation) return problem(404, "invitation_not_found", "The pending invitation could not be found.");
@@ -47,6 +48,7 @@ export async function POST(request: Request, route: RouteContext<"/api/v1/team/i
   if (!canWriteWorkspace(context)) return problem(402, "workspace_read_only", "Restore billing before changing team access.");
   if (!canManageTeam(context.role)) return problem(403, "forbidden", "Only owners and administrators can resend invitations.");
   const { id } = await route.params;
+  const invalid = invalidId(context, id); if (invalid) return invalid;
   if (context.demo) return ok({ id: crypto.randomUUID(), resentFrom: id }, { demo: true, persisted: false });
   const invitation = await pendingInvitation(context.organisationId, id);
   if (!invitation) return problem(404, "invitation_not_found", "The pending invitation could not be found.");

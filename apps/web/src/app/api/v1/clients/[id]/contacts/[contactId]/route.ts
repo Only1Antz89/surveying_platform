@@ -6,7 +6,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { canMutateOperations } from "@surveynt/domain";
 import { auditEvents, clientContacts, clients } from "@surveynt/db";
 import { canWriteWorkspace } from "@/lib/access";
-import { ok, parseBody, problem } from "@/lib/api";
+import { ok, parseBody, problem, invalidId } from "@/lib/api";
 
 const contactPatch = z.object({
   name: z.string().trim().min(2).max(160).optional(),
@@ -32,6 +32,7 @@ export async function PATCH(request: Request, route: RouteContext<"/api/v1/clien
   const parsed = await parseBody(request, contactPatch);
   if (!parsed.success) return problem(400, "invalid_request", "The contact changes are invalid.", parsed.error.flatten());
   const { id, contactId } = await route.params;
+  const invalid = invalidId(authorised.context, id, contactId); if (invalid) return invalid;
   if (authorised.context.demo) return demoStore.mutate(state => {
     const clientId = `${authorised.context.organisationId}:${id}`;
     const contact = state.contacts.find(item => item.id === contactId && item.clientId === clientId);
@@ -59,6 +60,7 @@ export async function DELETE(request: Request, route: RouteContext<"/api/v1/clie
   const authorised = await access(request);
   if ("problem" in authorised) return authorised.problem;
   const { id, contactId } = await route.params;
+  const invalid = invalidId(authorised.context, id, contactId); if (invalid) return invalid;
   if (authorised.context.demo) return demoStore.mutate(state => {
     const index = state.contacts.findIndex(item => item.id === contactId && item.clientId === `${authorised.context.organisationId}:${id}`);
     if (index < 0) return problem(404, "contact_not_found", "The client contact could not be found.");

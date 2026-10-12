@@ -5,7 +5,7 @@ import { membershipChangeBlocker, organisationRoles } from "@surveynt/domain";
 import { auditEvents, createDatabase, organisationMemberships, users } from "@surveynt/db";
 import { z } from "zod";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
-import { ok, parseBody, problem } from "@/lib/api";
+import { ok, parseBody, problem, invalidId } from "@/lib/api";
 
 const roleSchema = z.object({ role: z.enum(organisationRoles) });
 
@@ -32,6 +32,7 @@ export async function PATCH(request: Request, route: RouteContext<"/api/v1/team/
   const parsed = await parseBody(request, roleSchema);
   if (!parsed.success) return problem(400, "invalid_request", "Select a valid workspace role.", parsed.error.flatten());
   const { id } = await route.params;
+  const invalid = invalidId(context, id); if (invalid) return invalid;
   if (context.demo) return ok({ id, role: parsed.data.role }, { demo: true, persisted: false });
   const target = await loadMembership(context.organisationId, id);
   if (!target.membership) return problem(404, "member_not_found", "The active member could not be found.");
@@ -60,6 +61,7 @@ export async function DELETE(request: Request, route: RouteContext<"/api/v1/team
   if (accessDenial) return accessDenial;
   if (!canWriteWorkspace(context)) return problem(402, "workspace_read_only", "Restore billing before changing team access.");
   const { id } = await route.params;
+  const invalid = invalidId(context, id); if (invalid) return invalid;
   if (context.demo) return ok({ id, removed: true }, { demo: true, persisted: false });
   const target = await loadMembership(context.organisationId, id);
   if (!target.membership) return problem(404, "member_not_found", "The active member could not be found.");

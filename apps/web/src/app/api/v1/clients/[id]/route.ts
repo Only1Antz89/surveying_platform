@@ -6,7 +6,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { canMutateOperations } from "@surveynt/domain";
 import { auditEvents, clientContacts, clients } from "@surveynt/db";
 import { canWriteWorkspace } from "@/lib/access";
-import { ok, parseBody, problem } from "@/lib/api";
+import { ok, parseBody, problem, invalidId } from "@/lib/api";
 
 const patchClient = z.object({
   displayName: z.string().trim().min(2).max(160).optional(),
@@ -22,6 +22,7 @@ export async function GET(request: Request, route: RouteContext<"/api/v1/clients
   const accessDenial = await workspaceApiGuard(request, context);
   if (accessDenial) return accessDenial;
   const { id } = await route.params;
+  const invalid = invalidId(context, id); if (invalid) return invalid;
   if (context.demo) {
     const state = await demoStore.snapshot();
     const client = state.clients.find(item => item.id === id && item.organisationId === context.organisationId);
@@ -49,6 +50,7 @@ export async function PATCH(request: Request, route: RouteContext<"/api/v1/clien
   const parsed = await parseBody(request, patchClient);
   if (!parsed.success) return problem(400, "invalid_request", "The client changes are invalid.", parsed.error.flatten());
   const { id } = await route.params;
+  const invalid = invalidId(context, id); if (invalid) return invalid;
   if (context.demo) return demoStore.mutate(state => {
     const client = state.clients.find(item => item.id === id && item.organisationId === context.organisationId);
     if (!client) return problem(404, "client_not_found", "The client could not be found.");
