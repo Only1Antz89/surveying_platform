@@ -1,6 +1,6 @@
 import type { SurvaiAction } from "./survai-context";
 
-export type SurvaiAnswer = { role: string; content: string; citations?: { id: string; label: string; href: string }[] };
+export type SurvaiAnswer = { role: string; content: string; demo?: boolean; model?: string; citations?: { id: string; label: string; href: string }[] };
 export type SurvaiReview = { id: string; title: string; question: string; status: "working" | "ready" | "error"; answer?: SurvaiAnswer; error?: string };
 export type SurvaiResultBlock = { kind: "paragraph" | "heading"; text: string } | { kind: "list"; items: string[] };
 
