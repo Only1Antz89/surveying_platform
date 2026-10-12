@@ -27,11 +27,13 @@ describe("fictional Gemini demo adapter", () => {
  });
  it("uses assigned fictional cases and omits surveyor fees", async () => {
   const sources = await demoSurvaiSources({ ...manager, role: "surveyor" }, { page: "jobs" });
-  expect(sources.length).toBe(2); for (const source of sources) { expect(source.data).toMatchObject({ assignee: "Maya Patel", demo: true }); expect(JSON.stringify(source.data)).not.toContain('"fee"'); }
+  const cases = sources.filter(source => source.id.startsWith("demo:job:"));
+  expect(cases.length).toBe(2); for (const source of cases) expect(source.data).toMatchObject({ assignee: "Maya Patel", demo: true });
+  expect(JSON.stringify(sources)).not.toContain('"fee"');
  });
  it("does not manufacture balances or appointments from demonstration layouts", async () => {
   const finance = await demoSurvaiSources(manager, { page: "finance" }); expect(finance[0].data).toMatchObject({ invoices: [], verifiedPayments: [], currencies: [] });
-  const calendar = await demoSurvaiSources(manager, { page: "calendar" }); expect(calendar.at(-1)?.data).toMatchObject({ appointments: [] });
+  const calendar = await demoSurvaiSources(manager, { page: "calendar" }); expect(calendar.find(source => source.id === "demo:appointment-coverage")?.data).toMatchObject({ appointments: [] });
  });
  it("uses the configured 3.1 model, adds demo provenance, and caches only known tasks", async () => {
   mocked.answer.mockResolvedValue({ content: "No invoices are supplied.", citations: [{ id: "demo:finance", label: "Empty demo ledger", href: "finance" }] });
@@ -55,5 +57,34 @@ describe("fictional Gemini demo adapter", () => {
   await vi.waitFor(() => expect(mocked.answer).toHaveBeenCalledTimes(2));
   await expect(sendDemoSurvai(manager, { message: "Concurrent three", pageContext: { page: "finance" } })).rejects.toThrow("busy");
   for (const done of release) done(); await Promise.all([first, second]); expect(mocked.answer).toHaveBeenCalledTimes(2);
+ });
+
+ it("gives the selected case its form state, weather outlook, property history and approved wording", async () => {
+  const sources = await demoSurvaiSources(manager, { page: "survey", resourceId: "job_01" });
+  const ids = sources.map(source => source.id);
+  expect(ids).toContain("demo:job:job_01");
+  expect(ids.some(id => id.startsWith("demo:form:"))).toBe(true);
+  expect(ids.some(id => id.startsWith("demo:history:prop_01"))).toBe(true);
+  expect(ids.some(id => id.startsWith("demo:property-intel:prop_01"))).toBe(true);
+  expect(ids.some(id => id.startsWith("demo:wording:"))).toBe(true);
+  const outlook = sources.find(source => source.id === "demo:forecast:job_01");
+  expect(outlook?.data).toMatchObject({ demo: true, assessment: { level: "elevated", exposure: "external_elements" } });
+  expect(JSON.stringify(sources)).not.toContain('"fee":');
+  for (const source of sources.filter(source => source.id !== "general:professional-knowledge")) expect(JSON.stringify(source.data)).toContain("demo");
+ });
+ it("keeps another surveyor's case out of a surveyor's selection", async () => {
+  const sources = await demoSurvaiSources({ ...manager, role: "surveyor" }, { page: "job", resourceId: "job_02" });
+  expect(sources.map(source => source.id)).toEqual(["demo:selection"]);
+ });
+ it("finds a permitted property named in the question by postcode", async () => {
+  const sources = await demoSurvaiSources(manager, { page: "overview" }, "What is the history of BS8 4JX?");
+  expect(sources.some(source => source.id.startsWith("demo:history:prop_01"))).toBe(true);
+  expect(sources.some(source => source.id === "general:professional-knowledge")).toBe(true);
+ });
+ it("summarises weather risk for upcoming fictional visits on planning pages", async () => {
+  const sources = await demoSurvaiSources(manager, { page: "calendar" });
+  const outlooks = sources.filter(source => source.id.startsWith("demo:forecast:"));
+  expect(outlooks.length).toBeGreaterThan(0);
+  expect(outlooks.some(source => (source.data as { assessment: { flags: { code: string }[] } }).assessment.flags.some(flag => flag.code === "heavy_rain"))).toBe(true);
  });
 });

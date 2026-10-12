@@ -6,6 +6,8 @@ export type SurvaiPage = typeof survaiPages[number];
 export type SurvaiPageContext = { page: SurvaiPage; resourceId?: string };
 export type SurvaiAction = { label: string; question: string; kind: "schedule" | "review" | "next" };
 const uuid = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
+/** Readable fixture ids exist only in the local preview; production rejects them before any query. */
+export const demoRecordId = /^(job|prop|cli)_\d{2}$/;
 const surveyorPages: SurvaiPage[] = ["overview", "jobs", "job", "survey", "properties", "property", "customers", "customer", "calendar", "availability", "routes", "reports", "documents", "account"];
 const managerPages: SurvaiPage[] = [...surveyorPages, "quotes", "enquiries", "fieldwork", "team", "finance", "performance", "settings", "governance"];
 const administrationPages: SurvaiPage[] = [...managerPages, "billing", "services", "locations"];
@@ -31,7 +33,7 @@ export function survaiPageFromPath(pathname: string, mode: "firm" | "platform" |
  }
  let section = parts[2] ?? "overview", resource = parts[3];
  if (section === "workspace-instances") { section = parts[4] ?? "overview"; resource = parts[5]; }
- const resourceId = resource && uuid.test(resource) ? resource : undefined;
+ const resourceId = resource && (uuid.test(resource) || demoRecordId.test(resource)) ? resource : undefined;
  if (section === "jobs") return { page: resource ? pathname.endsWith("/survey") ? "survey" : "job" : "jobs", ...(resourceId ? { resourceId } : {}) };
  if (section === "properties") return { page: resource ? "property" : "properties", ...(resourceId ? { resourceId } : {}) };
  if (section === "customers" || section === "clients") return { page: resource ? "customer" : view === "quotes" ? "quotes" : view === "enquiries" ? "enquiries" : "customers", ...(resourceId ? { resourceId } : {}) };
@@ -45,18 +47,18 @@ type PageCopy = { title: string; description: string; actions: [string, string, 
 const pages: Record<SurvaiPage, PageCopy> = {
  overview: { title: "Overview", description: "Review priorities and the next steps in your permitted work.", actions: ["Review my priorities", "Find cases needing attention", "Plan my next step"] },
  jobs: { title: "Jobs", description: "Review case stages, inspection preparation and outstanding work.", actions: ["Review the job pipeline", "Find preparation gaps", "Prioritise the next steps"] },
- job: { title: "Current case", description: "Work from this case’s authorised records and recorded dates.", actions: ["Prepare this inspection", "Review this case", "Find this case’s next step"] },
- survey: { title: "Survey workspace", description: "Prepare a review of this case. Your professional findings remain yours.", actions: ["Review case information", "Identify evidence gaps", "Plan my report review"] },
+ job: { title: "Current case", description: "Work from this case’s authorised records and recorded dates.", actions: ["Prepare this inspection", "Check the weather for this visit", "Show this property’s history and records"] },
+ survey: { title: "Survey workspace", description: "Check what the form still needs, find approved wording and review the property’s records. Your professional findings remain yours.", actions: ["What is still missing in this form?", "Suggest our approved wording", "Show this property’s history and records"] },
  properties: { title: "Properties", description: "Review property details connected to your permitted cases.", actions: ["Review property context", "Find missing property details", "Plan further checks"] },
- property: { title: "Current property", description: "Focus on this property and its permitted linked cases.", actions: ["Review this property", "Check this property’s records", "Plan this property’s next checks"] },
+ property: { title: "Current property", description: "Search this property’s history, data sources and linked cases.", actions: ["Show this property’s history", "What do the data sources show?", "Plan this property’s next checks"] },
  customers: { title: "Customers", description: "Review customer case information within your access.", actions: ["Review customer casework", "Find customer follow-ups", "Identify missing case details"] },
  customer: { title: "Current customer", description: "Review this customer’s permitted casework.", actions: ["Review this customer’s cases", "Find this customer’s follow-ups", "Check missing customer details"] },
  quotes: { title: "Quotes", description: "Review recorded quote coverage and conversion totals.", actions: ["Review quote conversion", "Check quote evidence gaps", "Plan quote follow-ups"] },
  enquiries: { title: "Enquiries", description: "Review what the permitted records establish about new work.", actions: ["Review incoming work", "Identify enquiry information gaps", "Plan enquiry follow-ups"] },
- calendar: { title: "Calendar", description: "Review booked inspection dates and preparation for your permitted work.", actions: ["Review booked inspections", "Find scheduling overlaps", "Prepare upcoming visits"] },
+ calendar: { title: "Calendar", description: "Review booked inspection dates and preparation for your permitted work.", actions: ["Review booked inspections", "Flag weather risks for upcoming visits", "Prepare upcoming visits"] },
  availability: { title: "Availability", description: "Review booked inspections. Personal busy periods are only available when supplied.", actions: ["Review my booked time", "Find appointment overlaps", "Identify availability gaps"] },
- routes: { title: "Route planning", description: "Use recorded visit times and addresses to plan your inspection day.", actions: ["Review my visit order", "Check visit details", "Plan my inspection day"] },
- fieldwork: { title: "Daily fieldwork", description: "Review permitted appointments and case allocations for fieldwork.", actions: ["Review scheduled fieldwork", "Find allocation gaps", "Prioritise visit preparation"] },
+ routes: { title: "Route planning", description: "Use recorded visit times and addresses to plan your inspection day.", actions: ["Review my visit order", "Flag weather risks for my visits", "Plan my inspection day"] },
+ fieldwork: { title: "Daily fieldwork", description: "Review permitted appointments and case allocations for fieldwork.", actions: ["Review scheduled fieldwork", "Flag weather risks for upcoming visits", "Prioritise visit preparation"] },
  reports: { title: "Reports", description: "Review recorded report stages and matters requiring human review.", actions: ["Review report progress", "Find report-stage gaps", "Plan professional review"] },
  documents: { title: "Documents", description: "Review metadata for files you may access. File contents need a supplied source.", actions: ["Review accessible documents", "Find document information gaps", "Plan document checks"] },
  team: { title: "Surveyor allocations", description: "Review recorded case allocations. Do not infer staff availability from workload alone.", actions: ["Review surveyor allocations", "Find unassigned cases", "Identify workload gaps"] },
@@ -79,8 +81,8 @@ const pages: Record<SurvaiPage, PageCopy> = {
 export function survaiContextCopy(context: SurvaiPageContext, options: { mode: "firm" | "platform" | "case"; role?: OrganisationRole; platformRole?: PlatformRole }) {
  const allowed = options.mode === "case" ? context.page === "client-case" : options.mode === "platform" ? canUsePlatformSurvaiPage(context.page, options.platformRole) : canUseSurvaiPage(context.page, options.role);
  let copy = pages[context.page];
- if(options.mode==="firm"&&context.page==="overview")copy=options.role==="surveyor"?{title:"My assigned work",description:"Review your assigned cases and prepare for your upcoming inspections.",actions:["Review my assigned jobs","Prepare upcoming visits","Plan my next step"]}:options.role==="manager"?{title:"Manager overview",description:"Review team case allocations and the practice’s operational priorities.",actions:["Review team workload","Find unassigned cases","Prioritise practice follow-ups"]}:{title:"Administration",description:"Review practice-wide casework and operational information within your access.",actions:["Review practice workload","Find operational gaps","Plan practice priorities"]};
- if(options.mode==="firm"&&context.page==="calendar")copy=options.role==="surveyor"?{...copy,actions:["Review my inspections","Check my schedule","Prepare my next visit"]}:{...copy,actions:["Review team inspections","Find scheduling overlaps","Prioritise visit preparation"]};
+ if(options.mode==="firm"&&context.page==="overview")copy=options.role==="surveyor"?{title:"My assigned work",description:"Review your assigned cases and prepare for your upcoming inspections.",actions:["Review my assigned jobs","Flag weather risks for my visits","Plan my next step"]}:options.role==="manager"?{title:"Manager overview",description:"Review team case allocations and the practice’s operational priorities.",actions:["Review team workload","Flag weather risks for upcoming visits","Prioritise practice follow-ups"]}:{title:"Administration",description:"Review practice-wide casework and operational information within your access.",actions:["Review practice workload","Flag weather risks for upcoming visits","Plan practice priorities"]};
+ if(options.mode==="firm"&&context.page==="calendar")copy=options.role==="surveyor"?{...copy,actions:["Review my inspections","Flag weather risks for my visits","Prepare my next visit"]}:{...copy,actions:["Review team inspections","Flag weather risks for upcoming visits","Prioritise visit preparation"]};
  const scope = options.mode === "case" ? "Use only records released for my secure client case." : options.mode === "platform" ? context.page === "support-session" ? "Use only records in this active read-only support session." : "Use only supplied platform sources; do not access private practice records." : options.role === "surveyor" ? "Use only my assigned cases and records permitted in the Surveyor workspace; do not include practice finance or other surveyors’ private records." : "Use only authorised records for this practice and my effective workspace role.";
  const actions: SurvaiAction[] = allowed ? copy.actions.map((label, index) => ({ label, kind: index === 0 ? "schedule" : index === 1 ? "review" : "next", question: `${label}. Focus on the ${copy.title.toLowerCase()} page${context.resourceId ? " and the selected record" : ""}. ${scope} Cite your sources, state missing information explicitly, and do not change records or make professional findings.` })) : [];
  return { ...copy, allowed, actions, description: allowed ? copy.description : "SurvAI requests for this page are unavailable within your current role. Switch to a permitted workspace or page." };
@@ -92,6 +94,7 @@ export function survaiContextError(context: SurvaiPageContext | undefined, acces
  const allowed = access.mode === "case" ? context.page === "client-case" : access.mode === "support" ? context.page === "support-session" : access.mode === "platform" ? context.page !== "support-session" && canUsePlatformSurvaiPage(context.page, access.platformRole) : canUseSurvaiPage(context.page, access.role);
  if (!allowed) return { status: 403, message: "This SurvAI page context is not available within your current access." };
  if (access.demo) return null;
+ if (context.resourceId && !uuid.test(context.resourceId)) return { status: 422, message: "Select a valid record before requesting record-specific assistance." };
  if (["job", "survey"].includes(context.page) && (!access.jobId || context.resourceId && context.resourceId !== access.jobId)) return { status: 422, message: "Select the current case before requesting case-specific assistance." };
  if (["property", "customer"].includes(context.page) && !context.resourceId) return { status: 422, message: "Select the current record before requesting record-specific assistance." };
  if (access.jobId && !["job", "survey"].includes(context.page)) return { status: 422, message: "The selected case does not match this page context." };
