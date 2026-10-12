@@ -204,3 +204,53 @@
 @media(max-height:780px){.survai-tool .surveyant-drawing{height:80px;}.survai-tool .surveyant-drawing .surveyant-mark{width:76px;height:76px;}}
 @media(max-height:650px){.survai-tool .surveyant-drawing,.survai-tool .surveyant-welcome h3{display:none;}.survai-tool .surveyant-overlay header{min-height:80px;padding-top:12px;padding-bottom:12px;}.survai-tool .surveyant-welcome{margin-bottom:10px;}.survai-tool .surveyant-messages{padding:12px 20px;}.survai-tool .surveyant-prompts{gap:6px;}.survai-tool .surveyant-prompts button{padding:10px 12px;}}
 @media(prefers-reduced-motion:reduce){.survai-tool{transition:none!important;}}
+
+/* SurvAI results: unfold a survey review sheet from the tape's fixed edge. */
+.survai-tool[data-view="results"] .surveyant-overlay{border-radius:12px 24px 24px 12px;}
+.survai-tool[data-view="results"] .surveyant-overlay header{min-height:80px;padding-top:14px;padding-bottom:14px;}
+.survai-tool[data-view="results"] .surveyant-messages{padding-top:4px;}
+.survai-results-toolbar{display:flex;align-items:center;justify-content:space-between;padding:12px 20px 8px;flex-shrink:0;}
+.survai-results-toolbar>button,.survai-saved-reviews{display:flex;align-items:center;gap:7px;border:0;background:transparent;color:#204bc4;padding:4px 0;font:inherit;font-size:11px;cursor:pointer;}
+.survai-results-toolbar nav{display:flex;align-items:center;gap:8px;color:#63718a;font-size:10px;}
+.survai-results-toolbar nav button{display:grid;place-items:center;width:26px;min-height:26px;border:1px solid #dce5f2;border-radius:6px;background:#f8faff;color:#204bc4;padding:0;cursor:pointer;}
+.survai-results-toolbar button:disabled{opacity:.4;cursor:default;}
+.survai-saved-reviews{width:100%;justify-content:center;margin-top:12px;min-height:28px;}
+.survai-result-sheet{position:relative;padding:20px 18px;background:linear-gradient(135deg,#f6f9ff,#fff 42%);border:1px solid #d8e3f4;border-left:3px solid #204bc4;border-radius:3px 18px 14px 3px;box-decoration-break:clone;animation:survai-result-unfold .42s var(--survai-ease) both;}
+.survai-result-sheet::after{content:"";position:absolute;top:0;right:0;width:18px;height:18px;background:linear-gradient(225deg,#fff 48%,#d8e3f4 49%,#eaf0fc 55%);border-radius:0 17px 0 3px;pointer-events:none;}
+.survai-result-label{display:flex;align-items:center;gap:7px;color:#63718a;font-size:10px;letter-spacing:.7px;text-transform:uppercase;margin-bottom:12px;}
+.survai-result-label>span{width:12px;height:1px;background:#204bc4;}
+.survai-result-sheet h3{font-size:23px;line-height:1.22;letter-spacing:-.7px;color:#16233a;margin:0 0 16px;break-after:avoid;}
+.survai-result-sheet h3:focus{outline:none;}
+.survai-result-ready{display:flex;align-items:center;gap:6px;color:#204bc4;font-size:10px;padding:10px 0;border-top:1px solid #dce5f2;border-bottom:1px solid #dce5f2;break-inside:avoid;}
+.survai-result-ready>span{margin-left:auto;color:#63718a;}
+.survai-result-findings{padding-top:4px;}
+.survai-result-findings p{font-size:13px;line-height:1.75;white-space:pre-wrap;overflow-wrap:anywhere;color:#43536c;margin:13px 0;}
+.survai-result-findings .survai-result-summary{font-size:14px;color:#16233a;line-height:1.7;}
+.survai-result-findings h4,.survai-result-sources h4{font-size:12px;line-height:1.4;color:#17335e;margin:18px 0 8px;break-after:avoid;}
+.survai-result-findings ul{padding-left:18px;font-size:12px;line-height:1.75;color:#43536c;margin:8px 0 14px;}
+.survai-result-findings li{padding-left:3px;margin:6px 0;overflow-wrap:anywhere;break-inside:avoid;}
+.survai-result-findings li::marker{color:#204bc4;}
+.survai-result-sources{border-top:1px solid #dce5f2;margin-top:18px;}
+.survai-result-sources a{display:flex;align-items:center;gap:8px;border:1px solid #dce5f2;border-radius:8px;background:#fff;color:#204bc4;text-decoration:none;font-size:11px;padding:10px;margin:8px 0;break-inside:avoid;}
+.survai-result-sources a>span{flex:1;}
+.survai-result-sources a svg{flex-shrink:0;}
+.survai-result-working,.survai-result-error{padding:18px 0 4px;}
+.survai-result-working h4,.survai-result-error h4{font-size:15px;line-height:1.4;margin:12px 0 6px;color:#16233a;}
+.survai-result-working p,.survai-result-error p{font-size:12px;line-height:1.7;color:#63718a;margin:0 0 16px;overflow-wrap:anywhere;}
+.survai-review-scan{position:relative;display:grid;place-items:center;width:60px;height:60px;border:1px solid #cedaee;border-radius:12px;background:#eef3ff;color:#204bc4;overflow:hidden;}
+.survai-review-scan>span{position:absolute;inset:0 auto 0 0;width:2px;background:#204bc4;animation:survai-review-scan 1.5s ease-in-out infinite;}
+.survai-result-skeleton{display:grid;gap:9px;padding-top:8px;}
+.survai-result-skeleton span{height:6px;border-radius:2px;background:#e4ebf7;animation:survai-review-pulse 1.5s ease-in-out infinite;}
+.survai-result-skeleton span:nth-child(2){width:85%;animation-delay:.1s;}.survai-result-skeleton span:nth-child(3){width:60%;animation-delay:.2s;}
+.survai-result-error>svg{color:#536581;}
+.survai-result-error button{display:flex;align-items:center;gap:7px;border:1px solid #cedaee;border-radius:8px;background:#fff;color:#204bc4;font:inherit;font-size:12px;padding:9px 12px;cursor:pointer;}
+.survai-results-toolbar button:focus-visible,.survai-result-error button:focus-visible,.survai-result-sources a:focus-visible,.survai-saved-reviews:focus-visible{outline:2px solid #2455dc;outline-offset:3px;}
+.survai-result-sheet[data-status="ready"] .survai-result-ready,.survai-result-sheet[data-status="ready"] .survai-result-findings,.survai-result-sheet[data-status="ready"] .survai-result-sources{animation:survai-result-ink .3s ease-out .12s both;}
+.survai-result-sheet[data-status="ready"] .survai-result-sources{animation-delay:.2s;}
+.survai-page-measure *{animation:none!important;transition:none!important;}
+@keyframes survai-result-unfold{from{clip-path:inset(0 100% 0 0);opacity:0}to{clip-path:inset(0);opacity:1}}
+@keyframes survai-result-ink{from{opacity:0}to{opacity:1}}
+@keyframes survai-review-scan{0%,100%{transform:translateX(6px);opacity:.4}50%{transform:translateX(52px);opacity:1}}
+@keyframes survai-review-pulse{0%,100%{opacity:.4}50%{opacity:1}}
+@media(min-width:700px){.survai-tool[data-view="results"]{width:480px;}}
+@media(prefers-reduced-motion:reduce){.survai-result-sheet,.survai-review-scan>span,.survai-result-skeleton span,.survai-result-sheet[data-status="ready"] .survai-result-ready,.survai-result-sheet[data-status="ready"] .survai-result-findings,.survai-result-sheet[data-status="ready"] .survai-result-sources{animation:none!important;}}

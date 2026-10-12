@@ -1,0 +1,42 @@
+"use client";
+import { ArrowLeft, ArrowUpRight, ChevronLeft, ChevronRight, FileCheck2, FileSearch, RotateCcw, CircleAlert } from "lucide-react";
+import Link from "./workspace-link";
+import { survaiResultBlocks, type SurvaiReview } from "@/lib/survai-results";
+
+function ResultText({ text }: { text: string }) {
+ return <>{text.split(/(\*\*[^*]+\*\*)/g).map((part, index) => part.startsWith("**") && part.endsWith("**") ? <strong key={index}>{part.slice(2, -2)}</strong> : part)}</>;
+}
+
+export function SurvaiResultsToolbar({ index, count, busy, onBack, onSelect }: { index: number; count: number; busy: boolean; onBack: () => void; onSelect: (index: number) => void }) {
+ return <div className="survai-results-toolbar">
+   <button type="button" disabled={busy} onClick={onBack}><ArrowLeft size={15}/>Actions</button>
+   {count > 1 && <nav aria-label="Saved SurvAI reviews">
+    <button type="button" aria-label="Previous review" disabled={busy || index === 0} onClick={() => onSelect(index - 1)}><ChevronLeft size={15}/></button>
+    <span>Review {index + 1} / {count}</span>
+    <button type="button" aria-label="Next review" disabled={busy || index === count - 1} onClick={() => onSelect(index + 1)}><ChevronRight size={15}/></button>
+   </nav>}
+ </div>;
+}
+
+export function SurvaiResults({ review, pageTitle, slug, busy, onRetry }: { review: SurvaiReview; pageTitle: string; slug?: string; busy: boolean; onRetry: () => void }) {
+ const blocks = survaiResultBlocks(review.answer?.content ?? "");
+ const citations = review.answer?.citations ?? [];
+ return <section className="survai-results" aria-label="SurvAI results">
+  <article key={review.id} className="survai-result-sheet" data-status={review.status} aria-busy={review.status === "working"}>
+   <div className="survai-result-label"><span aria-hidden="true"/>{pageTitle} · review</div>
+   <h3 tabIndex={-1}>{review.title}</h3>
+   {review.status === "working" ? <div className="survai-result-working" role="status">
+    <div className="survai-review-scan" aria-hidden="true"><FileSearch size={30}/><span/></div>
+    <h4>Preparing your review</h4><p>Checking the records available within your access.</p>
+    <div className="survai-result-skeleton" aria-hidden="true"><span/><span/><span/></div>
+   </div> : review.status === "error" ? <div className="survai-result-error" role="alert">
+    <CircleAlert size={25}/><h4>Review unavailable</h4><p>{review.error}</p>
+    <button type="button" onClick={event => { onRetry(); event.currentTarget.closest("article")?.querySelector<HTMLElement>("h3")?.focus(); }} disabled={busy}><RotateCcw size={15}/>Try again</button>
+   </div> : <>
+    <div className="survai-result-ready"><FileCheck2 size={15}/>Ready for your review<span>{citations.length} {citations.length === 1 ? "source" : "sources"}</span></div>
+    <div className="survai-result-findings">{blocks.map((block, position) => block.kind === "heading" ? <h4 key={position}><ResultText text={block.text}/></h4> : block.kind === "list" ? <ul key={position}>{block.items.map((item, itemIndex) => <li key={itemIndex}><ResultText text={item}/></li>)}</ul> : <p key={position} className={position === 0 ? "survai-result-summary" : undefined}><ResultText text={block.text}/></p>)}</div>
+    {citations.length > 0 && <div className="survai-result-sources"><h4>Source records</h4>{citations.map(citation => <Link key={citation.id} href={!citation.href.startsWith("/") && !citation.href.startsWith("#") ? `/app/${slug}/${citation.href}` : citation.href}><FileCheck2 size={15}/><span>{citation.label}</span><ArrowUpRight size={14}/></Link>)}</div>}
+   </>}
+  </article>
+ </section>;
+}

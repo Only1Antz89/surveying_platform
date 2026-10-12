@@ -1,5 +1,4 @@
 "use client";
-import Link from "./workspace-link";
 import {useWorkspace} from "./workspace-provider";
 import {type OrganisationRole,type PlatformRole} from "@surveynt/domain";
 import {survaiPageFromPath,survaiContextCopy} from "@/lib/survai-context";
@@ -10,7 +9,8 @@ import {usePathname,useSearchParams} from "next/navigation";
 import {Send,X,FileCheck2,ClipboardCheck,CalendarDays,ArrowRight,ChevronRight,BookOpen,Ruler,PanelLeftClose,PanelRightClose,GripHorizontal} from "lucide-react";
 import {useSurvaiPlacement} from "./use-survai-placement";
 import {SurvaiPages} from "./survai-pages";
-type Message={role:string;content:string;citations?:{id:string;label:string;href:string}[]};
+import {SurvaiResults,SurvaiResultsToolbar} from "./survai-results";
+import {survaiReviewsFromHistory,type SurvaiReview} from "@/lib/survai-results";
 type OverlayProps={role?:OrganisationRole;platformRole?:PlatformRole;mode:"firm"|"platform"|"case";slug?:string;quoteId?:string;token?:string;name:string};
 export function SurveyantOverlay(props:OverlayProps){return <Suspense fallback={null}><SurvaiOverlay {...props}/></Suspense>;}
 function SurvaiOverlay({mode,slug,quoteId,token,name,role,platformRole}:OverlayProps){
@@ -19,19 +19,32 @@ function SurvaiOverlay({mode,slug,quoteId,token,name,role,platformRole}:OverlayP
  const supportId=mode==="platform"?pathname.match(/\/platform\/support\/([\da-f-]{36})(?:\/|$)/i)?.[1]:undefined;
  const scope=mode==="case"?`Case ${name}`:mode==="platform"?supportId?"Surveynt · active support session (read only)":"Surveynt · platform operations":jobId?`${name} · current case`:`${name} · ${audience?workspaceLabels[audience]:"business records"}${audience==="surveyor"?" · your assignments":""}`;
  const contextKey=`${effectiveRole}:${platformRole}:${pageContext.page}:${pageContext.resourceId??""}:${audience}:${endpointPlaceholder(mode,quoteId,supportId)}:${jobId??""}:${token??""}`;
- const [messageContext,setMessageContext]=useState(contextKey);const [phase,setPhase]=useState<"closed"|"opening"|"open"|"closing">("closed"),[messages,setMessages]=useState<Message[]>([]),[text,setText]=useState(""),[error,setError]=useState(""),[busy,setBusy]=useState(false);const dialog=useRef<HTMLDialogElement>(null),trigger=useRef<HTMLButtonElement>(null),composer=useRef<HTMLTextAreaElement>(null),requestId=useRef(0),sending=useRef(false),historyController=useRef<AbortController|null>(null);
+ const [messageContext,setMessageContext]=useState(contextKey);const [phase,setPhase]=useState<"closed"|"opening"|"open"|"closing">("closed"),[reviews,setReviews]=useState<SurvaiReview[]>([]),[selectedReview,setSelectedReview]=useState<string|null>(null),[view,setView]=useState<"menu"|"results">("menu"),[text,setText]=useState(""),[error,setError]=useState(""),[busy,setBusy]=useState(false);const dialog=useRef<HTMLDialogElement>(null),trigger=useRef<HTMLButtonElement>(null),composer=useRef<HTMLTextAreaElement>(null),requestId=useRef(0),sending=useRef(false),historyController=useRef<AbortController|null>(null);
  const open=phase!=="closed";
  const tool=useRef<HTMLDivElement>(null);const movement=useSurvaiPlacement(tool,open);
  const endpoint=mode==="platform"?supportId?`/api/platform/support/${supportId}/surveyant`:"/api/platform/surveyant":mode==="case"?`/api/v1/public/quotes/${quoteId}/assistant`:"/api/v1/surveyant";const storageKey=`surveynt:overlay:${mode}:${slug??quoteId??"platform"}`;
  useEffect(()=>{const timer=setTimeout(()=>setPhase(sessionStorage.getItem(storageKey)==="open"?"open":"closed"),0);return()=>clearTimeout(timer);},[storageKey]);
  useEffect(()=>{if(open&&!dialog.current?.open)dialog.current?.show();if(!open&&dialog.current?.open)dialog.current?.close();},[open,storageKey]);
- useEffect(()=>{requestId.current++;const reset=setTimeout(()=>{setMessageContext(contextKey);setMessages([]);setError("");sending.current=false;setBusy(false);setText("");},0);if(mode==="case"&&!token)return()=>clearTimeout(reset);let active=true;const controller=new AbortController();historyController.current=controller;workspaceFetch(`${endpoint}?${new URLSearchParams({page:pageContext.page,...(pageContext.resourceId?{resourceId:pageContext.resourceId}:{}),...(jobId?{jobId}:{})})}`,{headers:{...(token?{"x-quote-token":token}:{}),...(slug?{"x-demo-organisation-slug":slug}:{})},signal:controller.signal}).then(async r=>{const p=await r.json();if(!r.ok)throw Error(p.error?.message??"Conversation unavailable.");if(active){setMessageContext(contextKey);setMessages(p.data.messages??[]);}}).catch(e=>{if(active&&e.name!=="AbortError")setError(e.message);});return()=>{active=false;controller.abort();clearTimeout(reset);};},[endpoint,jobId,token,slug,mode,audience,contextKey,pageContext.page,pageContext.resourceId]);
- async function ask(question:string,clearDraft=false){
+ useEffect(()=>{
+  requestId.current++;let active=true;const controller=new AbortController();historyController.current=controller;
+  const reset=setTimeout(()=>{
+   if(controller.signal.aborted)return;
+   setMessageContext(contextKey);setReviews([]);setSelectedReview(null);setView("menu");setError("");sending.current=false;setBusy(false);setText("");
+   if(mode==="case"&&!token)return;
+   workspaceFetch(`${endpoint}?${new URLSearchParams({page:pageContext.page,...(pageContext.resourceId?{resourceId:pageContext.resourceId}:{}),...(jobId?{jobId}:{})})}`,{headers:{...(token?{"x-quote-token":token}:{}),...(slug?{"x-demo-organisation-slug":slug}:{})},signal:controller.signal}).then(async response=>{
+    const payload=await response.json();if(!response.ok)throw Error(payload.error?.message??"Reviews unavailable.");
+    if(active&&!controller.signal.aborted){const restored=survaiReviewsFromHistory(payload.data.messages??[],survaiContextCopy({page:pageContext.page,resourceId:pageContext.resourceId},{mode,role:effectiveRole,platformRole}).actions);setReviews(restored);setSelectedReview(restored.at(-1)?.id??null);}
+   }).catch(failure=>{if(active&&!controller.signal.aborted&&failure.name!=="AbortError")setError(failure.message);});
+  },0);
+  return()=>{active=false;controller.abort();clearTimeout(reset);};
+ },[endpoint,jobId,token,slug,mode,audience,contextKey,pageContext.page,pageContext.resourceId,effectiveRole,platformRole]);
+ async function ask(question:string,clearDraft=false,title="Your request",retryId?:string){
   question=question.trim();if(!question||sending.current||!pageCopy.allowed)return;
   sending.current=true;historyController.current?.abort();const turn=++requestId.current;
-  setBusy(true);setError("");setMessages(v=>[...v,{role:"user",content:question}]);if(clearDraft)setText("");
-  try{const r=await workspaceFetch(endpoint,{method:"POST",headers:{"content-type":"application/json",...(token?{"x-quote-token":token}:{}),...(slug?{"x-demo-organisation-slug":slug}:{})},body:JSON.stringify({message:question,pageContext,...(jobId?{jobId}:{})})});const p=await r.json();if(!r.ok)throw Error(p.error?.message??"SurvAI is unavailable.");if(requestId.current===turn)setMessages(v=>[...v,p.data.message]);}
-  catch(e){if(requestId.current===turn)setError((e as Error).message);}
+  const id=retryId??`request:${turn}`;const review:SurvaiReview={id,title,question,status:"working"};
+  setBusy(true);setError("");setReviews(v=>retryId?v.map(item=>item.id===id?review:item):[...v,review]);setSelectedReview(id);setView("results");if(clearDraft)setText("");
+  try{const r=await workspaceFetch(endpoint,{method:"POST",headers:{"content-type":"application/json",...(token?{"x-quote-token":token}:{}),...(slug?{"x-demo-organisation-slug":slug}:{})},body:JSON.stringify({message:question,pageContext,...(jobId?{jobId}:{})})});const p=await r.json();if(!r.ok)throw Error(p.error?.message??"SurvAI is unavailable.");if(requestId.current===turn)setReviews(v=>v.map(item=>item.id===id?{...item,status:"ready",answer:p.data.message}:item));}
+  catch(e){if(requestId.current===turn)setReviews(v=>v.map(item=>item.id===id?{...item,status:"error",error:(e as Error).message}:item));}
   finally{if(requestId.current===turn){sending.current=false;setBusy(false);}}
  }
  function send(e:React.FormEvent){e.preventDefault();void ask(text,true);}
@@ -43,7 +56,17 @@ function SurvaiOverlay({mode,slug,quoteId,token,name,role,platformRole}:OverlayP
   return()=>clearTimeout(timer);
  },[phase]);
  useEffect(()=>{if(phase==="open")dialog.current?.querySelector<HTMLButtonElement>("[aria-label='Close SurvAI']")?.focus();},[phase]);
- const visibleMessages=messageContext===contextKey?messages:[];
+ const visibleReviews=messageContext===contextKey?reviews:[];
+ const currentReview=visibleReviews.find(review=>review.id===selectedReview)??visibleReviews.at(-1);
+ const resultView=view==="results"&&!!currentReview;
+ const previousResultView=useRef(false);
+ useEffect(()=>{
+  if(phase==="open"){
+   if(resultView)dialog.current?.querySelector<HTMLElement>(".survai-page-flow .survai-result-sheet h3")?.focus();
+   else if(previousResultView.current)dialog.current?.querySelector<HTMLButtonElement>(".survai-page-flow .surveyant-prompts button")?.focus();
+  }
+  previousResultView.current=resultView;
+ },[resultView,currentReview?.id,phase]);
  const prompts=pageCopy.actions.map(action=>({...action,icon:action.kind==="next"?ArrowRight:action.kind==="review"?FileCheck2:["calendar","availability","routes","fieldwork"].includes(pageContext.page)?CalendarDays:ClipboardCheck}));
  useEffect(()=>{
   const fieldbook=dialog.current,measure=tool.current;if(!fieldbook||!measure)return;
@@ -54,7 +77,7 @@ function SurvaiOverlay({mode,slug,quoteId,token,name,role,platformRole}:OverlayP
   });
   for(const child of fieldbook.children)observer.observe(child);return()=>observer.disconnect();
  },[]);
- return <div ref={tool} className="survai-tool" data-phase={phase} data-dock={movement.placement?.dock??"floating"} data-dragging={movement.dragging||undefined} style={movement.placement?{left:movement.placement.x,top:movement.placement.y,right:"auto",bottom:"auto"}:undefined}>
+ return <div ref={tool} className="survai-tool" data-phase={phase} data-view={resultView?"results":"menu"} data-dock={movement.placement?.dock??"floating"} data-dragging={movement.dragging||undefined} style={movement.placement?{left:movement.placement.x,top:movement.placement.y,right:"auto",bottom:"auto"}:undefined}>
   <div className="survai-tape" aria-hidden="true"/>
   <div className="survai-tape-case" aria-hidden="true"><Ruler size={22}/></div>
   <button ref={trigger} className="surveyant-toggle" aria-label={open?"Close SurvAI":"Open SurvAI, your surveying companion"} title="SurvAI · your surveying companion" aria-haspopup="dialog" aria-expanded={open} {...movement.dragHandlers} onClick={launch} onKeyDown={e=>{if(e.key==="Escape"&&open){e.preventDefault();close();}}}><SurveyantMark/><span>SurvAI</span></button>
@@ -69,11 +92,14 @@ function SurvaiOverlay({mode,slug,quoteId,token,name,role,platformRole}:OverlayP
     </div>
    </header>
    <div className="surveyant-context"><span aria-hidden="true"/>{scope} · {pageCopy.title}</div>
-   <div className="surveyant-messages" aria-live="polite"><SurvaiPages key={contextKey} followUpdates={visibleMessages.length>0} revision={`${contextKey}:${open}:${visibleMessages.length}:${busy}:${error}`}>
-    <div className={`surveyant-welcome${visibleMessages.length?" has-conversation":""}`}><div className="surveyant-drawing"><SurveyantMark/></div><h3>{pageCopy.title}</h3><p>{pageCopy.description}</p></div>
-    {prompts.length>0&&<div className="surveyant-prompts">{prompts.map(({icon:Icon,label,question})=><button key={label} type="button" disabled={busy} onClick={()=>void ask(question)}><Icon size={20}/><span>{label}</span><ChevronRight size={17}/></button>)}</div>}
-    {visibleMessages.map((m,i)=><div key={i} className={`surveyant-message ${m.role}`}><strong>{m.role==="user"?"You":"SurvAI"}</strong><p>{m.content}</p>{m.citations?.map(c=><Link key={c.id} href={!c.href.startsWith("/")&&!c.href.startsWith("#")?`/app/${slug}/${c.href}`:c.href}><FileCheck2 size={13}/>{c.label}</Link>)}</div>)}
-    {busy&&messageContext===contextKey?<p className="surveyant-reviewing" role="status"><FileCheck2 size={16}/>Reviewing permitted records…</p>:null}{error&&messageContext===contextKey?<p className="form-error" role="alert">{error}</p>:null}
+   {resultView&&currentReview&&<SurvaiResultsToolbar index={visibleReviews.indexOf(currentReview)} count={visibleReviews.length} busy={busy} onBack={()=>setView("menu")} onSelect={index=>setSelectedReview(visibleReviews[index].id)}/>}
+   <div className="surveyant-messages" aria-live="polite"><SurvaiPages key={`${contextKey}:${resultView?currentReview?.id:"menu"}`} followUpdates={false} revision={`${contextKey}:${open}:${view}:${currentReview?.id}:${currentReview?.status}:${visibleReviews.length}:${error}`}>
+    {resultView&&currentReview?<SurvaiResults review={currentReview} pageTitle={pageCopy.title} slug={slug} busy={busy} onRetry={()=>void ask(currentReview.question,false,currentReview.title,currentReview.id)}/>:<>
+     <div className="surveyant-welcome"><div className="surveyant-drawing"><SurveyantMark/></div><h3>{pageCopy.title}</h3><p>{pageCopy.description}</p></div>
+     {prompts.length>0&&<div className="surveyant-prompts">{prompts.map(({icon:Icon,label,question})=><button key={label} type="button" disabled={busy} onClick={()=>void ask(question,false,label)}><Icon size={20}/><span>{label}</span><ChevronRight size={17}/></button>)}</div>}
+     {visibleReviews.length>0&&<button type="button" className="survai-saved-reviews" onClick={()=>setView("results")}><FileCheck2 size={16}/>View your reviews<ChevronRight size={15}/></button>}
+     {error&&messageContext===contextKey?<p className="form-error" role="alert">{error}</p>:null}
+    </>}
    </SurvaiPages></div>
    <form onSubmit={send}><label className="sr-only" htmlFor="surveyant-message">Message SurvAI</label><textarea ref={composer} id="surveyant-message" value={text} disabled={!pageCopy.allowed} onChange={e=>setText(e.target.value)} required maxLength={4000} rows={2} placeholder="Ask SurvAI a question…"/><button className="button button-primary" disabled={busy||!text.trim()||!pageCopy.allowed} aria-label="Send message"><Send size={18}/></button></form>
    <footer><BookOpen size={15}/><span>Answers grounded in your authorised records.<small>Professional findings remain yours to approve.</small></span></footer>

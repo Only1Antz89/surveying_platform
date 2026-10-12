@@ -69,9 +69,9 @@ export function SurvaiPages({ children, revision, followUpdates }: { children: R
     if (flow && layout.width) { followLatest.current = false; setPage(Math.min(layout.pages - 1, Math.max(0, Math.floor((event.target.getBoundingClientRect().left - flow.getBoundingClientRect().left) / (layout.width + 16))))); }
    }}>{children}</div>
   </div>
-  {layout.pages > 1 && <nav className="survai-page-controls" aria-label="SurvAI conversation pages">
+  {layout.pages > 1 && <nav className="survai-page-controls" aria-label="SurvAI pages">
    <button type="button" aria-label="Previous SurvAI page" disabled={page === 0} onClick={() => { followLatest.current = false; setPage(current => current - 1); }}><ChevronLeft size={16}/></button>
-   <span role="status">{page + 1} / {layout.pages}</span>
+   <span role="status">Page {page + 1} / {layout.pages}</span>
    <button type="button" aria-label="Next SurvAI page" disabled={page === layout.pages - 1} onClick={() => { followLatest.current = false; setPage(current => current + 1); }}><ChevronRight size={16}/></button>
   </nav>}
  </div>;
