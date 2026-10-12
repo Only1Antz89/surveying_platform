@@ -1,8 +1,12 @@
 # Client review demo
 
-Refreshed on 11 October 2026 from commit `09bd549` on the separate Vercel project `surveynt-client-demo`. Deployment `dpl_Edv13CVRQQj2gXjkMvtB56EPKxnm` was built, checked and promoted to the existing public demo domain.
+Refreshed on 12 October 2026 from application commit `31c7318` on the separate Vercel project `surveynt-client-demo`. Deployment `dpl_Cd19UquWA423td3vkYNjYLqZbhHW` was built, checked and promoted to the existing public demo domain.
 
 All four links below include SurvAI: the surveying-instrument symbol, notch-only tape measure, upward extension followed by the fieldbook reveal, reverse closing motion, reduced-motion support and workspace-specific prompts. The companion can be dragged by its header or collapsed symbol, docked on either edge with pointer or keyboard controls, and remembers its device position. The close control has fixed circular sizing and returns focus to the launcher. Viewport constraints keep the expanded panel and collapsed caption visible. Public page checks returned HTTP 200 for every link; the deployed assistant was opened and its immediate action request, preserved custom draft and closing behavior were checked in the browser. Action buttons submit immediately; only manual submissions clear the entry box. Successful responses and manual submission were checked with an isolated simulated provider. The public demo currently reports that no approved SurvAI provider is configured.
+
+SurvAI now selects requests for the active page or subview and effective workspace role, including the selected case, property or customer where an authorised record identifier is available. Actions remain available during a conversation and preserve custom drafts. Server validation rejects page contexts outside the actor's access; source queries retain tenant, assignment and document permissions. An owner using the Surveyor workspace receives Surveyor actions and scope.
+
+The Surveyor Calendar and Manager Finance menus were checked in the public browser at mobile and desktop sizes. All four overview links returned HTTP 200 with their expected role-specific actions. The live Surveyor Finance request returned HTTP 403; permitted Calendar and Manager Finance requests reached the existing provider-configuration limitation. All 34 relevant tests, lint, TypeScript and the production build passed. Production database queries and real model-generated answers were not exercised by this credential-free demo.
 
 ## Shareable links
 
@@ -10,6 +14,11 @@ All four links below include SurvAI: the surveying-instrument symbol, notch-only
 - Manager workspace: https://surveynt-client-demo.vercel.app/app/clifton-surveyors/manager/overview
 - Surveyor workspace: https://surveynt-client-demo.vercel.app/app/clifton-surveyors/surveyor/overview
 - Platform tenancy management: https://surveynt-client-demo.vercel.app/platform/tenants
+
+Contextual action examples:
+
+- Surveyor Calendar: https://surveynt-client-demo.vercel.app/app/clifton-surveyors/surveyor/calendar
+- Manager Finance: https://surveynt-client-demo.vercel.app/app/clifton-surveyors/manager/finance
 
 The client can open these links directly. No application email or password is required. The fictional practice owner is Maya Patel; the platform fixture is Surveynt Operator. These are preview identities, not authenticated production accounts.
 
