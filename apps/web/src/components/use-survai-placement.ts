@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, type PointerEvent, type RefObject } from "react";
-import { constrainSurvaiPlacement, parseSurvaiPlacement, snapSurvaiPlacement, type SurvaiBounds, type SurvaiDock, type SurvaiPlacement } from "@/lib/survai-placement";
+import { constrainSurvaiPlacement, parseSurvaiPlacement, snapSurvaiPlacement, survaiSide, type SurvaiBounds, type SurvaiPlacement } from "@/lib/survai-placement";
 
 const POSITION_KEY = "surveynt:survai:placement:v1";
 const viewportHeight = () => window.visualViewport ? window.visualViewport.height + window.visualViewport.offsetTop : window.innerHeight;
@@ -8,6 +8,7 @@ const viewportHeight = () => window.visualViewport ? window.visualViewport.heigh
 export function useSurvaiPlacement(tool: RefObject<HTMLDivElement | null>, expanded: boolean) {
  const [placement, setPlacement] = useState<SurvaiPlacement | null>(null);
  const [dragging, setDragging] = useState(false);
+ const [snapTarget, setSnapTarget] = useState<"home" | "left" | "right" | null>(null);
  const current = useRef<SurvaiPlacement | null>(null);
  const drag = useRef<{ pointerId: number; x: number; y: number; origin: SurvaiPlacement; moved: boolean } | null>(null);
  const suppressClick = useRef(false);
@@ -35,19 +36,19 @@ export function useSurvaiPlacement(tool: RefObject<HTMLDivElement | null>, expan
  }
  function origin(): SurvaiPlacement | null {
   const rect = tool.current?.getBoundingClientRect();
-  return rect ? { x: rect.x, y: rect.y, dock: current.current?.dock ?? null } : null;
+  return rect ? { x: rect.x, y: rect.y, dock: current.current ? current.current.dock : "home", side: current.current ? survaiSide(current.current) : "right" } : null;
  }
  function prepareOpen() {
   const value = origin(), area = bounds(true);
   if (value && area) remember(constrainSurvaiPlacement(value, area));
  }
- function dock(side: SurvaiDock) {
+ function returnHome() {
   const value = origin(), area = bounds();
-  if (value && area) remember(constrainSurvaiPlacement({ ...value, dock: side }, area));
+  if (value && area) remember(constrainSurvaiPlacement({ ...value, dock: "home" }, area));
  }
  function moveBy(dx: number, dy: number) {
   const value = origin(), area = bounds();
-  if (value && area) remember(constrainSurvaiPlacement({ x: value.x + dx, y: value.y + dy, dock: null }, area));
+  if (value && area) remember(constrainSurvaiPlacement({ ...value, x: value.x + dx, y: value.y + dy, dock: null, side: survaiSide(value) }, area));
  }
  function pointerDown(event: PointerEvent<HTMLElement>) {
   if (!event.isPrimary || event.button !== 0 || ((event.target as Element).closest(".survai-header-actions") && !event.currentTarget.classList.contains("survai-move-handle"))) return;
@@ -65,18 +66,19 @@ export function useSurvaiPlacement(tool: RefObject<HTMLDivElement | null>, expan
   if (!active.moved && Math.hypot(dx, dy) < 6) return;
   active.moved = true;
   setDragging(true);
-  const next = constrainSurvaiPlacement({ x: active.origin.x + dx, y: active.origin.y + dy, dock: null }, area);
+  const next = constrainSurvaiPlacement({ ...active.origin, x: active.origin.x + dx, y: active.origin.y + dy, dock: null, side: survaiSide(active.origin) }, area);
   current.current = next;
   setPlacement(next);
+  setSnapTarget(snapSurvaiPlacement(next, area, event.clientX).dock);
  }
  function pointerEnd(event: PointerEvent<HTMLElement>) {
   const active = drag.current;
   if (!active || active.pointerId !== event.pointerId) return;
   drag.current = null;
-  setDragging(false);
+  setDragging(false); setSnapTarget(null);
   suppressClick.current = active.moved;
   const area = bounds();
-  if (active.moved && current.current && area) remember(snapSurvaiPlacement(current.current, area));
+  if (active.moved && current.current && area) remember(snapSurvaiPlacement(current.current, area, event.clientX));
   if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
  }
  function consumeDragClick() {
@@ -100,7 +102,7 @@ export function useSurvaiPlacement(tool: RefObject<HTMLDivElement | null>, expan
    setPlacement(next);
   }
   const restore = setTimeout(() => {
-   try { current.current = parseSurvaiPlacement(localStorage.getItem(POSITION_KEY)); } catch { /* Use the default position. */ }
+   try { current.current = parseSurvaiPlacement(localStorage.getItem(POSITION_KEY)) ?? { x: 0, y: 0, dock: "home" }; } catch { current.current = { x: 0, y: 0, dock: "home" }; }
    fit();
   }, 0);
   const observer = new ResizeObserver(fit);
@@ -109,5 +111,5 @@ export function useSurvaiPlacement(tool: RefObject<HTMLDivElement | null>, expan
   window.visualViewport?.addEventListener("resize", fit);
   return () => { clearTimeout(restore); observer.disconnect(); window.removeEventListener("resize", fit); window.visualViewport?.removeEventListener("resize", fit); };
  }, [tool]);
- return { placement, dragging, prepareOpen, dock, moveBy, consumeDragClick, dragHandlers: { onPointerDown: pointerDown, onPointerMove: pointerMove, onPointerUp: pointerEnd, onPointerCancel: pointerEnd } };
+ return { placement, dragging, snapTarget, returnHome, prepareOpen, moveBy, consumeDragClick, dragHandlers: { onPointerDown: pointerDown, onPointerMove: pointerMove, onPointerUp: pointerEnd, onPointerCancel: pointerEnd } };
 }

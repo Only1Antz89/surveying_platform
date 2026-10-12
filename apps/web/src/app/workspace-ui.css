@@ -255,3 +255,16 @@
 @keyframes survai-review-pulse{0%,100%{opacity:.4}50%{opacity:1}}
 @media(min-width:700px){.survai-tool[data-view="results"]{width:480px;}}
 @media(prefers-reduced-motion:reduce){.survai-result-sheet,.survai-review-scan>span,.survai-result-skeleton span,.survai-result-sheet[data-status="ready"] .survai-result-ready,.survai-result-sheet[data-status="ready"] .survai-result-findings,.survai-result-sheet[data-status="ready"] .survai-result-sources{animation:none!important;}}
+
+/* A home for the tape case, with edge feedback while moving the fieldbook. */
+.survai-home-dock{position:fixed;right:8px;bottom:8px;z-index:39;width:76px;height:92px;padding:8px 4px 16px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;border:1px dashed #9fb3db;border-radius:24px;background:#f7faffcc;color:#506b9e;cursor:pointer;transition:background .18s,border-color .18s;}
+.survai-home-dock span{font-family:inherit;font-weight:600;font-size:9px;line-height:1.2;}.survai-home-dock[data-occupied]{pointer-events:none;color:transparent;background:transparent;border-color:#cedaee;}.survai-home-dock[data-active],.survai-home-dock:hover{background:#e7efff;border-color:#204bc4;color:#204bc4;}.survai-home-dock:focus-visible{outline:2px solid #204bc4;outline-offset:3px;}
+.survai-edge-guide{position:fixed;top:20%;bottom:20%;width:4px;border-radius:4px;background:#204bc4;z-index:39;pointer-events:none;opacity:0;transition:opacity .16s;}.survai-edge-guide[data-edge="left"]{left:4px;opacity:.55;}.survai-edge-guide[data-edge="right"]{right:4px;opacity:.55;}
+.survai-tool{right:12px;bottom:28px;}.survai-tool[data-phase="open"]{transition:height .3s var(--survai-ease),top .3s var(--survai-ease),left .22s var(--survai-ease);}.survai-tool[data-dragging]{transition:none;}
+.survai-tool[data-side="right"] .surveyant-toggle{left:auto;right:0;}.survai-tool[data-side="right"] .survai-tape{left:auto;right:23px;}.survai-tool[data-side="right"] .survai-tape-case{left:auto;right:4px;}
+.survai-tool[data-side="right"] .surveyant-overlay{inset:0 34px 0 0;border-left:none;border-right:1px solid #cedaee;}.survai-tool[data-side="right"] .surveyant-overlay header{padding-left:20px;padding-right:48px;}
+.survai-tool[data-side="right"][data-phase="opening"] .surveyant-overlay{animation-name:survai-menu-unfold-left;}.survai-tool[data-side="right"][data-phase="closing"] .surveyant-overlay{animation-name:survai-menu-unfold-left;}
+@keyframes survai-menu-unfold-left{from{clip-path:inset(0 0 0 100% round 24px);opacity:0}to{clip-path:inset(0 0 0 0 round 24px);opacity:1}}
+@media(prefers-reduced-motion:reduce){.survai-home-dock,.survai-edge-guide{transition:none;}}
+
+.survai-tool[data-side="right"][data-view="results"] .surveyant-overlay{border-radius:24px 12px 12px 24px;}
