@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 import { useState } from "react";
 import { ManualPaymentForm } from "./manual-payment-form";
 import { AlertCircle, AlertTriangle, Calendar, CheckCircle2, ChevronLeft, ChevronRight, Coins } from "lucide-react";
@@ -28,7 +29,7 @@ export function ManualDepositRegister() {
     setBusy(true);
     setMessage("");
     try {
-      const response = await fetch(`/api/v1/finance/deposits?offset=${page}`, { cache: "no-store" });
+      const response = await workspaceFetch(`/api/v1/finance/deposits?offset=${page}`, { cache: "no-store" });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "Deposit register unavailable.");
       setRows(payload.data);

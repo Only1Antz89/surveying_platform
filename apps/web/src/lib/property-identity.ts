@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { and, desc, eq, gt, sql } from "drizzle-orm";
 import { addressLookups, auditEvents, createDatabase, properties, propertyIdentityEvents, withTenant, type Database, type TenantTransaction } from "@surveynt/db";
 import type { UkCountry } from "@surveynt/domain";
@@ -264,7 +265,7 @@ export async function updatePropertyIdentity(context: TenantContext & { organisa
     const [updated] = await tx.update(properties).set({ ...changes, version: current.version + 1, updatedAt: now }).where(and(eq(properties.id, propertyId), eq(properties.organisationId, context.organisationId), eq(properties.version, current.version))).returning();
     if (!updated) return { kind: "conflict" };
     await tx.insert(propertyIdentityEvents).values({ organisationId: context.organisationId, propertyId, actorUserId: context.internalUserId, action: input.action, previous: snapshot(current), next: snapshot(updated), evidence: { ...evidence, warnings } });
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: `property.identity.${input.action}`, resourceType: "property", resourceId: propertyId, metadata: { fromVersion: current.version, toVersion: updated.version } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: `property.identity.${input.action}`, resourceType: "property", resourceId: propertyId, metadata: { fromVersion: current.version, toVersion: updated.version } }));
     return { kind: "updated", property: updated, warnings };
   });
 }

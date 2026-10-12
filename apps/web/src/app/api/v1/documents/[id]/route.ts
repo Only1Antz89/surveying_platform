@@ -1,9 +1,10 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { isManagementRole } from "@surveynt/domain";
 import { and, eq, isNull, isNotNull } from "drizzle-orm";
 import { auditEvents, createDatabase, organisationDocuments, withTenant } from "@surveynt/db";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
-import { problem } from "@/lib/api";
+import { problem, invalidId } from "@/lib/api";
 import { getObjectStorage } from "@/lib/storage";
 import { z } from "zod";
 import { ok, parseBody } from "@/lib/api";
@@ -27,7 +28,7 @@ export async function PATCH(request: Request, route: RouteContext<"/api/v1/docum
     if (!current) return null;
     if (parsed.data.accessClass === "job" && !current.jobId) return { invalidJobAccess: true as const };
     const [updated] = await tx.update(organisationDocuments).set({ category: parsed.data.category, retentionUntil: parsed.data.retentionUntil ? new Date(parsed.data.retentionUntil) : null, legalHold: parsed.data.legalHold, accessClass: parsed.data.accessClass ?? current.accessClass, updatedAt: new Date() }).where(and(eq(organisationDocuments.id, id), eq(organisationDocuments.organisationId, context.organisationId))).returning();
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "document.protection_changed", resourceType: "organisation_document", resourceId: id, metadata: { previous: { category: current.category, retentionUntil: current.retentionUntil, legalHold: current.legalHold, accessClass: current.accessClass }, next: parsed.data, checksum: current.checksum } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "document.protection_changed", resourceType: "organisation_document", resourceId: id, metadata: { previous: { category: current.category, retentionUntil: current.retentionUntil, legalHold: current.legalHold, accessClass: current.accessClass }, next: parsed.data, checksum: current.checksum } }));
     return updated;
   });
   if (result && "invalidJobAccess" in result) return problem(400, "job_required", "A job-scoped document must already be linked to a practice job.");
@@ -35,7 +36,7 @@ export async function PATCH(request: Request, route: RouteContext<"/api/v1/docum
 }
 
 export async function GET(request: Request, route: RouteContext<"/api/v1/documents/[id]">) {
-  const context = await apiContext(request); if (!context) return problem(401, "unauthorised", "Authentication is required."); const { id } = await route.params;
+  const context = await apiContext(request); if (!context) return problem(401, "unauthorised", "Authentication is required."); const { id } = await route.params; const invalid = invalidId(context, id); if (invalid) return invalid;
   const accessDenial = await workspaceApiGuard(request, context);
   if (accessDenial) return accessDenial;
   const [document] = context.demo ? [] : await withTenant(createDatabase(), context.organisationId, (tx) => tx.select().from(organisationDocuments).where(and(eq(organisationDocuments.id, id), eq(organisationDocuments.organisationId, context.organisationId), isNull(organisationDocuments.deletedAt), documentAccess(context.role, context.internalUserId))).limit(1));
@@ -47,12 +48,14 @@ export async function DELETE(request: Request, route: RouteContext<"/api/v1/docu
   const context = await apiContext(request); if (!context) return problem(401, "unauthorised", "Authentication is required."); if (!canWriteWorkspace(context) || !isManagementRole(context.role)) return problem(403, "forbidden", "Only practice managers can remove documents."); const { id } = await route.params;
   const accessDenial = await workspaceApiGuard(request, context);
   if (accessDenial) return accessDenial;
+  // Same guard as GET: malformed ids and local preview have no stored document to archive.
+  if (!z.uuid().safeParse(id).success || context.demo) return problem(404, "document_not_found", "The document could not be found.");
   const result = await withTenant(createDatabase(), context.organisationId, async (tx) => {
     const [document] = await tx.select().from(organisationDocuments).where(and(eq(organisationDocuments.id, id), eq(organisationDocuments.organisationId, context.organisationId), isNull(organisationDocuments.deletedAt))).for("update").limit(1);
     if (!document) return null;
     if (document.legalHold) return { held: true as const };
     await tx.update(organisationDocuments).set({ deletedAt: new Date(), updatedAt: new Date() }).where(and(eq(organisationDocuments.id, id), eq(organisationDocuments.organisationId, context.organisationId)));
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "document.archived", resourceType: "organisation_document", resourceId: id, metadata: { checksum: document.checksum, retainedObject: true, retentionUntil: document.retentionUntil } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "document.archived", resourceType: "organisation_document", resourceId: id, metadata: { checksum: document.checksum, retainedObject: true, retentionUntil: document.retentionUntil } }));
     return { held: false as const };
   });
   if (!result) return problem(404, "document_not_found", "The document could not be found.");
@@ -78,7 +81,7 @@ export async function POST(request: Request, route: RouteContext<"/api/v1/docume
     if (document.purgeStatus !== "retained") return problem(409,"removal_pending","This original is pending removal or has been removed. It cannot be restored.");
     if (document.checksum !== parsed.data.expectedChecksum) return problem(409, "document_changed", "Reload the document archive before restoring it.");
     const [restored] = await tx.update(organisationDocuments).set({ deletedAt: null, updatedAt: new Date() }).where(and(eq(organisationDocuments.id, id), eq(organisationDocuments.organisationId, context.organisationId))).returning();
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "document.restored", resourceType: "organisation_document", resourceId: id, metadata: { checksum: document.checksum, archivedAt: document.deletedAt, retainedOriginal: true } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "document.restored", resourceType: "organisation_document", resourceId: id, metadata: { checksum: document.checksum, archivedAt: document.deletedAt, retainedOriginal: true } }));
     return ok({ id: restored.id, name: restored.name, checksum: restored.checksum });
   });
 }

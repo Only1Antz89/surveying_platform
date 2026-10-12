@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { z } from "zod";
 import { and, desc, eq } from "drizzle-orm";
 import { auditEvents, createDatabase, websiteEnquiries, withTenant } from "@surveynt/db";
@@ -17,7 +18,7 @@ export async function PATCH(request: Request) {
   if (c.demo) return problem(409, "preview_only", "Local preview cannot update enquiries.");
   try {
     const parsed = z.object({ id: z.uuid(), status: z.enum(["new", "contacted", "closed"]) }).strict().safeParse(await formJson(request)); if (!parsed.success) return problem(400, "invalid_request", "Check the enquiry status.");
-    const row = await withTenant(createDatabase(), c.organisationId, async tx => { const [row] = await tx.update(websiteEnquiries).set({ status: parsed.data.status, updatedAt: new Date() }).where(and(eq(websiteEnquiries.organisationId, c.organisationId), eq(websiteEnquiries.id, parsed.data.id))).returning(); if (row) await tx.insert(auditEvents).values({ organisationId: c.organisationId, actorUserId: c.internalUserId, action: "website_enquiry.status_changed", resourceType: "website_enquiry", resourceId: row.id, metadata: { status: row.status } }); return row; });
+    const row = await withTenant(createDatabase(), c.organisationId, async tx => { const [row] = await tx.update(websiteEnquiries).set({ status: parsed.data.status, updatedAt: new Date() }).where(and(eq(websiteEnquiries.organisationId, c.organisationId), eq(websiteEnquiries.id, parsed.data.id))).returning(); if (row) await tx.insert(auditEvents).values(workspaceAudit(c,{ organisationId: c.organisationId, actorUserId: c.internalUserId, action: "website_enquiry.status_changed", resourceType: "website_enquiry", resourceId: row.id, metadata: { status: row.status } })); return row; });
     return row ? ok(row) : problem(404, "not_found", "The enquiry could not be found.");
   } catch (error) { return formFailure(error); }
 }

@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { demoStore, recordDemoAudit } from "@/lib/demo-store";
 import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { z } from "zod";
@@ -47,7 +48,7 @@ export async function PATCH(request: Request, route: RouteContext<"/api/v1/suppo
       ? await tx.update(supportSessions).set({ approvedByUserId: context.internalUserId, updatedAt: now }).where(pending).returning()
       : await tx.update(supportSessions).set({ revokedAt: now, updatedAt: now }).where(pending).returning();
     if (!updated) return null;
-    await tx.insert(auditEvents).values({
+    await tx.insert(auditEvents).values(workspaceAudit(context,{
       organisationId: context.organisationId,
       actorUserId: context.internalUserId,
       supportSessionId: id,
@@ -55,7 +56,7 @@ export async function PATCH(request: Request, route: RouteContext<"/api/v1/suppo
       resourceType: "support_session",
       resourceId: id,
       metadata: { ticketReference: session.ticketReference, permission: session.permission, expiresAt: session.expiresAt.toISOString() },
-    });
+    }));
     return updated;
   });
   if (!result) return problem(409, "support_request_unavailable", "This support request is no longer pending or has expired.");

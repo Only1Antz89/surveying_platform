@@ -1,9 +1,10 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { assignedPropertyScope } from "@/lib/workspace-scope";
 import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { z } from "zod";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
 import { ok, parseBody, problem } from "@/lib/api";
-import { properties as demoProperties } from "@/lib/demo-data";
+import { jobs as demoJobs, properties as demoProperties } from "@/lib/demo-data";
 import { auditEvents, clients, createDatabase, properties } from "@surveynt/db";
 import { canMutateOperations, ukCountries } from "@surveynt/domain";
 import { addressSources } from "@surveynt/property-data";
@@ -16,7 +17,7 @@ export async function GET(request: Request) {
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
   const accessDenial = await workspaceApiGuard(request, context);
   if (accessDenial) return accessDenial;
-  if (context.demo) return ok(demoProperties, { demo: true, nextCursor: null });
+  if (context.demo) return ok(demoProperties.filter(p=>context.role!=="surveyor"||demoJobs.some(j=>j.assignee==="Maya Patel"&&j.client===p.client)), { demo: true, nextCursor: null });
   const db = createDatabase();
   const rows = await db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
@@ -41,7 +42,7 @@ export async function POST(request: Request) {
     const [client] = await tx.select({ id: clients.id }).from(clients).where(and(eq(clients.id, parsed.data.clientId), eq(clients.organisationId, context.organisationId))).limit(1);
     if (!client) return { kind: "client_missing" as const };
     const [created] = await tx.insert(properties).values({ organisationId: context.organisationId, ...parsed.data }).returning();
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "property.created", resourceType: "property", resourceId: created.id });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "property.created", resourceType: "property", resourceId: created.id }));
     return { kind: "created" as const, property: created };
   });
   if (result.kind === "client_missing") return problem(400, "invalid_client", "The selected client does not belong to this workspace.");

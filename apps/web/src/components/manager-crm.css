@@ -1,0 +1,391 @@
+/* Manager Workspace: CRM Suite */
+
+.manager-crm-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 8px 0 32px;
+  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  color: #1e293b;
+}
+
+/* Header */
+.manager-crm-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.manager-crm-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.manager-crm-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #2563eb;
+}
+
+.manager-crm-title-group h1 {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.6px;
+  color: #0f172a;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.manager-crm-title-group p {
+  font-size: 14px;
+  color: #64748b;
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* KPI Summary Cards */
+.manager-crm-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+
+.manager-crm-kpi-card {
+  background: #ffffff;
+  border: 1px solid #dce5f2;
+  border-radius: 8px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.manager-crm-kpi-card small {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+}
+
+.manager-crm-kpi-card b {
+  font-size: 26px;
+  font-weight: 750;
+  letter-spacing: -0.5px;
+  color: #0f172a;
+}
+
+/* Toolbar */
+.manager-crm-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.manager-crm-filters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.manager-crm-filter-btn {
+  border: 1px solid #dce5f2;
+  background: #ffffff;
+  color: #64748b;
+  border-radius: 6px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.manager-crm-filter-btn:hover {
+  background: #f8fafc;
+  color: #1e293b;
+}
+
+.manager-crm-filter-btn.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/* 2-Column CRM Layout */
+.manager-crm-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(360px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.manager-crm-list-panel {
+  background: #ffffff;
+  border: 1px solid #dce5f2;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  overflow: hidden;
+}
+
+.manager-crm-list-header {
+  display: grid;
+  grid-template-columns: 1.5fr 1.2fr 1fr auto;
+  gap: 12px;
+  padding: 12px 18px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+}
+
+.manager-crm-row {
+  display: grid;
+  grid-template-columns: 1.5fr 1.2fr 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #edf2f7;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: #ffffff;
+  text-align: left;
+  width: 100%;
+  border-left: 3px solid transparent;
+}
+
+.manager-crm-row:hover {
+  background: #f8fafc;
+}
+
+.manager-crm-row.selected {
+  background: #eff6ff;
+  border-left-color: #2563eb;
+}
+
+.crm-client-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.crm-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #2563eb;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.crm-client-info strong {
+  font-size: 13.5px;
+  color: #0f172a;
+  display: block;
+}
+
+.crm-client-info small {
+  font-size: 12px;
+  color: #64748b;
+  display: block;
+}
+
+.crm-job-info strong {
+  font-size: 13px;
+  color: #1e293b;
+  display: block;
+}
+
+.crm-job-info small {
+  font-size: 12px;
+  color: #64748b;
+  display: block;
+}
+
+.crm-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 9999px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.crm-badge.active {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.crm-badge.followup {
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.crm-badge.enquiry {
+  background: #f0fdf4;
+  color: #15803d;
+}
+
+.crm-badge.complete {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.crm-badge.booked {
+  background: #f0fdf4;
+  color: #16a34a;
+}
+
+/* Detail Panel */
+.manager-crm-detail-panel {
+  background: #ffffff;
+  border: 1px solid #dce5f2;
+  border-radius: 8px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.crm-detail-top {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.crm-detail-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #2563eb;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.crm-detail-title small {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+}
+
+.crm-detail-title h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 2px 0 0;
+}
+
+.crm-contact-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 12px 14px;
+  font-size: 13px;
+}
+
+.crm-contact-grid a {
+  color: #2563eb;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.crm-contact-grid a:hover {
+  text-decoration: underline;
+}
+
+.crm-linked-job-card {
+  background: #f8fafc;
+  border: 1px solid #dce5f2;
+  border-radius: 6px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.crm-linked-job-card small {
+  font-size: 11px;
+  font-weight: 700;
+  color: #2563eb;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.crm-linked-job-card strong {
+  font-size: 15px;
+  color: #0f172a;
+}
+
+.crm-linked-job-card span {
+  font-size: 12.5px;
+  color: #64748b;
+}
+
+.crm-activity-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid #f1f5f9;
+}
+
+.crm-activity-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #2563eb;
+  margin-top: 5px;
+  flex-shrink: 0;
+}
+
+.crm-activity-info strong {
+  font-size: 13px;
+  color: #0f172a;
+  display: block;
+}
+
+.crm-activity-info small {
+  font-size: 12px;
+  color: #64748b;
+}
+
+@media (max-width: 960px) {
+  .manager-crm-kpis {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .manager-crm-layout {
+    grid-template-columns: 1fr;
+  }
+}

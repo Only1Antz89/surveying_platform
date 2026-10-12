@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import Link from "@/components/workspace-link";
 import { ArrowLeft } from "lucide-react";
 import { jobStageLabels } from "@surveynt/domain";
 import { StatusDot } from "@surveynt/ui";

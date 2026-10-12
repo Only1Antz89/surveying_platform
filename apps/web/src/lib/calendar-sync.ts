@@ -1,4 +1,4 @@
-import { CalendarReviewError, readReviewedExternalEvent, replaceCancelledExternalEvent, restoreExternalTime } from "./calendar-provider-review";
+import { CalendarReviewError, removeReassignedExternalEvent, readReviewedExternalEvent, replaceCancelledExternalEvent, restoreExternalTime } from "./calendar-provider-review";
 import { randomUUID } from "node:crypto";
 import { finishCalendarAttempt, recoverCalendarLeases } from "./calendar-queue";
 import { createExternalEvent } from "./calendar-export";
@@ -73,6 +73,14 @@ async function reconcileCalendarConnectionUnlocked(connectionId: string) {
     if(record&&await isDemoOrganisation(record.organisationId,demoDb))return {importedBusy:0,exported:0,updated:0,simulated:true};
   }
   if (!process.env.DATABASE_ADMIN_URL) throw new Error("DATABASE_ADMIN_URL is required."); const db = createDatabase(process.env.DATABASE_ADMIN_URL); const [connection] = await db.select().from(calendarConnections).where(and(eq(calendarConnections.id, connectionId), eq(calendarConnections.status, "active"))).limit(1); if (!connection || (connection.provider !== "google" && connection.provider !== "microsoft")) throw new Error("Active calendar connection not found."); const tokens = await validTokens(connection); const remote = await externalEvents(connection.provider, tokens.access_token); const links = await db.select().from(calendarEventLinks).where(and(eq(calendarEventLinks.connectionId, connection.id),eq(calendarEventLinks.organisationId,connection.organisationId))); const linkByExternal = new Map(links.map((link) => [link.externalEventId, link])); const linkedAppointmentIds = links.map((link) => link.appointmentId); const linkedAppointments = linkedAppointmentIds.length ? await db.select().from(appointments).where(and(inArray(appointments.id, linkedAppointmentIds),eq(appointments.organisationId,connection.organisationId),eq(appointments.surveyorId,connection.userId))) : []; const appointmentById = new Map(linkedAppointments.map((item) => [item.id, item]));
+  // Lock the current appointment while removing its old personal-calendar projection.
+  for(const link of links)await db.transaction(async tx=>{
+    const [visit]=await tx.select().from(appointments).where(and(eq(appointments.id,link.appointmentId),eq(appointments.organisationId,connection.organisationId))).for("update").limit(1);
+    if(!visit||visit.surveyorId===connection.userId)return;
+    await removeReassignedExternalEvent(connection.provider as "google"|"microsoft",tokens.access_token,visit.id,link.externalEventId,link.externalVersion);
+    await tx.delete(calendarEventLinks).where(eq(calendarEventLinks.id,link.id));
+    await tx.insert(auditEvents).values({organisationId:connection.organisationId,action:"calendar.reassigned_event_removed",resourceType:"appointment",resourceId:visit.id,metadata:{connectionId:connection.id,externalEventId:link.externalEventId}});
+  });
   await db.transaction(async (tx) => { const source = `calendar:${connection.id}`; await tx.delete(availabilityBlocks).where(and(eq(availabilityBlocks.organisationId, connection.organisationId), eq(availabilityBlocks.source, source))); const busy = remote.filter((event) => !event.cancelled && !event.surveyntAppointmentId); if (busy.length) await tx.insert(availabilityBlocks).values(busy.map((event) => ({ organisationId: connection.organisationId, userId: connection.userId, startsAt: event.start!, endsAt: event.end!, kind: "external_busy", source, externalEventId: event.id })));
     for (const event of remote) {
       const link = linkByExternal.get(event.id),appointment=link?appointmentById.get(link.appointmentId):null;
@@ -104,7 +112,7 @@ async function reconcileCalendarConnectionUnlocked(connectionId: string) {
     if(Date.now()>=exportDeadline)break;
     const link = linkByAppointment.get(appointment.id);
     if (!link) {
-      const external = await createExternalEvent(connection.provider, tokens.access_token, appointment, connection.id);
+      const external = await createExternalEvent(connection.provider, tokens.access_token, appointment, `${connection.id}:revision:${appointment.version}`);
       await db.insert(calendarEventLinks).values({ organisationId: connection.organisationId, connectionId: connection.id, appointmentId: appointment.id, externalEventId: external.id, externalVersion: external.version, lastSyncedAppointmentVersion: appointment.version });exported += 1;
     } else {
       try {

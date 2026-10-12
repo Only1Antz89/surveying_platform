@@ -3,10 +3,13 @@ import { getAssistantModel, type AssistantModel } from "../proposals/model";
 // AI governance gate. A model may be used for one purpose on one job only when
 // every condition holds. The default answer is no, with the reasons listed.
 
-export const aiUses = ["field_proposals", "photo_observation", "document_extraction", "report_prose"] as const;
+export const aiUses = ["field_proposals", "photo_observation", "document_extraction", "report_prose", "case_chat", "business_chat", "platform_chat"] as const;
 export type AiUse = (typeof aiUses)[number];
 
 export const aiUseLabels: Record<AiUse, string> = {
+  case_chat:"Case conversation",
+  business_chat:"Business conversation",
+  platform_chat:"Platform operations conversation",
   field_proposals: "Field suggestions from records",
   photo_observation: "Photo descriptions",
   document_extraction: "Document reading (OCR and extraction)",
@@ -40,10 +43,12 @@ export function evaluateAiGate(input: AiGateInput, use: AiUse): AiGateResult {
   const assessment = input.riskAssessments.find((item) => item.use === use && item.status === "approved");
   if (!assessment) reasons.push({ code: "no_risk_assessment", message: `No approved risk assessment covers ${label}.` });
   else if (assessment.reviewDue && assessment.reviewDue < input.today) reasons.push({ code: "risk_review_overdue", message: `The risk assessment for ${label} is past its review date.` });
+  if(use !== "business_chat" && use !== "platform_chat") {
   if (!input.consent) reasons.push({ code: "no_consent", message: "No AI consent is recorded for this job." });
   else if (input.consent.status !== "granted") reasons.push({ code: "consent_withdrawn", message: "AI consent for this job has been withdrawn." });
   else if (!input.consent.uses.includes(use)) reasons.push({ code: "consent_scope", message: `The job's consent does not cover ${label}.` });
   else if (input.settings && input.consent.disclosureVersion < input.settings.disclosureVersion) reasons.push({ code: "consent_disclosure_outdated", message: "Consent was given against an earlier version of the firm's AI disclosure. Ask again." });
+  }
   if (input.openIncidents.some((incident) => incident.severity === "critical" && incident.status !== "closed" && incident.status !== "corrected")) reasons.push({ code: "open_critical_incident", message: "An open critical AI incident suspends AI use for this firm." });
   return { use, allowed: reasons.length === 0, model: reasons.length ? null : { providerKey: model!.providerKey, modelId: model!.modelId, modelVersion: model!.modelVersion }, reasons };
 }

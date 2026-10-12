@@ -1,3 +1,5 @@
+import {headers} from "next/headers";
+import {resolveWorkspace,workspaceRoute,workspaceHref} from "./workspace-mode";
 import { auth } from "@clerk/nextjs/server";
 import { resolveAccess } from "@surveynt/domain";
 import { createDatabase, entitlements, organisationMemberships, organisations, platformStaff, subscriptions, users } from "@surveynt/db";
@@ -14,10 +16,13 @@ function hasPilotExemption(organisationId: string) {
 }
 
 async function requireFirmAccessUncached(slug: string) {
+ const requested=(await headers()).get("x-surveynt-workspace-mode");
   if (!isClerkConfigured()) {
     const tenant = demoTenant(await demoStore.snapshot(), slug);
     if (!tenant) notFound();
+    const instance=resolveWorkspace("owner",requested);if(!instance)notFound();
     return {
+      actorRole:instance.actorRole,workspaceMode:instance.workspaceMode,
       userId: "demo_user",
       internalUserId: null,
       clerkOrganisationId: "demo_org",
@@ -26,7 +31,7 @@ async function requireFirmAccessUncached(slug: string) {
       organisationRegion: "Bristol, United Kingdom",
       userName: tenant.owner,
       userEmail: "maya@northstarsurveying.co.uk",
-      userRole: "owner" as const,
+      userRole: instance.effectiveRole,
       canRecordSurvey: false,
       canApproveReports: false,
       accessLevel: resolveAccess(tenant.status, tenant.subscription),
@@ -49,7 +54,7 @@ async function requireFirmAccessUncached(slug: string) {
     isDemo: organisations.isDemo,
   }).from(organisations).where(eq(organisations.clerkOrganisationId, session.orgId)).limit(1);
   if (!organisation) notFound();
-  if (organisation.slug !== slug) redirect(`/app/${organisation.slug}/overview`);
+  if (organisation.slug !== slug) redirect(workspaceHref(`/app/${organisation.slug}/overview`,{slug:organisation.slug,actorRole:"owner",workspaceMode:requested==="manager"||requested==="surveyor"?requested:"administration"}));
   const details = await db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.current_organisation_id', ${organisation.id}, true)`);
     const [member] = await tx.select({
@@ -75,6 +80,7 @@ async function requireFirmAccessUncached(slug: string) {
     return { member, subscription, billingExemption };
   });
   if (!details.member) notFound();
+  const instance=resolveWorkspace(details.member.role,requested);if(!instance)notFound();
   const userName = [details.member.firstName, details.member.lastName].filter(Boolean).join(" ") || details.member.email;
   const accessLevel = organisation.status === "active" && (details.billingExemption?.enabled || hasPilotExemption(organisation.id))
     ? "full" as const
@@ -88,7 +94,7 @@ async function requireFirmAccessUncached(slug: string) {
     organisationRegion: organisation.region,
     userName,
     userEmail: details.member.email,
-    userRole: details.member.role,
+    actorRole:instance.actorRole,workspaceMode:instance.workspaceMode,userRole: instance.effectiveRole,
     canRecordSurvey: details.member.canRecordSurvey,
     canApproveReports: details.member.canApproveReports,
     accessLevel,
@@ -127,10 +133,12 @@ export async function platformApiContext() {
 }
 
 export async function apiContext(request: Request) {
+ const requested=workspaceRoute(new URL(request.url).pathname).requested??request.headers.get("x-surveynt-workspace-mode");
   if (!isClerkConfigured()) {
     const tenant = demoTenant(await demoStore.snapshot(), request.headers.get("x-demo-organisation-slug") ?? "demo");
     if (!tenant) return null;
-    return { userId: "demo_user", internalUserId: null, clerkOrganisationId: "demo_org", organisationId: tenant.id, role: "owner" as const, canRecordSurvey: false, canApproveReports: false, accessLevel: resolveAccess(tenant.status, tenant.subscription), demo: true };
+    const instance=resolveWorkspace("owner",requested);if(!instance)return null;
+    return {actorRole:instance.actorRole,workspaceMode:instance.workspaceMode, userId: "demo_user", internalUserId: null, clerkOrganisationId: "demo_org", organisationId: tenant.id, role: instance.effectiveRole, canRecordSurvey: false, canApproveReports: false, accessLevel: resolveAccess(tenant.status, tenant.subscription), demo: true };
   }
   const session = await auth();
   if (!session.userId || !session.orgId) return null;
@@ -156,8 +164,9 @@ export async function apiContext(request: Request) {
   const accessLevel = organisation.status === "active" && (details.billingExemption?.enabled || hasPilotExemption(organisation.id))
     ? "full" as const
     : resolveAccess(organisation.status, details.subscription?.status ?? "incomplete", details.subscription?.graceEndsAt);
-  const path = new URL(request.url).pathname;
+  const path = workspaceRoute(new URL(request.url).pathname).canonical;
   if (accessLevel === "blocked") return null;
-  if (accessLevel === "billing_only" && !/^\/api\/v1\/(billing|me|capabilities)(\/|$)/.test(path)) return null;
-  return { userId: session.userId, internalUserId: details.member.internalUserId, clerkOrganisationId: session.orgId, organisationId: organisation.id, role: details.member.role, canRecordSurvey: details.member.canRecordSurvey, canApproveReports: details.member.canApproveReports, accessLevel, demo: false };
+  if (accessLevel === "billing_only" && !/^\/api\/(?:v1\/)?(billing|me|capabilities)(\/|$)/.test(path)) return null;
+  const instance=resolveWorkspace(details.member.role,requested);if(!instance)return null;
+  return {actorRole:instance.actorRole,workspaceMode:instance.workspaceMode, userId: session.userId, internalUserId: details.member.internalUserId, clerkOrganisationId: session.orgId, organisationId: organisation.id, role: instance.effectiveRole, canRecordSurvey: details.member.canRecordSurvey, canApproveReports: details.member.canApproveReports, accessLevel, demo: false };
 }

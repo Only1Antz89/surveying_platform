@@ -2,13 +2,14 @@ import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 import { auditEvents, backgroundJobs, communicationDeliveries, createDatabase } from "@surveynt/db";
 import { platformApiContext } from "@/lib/access";
-import { ok, problem } from "@/lib/api";
+import { ok, problem, invalidId } from "@/lib/api";
 
 export async function POST(_: Request, route: RouteContext<"/api/platform/background-jobs/[jobId]/retry">) {
   const operator = await platformApiContext();
   if (!operator) return problem(401, "unauthorised", "Platform staff authentication is required.");
   if (operator.role !== "super_admin" && operator.role !== "support") return problem(403, "forbidden", "Your platform role cannot retry failed operational work.");
   const { jobId } = await route.params;
+  const invalid = invalidId(operator, jobId); if (invalid) return invalid;
   if (operator.demo) return ok({ id: jobId, status: "queued" }, { demo: true, persisted: false });
   const db = createDatabase(process.env.DATABASE_ADMIN_URL);
   return db.transaction(async tx => {

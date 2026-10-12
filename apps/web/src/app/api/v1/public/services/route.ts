@@ -4,6 +4,7 @@ import { resolvePublicOrganisation } from "@/lib/firm-operations";
 import { ok, problem } from "@/lib/api";
 
 export async function GET(request: Request) {
+  if (!process.env.DATABASE_APP_URL && !process.env.DATABASE_URL) return problem(503, "services_unavailable", "Online quoting is not available here. Please contact the practice directly.");
   const slug = new URL(request.url).searchParams.get("organisationSlug") ?? undefined;
   const organisation = await resolvePublicOrganisation(request, slug);
   if (!organisation) return problem(404, "organisation_not_found", "The quoting practice could not be found.");

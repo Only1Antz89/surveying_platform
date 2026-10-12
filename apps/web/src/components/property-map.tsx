@@ -1,4 +1,6 @@
 "use client";
+import {mapStyleUrl} from "@/lib/map-style";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { useEffect, useRef, useState } from "react";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -6,12 +8,11 @@ import { Layers } from "lucide-react";
 import type { PropertyMapView } from "@/lib/property-map";
 
 const palette = ["#2563eb", "#b45309", "#7c3aed", "#0f766e", "#be123c", "#4d7c0f", "#0369a1", "#a16207"];
-const styleUrl = process.env.NEXT_PUBLIC_MAP_STYLE_URL;
+const styleUrl = mapStyleUrl(process.env.NEXT_PUBLIC_MAP_STYLE_URL);
 const basemapAttribution = process.env.NEXT_PUBLIC_MAP_ATTRIBUTION;
 
 /**
- * MapLibre view of imported reference layers. The basemap is configurable; without one, data layers are drawn on
- * a plain background (public OSM tile servers are not used for production traffic). Every visible layer is attributed.
+ * MapLibre view of imported reference layers, with a configurable style and an attributed OpenFreeMap default.
  */
 export function PropertyMap({ propertyId }: { propertyId: string }) {
   const container = useRef<HTMLDivElement>(null);
@@ -24,7 +25,7 @@ export function PropertyMap({ propertyId }: { propertyId: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/v1/properties/${propertyId}/map`, { cache: "no-store" })
+    workspaceFetch(`/api/v1/properties/${propertyId}/map`, { cache: "no-store" })
       .then(async (response) => ({ response, payload: await response.json().catch(() => null) }))
       .then(({ response, payload }) => {
         if (cancelled) return;

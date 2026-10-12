@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 import { createContext, useCallback, useContext, useEffect, useState, useSyncExternalStore } from "react";
 import { ClerkProvider } from "@clerk/nextjs";
 import { applyAppearance, defaultAppearance, type Appearance } from "@/lib/appearance";
@@ -13,7 +14,7 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     Promise.resolve().then(()=>{try { update(JSON.parse(localStorage.getItem("surveynt:appearance") ?? "{}")); } catch { applyAppearance(defaultAppearance); }});
     const media = matchMedia("(prefers-color-scheme: dark)"); const changed = () => setValue((current) => { applyAppearance(current); return current; }); media.addEventListener("change", changed);
-    fetch("/api/v1/me", { cache: "no-store" }).then((r) => r.ok ? r.json() : null).then((p) => { if (p?.data?.appearance && !p.data.preview) update(p.data.appearance); }).catch(() => undefined);
+    workspaceFetch("/api/v1/me", { cache: "no-store" }).then((r) => r.ok ? r.json() : null).then((p) => { if (p?.data?.appearance && !p.data.preview) update(p.data.appearance); }).catch(() => undefined);
     return () => media.removeEventListener("change", changed);
   }, [update]);
   const content = <Context.Provider value={{ value, update }}>{children}</Context.Provider>;

@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { clerkClient } from "@clerk/nextjs/server";
 import { z } from "zod";
@@ -33,7 +34,7 @@ export async function POST(request: Request) {
     await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
     const [record] = await tx.insert(invitations).values({ organisationId: context.organisationId, clerkInvitationId: invitation.id, email, role: parsed.data.role, expiresAt: new Date(invitation.expiresAt) }).returning();
     await tx.insert(onboardingSteps).values({ organisationId: context.organisationId, key: "first_teammate", completedAt: new Date(), completedByUserId: context.internalUserId }).onConflictDoUpdate({ target: [onboardingSteps.organisationId, onboardingSteps.key], set: { completedAt: new Date(), completedByUserId: context.internalUserId, updatedAt: new Date() } });
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "invitation.created", resourceType: "invitation", resourceId: record.id, metadata: { email, role: parsed.data.role } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "invitation.created", resourceType: "invitation", resourceId: record.id, metadata: { email, role: parsed.data.role } }));
     return [record];
   });
   return ok(created);

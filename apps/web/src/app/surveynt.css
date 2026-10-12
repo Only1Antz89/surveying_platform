@@ -335,3 +335,15 @@ details.details-panel > *:last-child {
 .data-table tr.selected-row td { background:var(--blue-soft); }
 .settings-nav a.active,.colour-input,.auth-page { background:var(--surface); }
 .field input,.field select,.field textarea { max-width:100%; min-width:0; box-sizing:border-box; }
+/* System pages: not found and recoverable errors. */
+.system-page { min-height:70vh; display:grid; place-items:center; padding:24px 16px; background:var(--canvas); }
+.system-panel { display:grid; gap:12px; max-width:520px; width:100%; padding:32px; }
+.system-panel h1 { margin:0; font-size:1.5rem; color:var(--ink); }
+.system-panel p { margin:0; color:var(--muted); }
+.system-panel .action-row { display:flex; flex-wrap:wrap; gap:12px; margin-top:8px; }
+/* Loading placeholder while workspace pages fetch records. */
+.loading-skeleton { display:grid; gap:14px; }
+.loading-line,.loading-block { display:block; border-radius:8px; background:linear-gradient(90deg,var(--surface-2) 25%,var(--border) 50%,var(--surface-2) 75%); background-size:200% 100%; animation:loading-shimmer 1.4s ease-in-out infinite; }
+.loading-line { height:14px; width:40%; } .loading-line.wide { height:28px; width:60%; } .loading-block { height:120px; }
+@keyframes loading-shimmer { from { background-position:200% 0; } to { background-position:-200% 0; } }
+@media(prefers-reduced-motion:reduce) { .loading-line,.loading-block { animation:none; } }

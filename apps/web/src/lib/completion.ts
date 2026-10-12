@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { and, desc, eq, ne } from "drizzle-orm";
 import { checkOverrides, OTHER_OVERRIDE, type CheckItem, type CompletionOverride, type CompletionReport, type OverrideCheck } from "@surveynt/assistant";
 import { auditEvents, completionOverrides, createDatabase, surveys, withTenant, type TenantTransaction } from "@surveynt/db";
@@ -64,7 +65,7 @@ export async function enforceStageGate(tx: TenantTransaction, context: SurveyCon
     ruleSetKey: report.ruleSetKey, ruleSetVersion: report.ruleSetVersion, templateVersion: report.templateVersion, targetStage: input.targetStage,
     reason: override.reason, note: override.note?.trim() || null, overriddenByUserId: context.internalUserId,
   })));
-  await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "survey.completion_overridden", resourceType: "survey", resourceId: survey.id, metadata: { jobId: input.jobId, targetStage: input.targetStage, ruleSetVersion: report.ruleSetVersion, items: check.accepted.map((item) => ({ itemId: item.itemId, reason: item.reason })) } });
+  await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "survey.completion_overridden", resourceType: "survey", resourceId: survey.id, metadata: { jobId: input.jobId, targetStage: input.targetStage, ruleSetVersion: report.ruleSetVersion, items: check.accepted.map((item) => ({ itemId: item.itemId, reason: item.reason })) } }));
   return { kind: "passed", surveyId: survey.id, report, overridden: check.accepted.length };
 }
 

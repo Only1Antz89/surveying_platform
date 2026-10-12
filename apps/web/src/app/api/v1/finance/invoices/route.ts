@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { createHash } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { auditEvents, createDatabase, invoiceLineItems, invoices, jobs, withTenant } from "@surveynt/db";
@@ -23,7 +24,7 @@ export async function POST(request:Request){
     if(input.jobId){const [job]=await tx.select({id:jobs.id}).from(jobs).where(and(eq(jobs.id,input.jobId),eq(jobs.organisationId,context.organisationId))).limit(1);if(!job)return problem(404,"job_not_found","Choose a job from this practice.");}
     const [invoice]=await tx.insert(invoices).values({organisationId:context.organisationId,jobId:input.jobId,number,currency:input.currency,status:"draft",subtotalMinor,vatMinor,totalMinor,dueAt:input.dueAt?new Date(input.dueAt):null}).returning();
     await tx.insert(invoiceLineItems).values(input.lines.map(line=>({...line,organisationId:context.organisationId,invoiceId:invoice.id})));
-    await tx.insert(auditEvents).values({organisationId:context.organisationId,actorUserId:context.internalUserId,action:"invoice.created",resourceType:"invoice",resourceId:invoice.id,metadata:{fingerprint,requestId:input.requestId,totalMinor,currency:input.currency}});
+    await tx.insert(auditEvents).values(workspaceAudit(context,{organisationId:context.organisationId,actorUserId:context.internalUserId,action:"invoice.created",resourceType:"invoice",resourceId:invoice.id,metadata:{fingerprint,requestId:input.requestId,totalMinor,currency:input.currency}}));
     return ok(invoice);
   });
 }

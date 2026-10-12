@@ -40,3 +40,6 @@ export async function canAccessAssignedResource(context: WorkspaceViewer, type: 
     return Boolean((result as { rows: unknown[] }).rows.length);
   });
 }
+
+/** Fictional no-Clerk fixtures represent the signed-in owner, not an impersonated staff account. */
+export function scopedDemoJobs<T extends {assignee:string;fee?:number}>(records:T[],role:OrganisationRole,name="Maya Patel"){return records.filter(j=>role!=="surveyor"||j.assignee===name).map(j=>role==="surveyor"?{...j,fee:undefined}:j);}

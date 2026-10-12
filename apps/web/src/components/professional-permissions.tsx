@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { FormEvent, useState } from "react";
 import { AlertCircle, CheckCircle2, ShieldCheck, UserCheck } from "lucide-react";
@@ -30,7 +31,7 @@ export function ProfessionalPermissions({ members }: { members: PermissionMember
     const id = String(form.get("member"));
     const permission = String(form.get("permission")) as ProfessionalPermission;
     try {
-      const response = await fetch(`/api/v1/team/${id}/permissions`, {
+      const response = await workspaceFetch(`/api/v1/team/${id}/permissions`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

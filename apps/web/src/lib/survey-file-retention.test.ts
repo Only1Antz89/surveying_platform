@@ -66,4 +66,20 @@ describe("survey file retention policy", () => {
     }
     expect(assessSurveyFileRetention(basis, new Date("2021-01-01Z")).reviewVersion).toBe(previous);
   });
+  it("offers archiving in the last 30 days, and resets the review after extension", () => {
+    const expiry = new Date("2001-03-01T12:00:00Z");
+    const assess = (days: number) => assessSurveyFileRetention(basis, new Date(expiry.getTime()-days*86400000));
+    expect(assess(31).archiveOffer).toBe(false);
+    expect(assess(30).archiveOffer).toBe(true);
+    expect(assess(1).daysUntilDeletionReview).toBe(1);
+    expect(assess(0).daysUntilDeletionReview).toBe(0);
+    const extended = assessSurveyFileRetention({...basis,archiveUntil:new Date("2025-01-01Z")},now);
+    expect(extended.reason).toBe("retention_active");
+    expect(extended.archiveOffer).toBe(false);
+    expect(extended.reviewVersion).not.toBe(assessSurveyFileRetention(basis,now).reviewVersion);
+    expect(assessSurveyFileRetention({...basis,archiveUntil:new Date("2025-01-01Z"),legalHold:true},now).reason).toBe("protected");
+    expect(assessSurveyFileRetention({...basis,archiveUntil:new Date("invalid")},now).daysUntilDeletionReview).toBeNull();
+    expect(assessSurveyFileRetention({...basis,archiveUntil:new Date("1999-01-01Z")},now).retentionUntil).toEqual(expiry);
+  });
+
 });

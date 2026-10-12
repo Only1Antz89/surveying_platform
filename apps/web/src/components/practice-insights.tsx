@@ -1,4 +1,6 @@
 "use client";
+import { WorkspaceAnchor } from "@/components/workspace-anchor";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { useEffect, useState } from "react";
 import { AlertCircle, Download } from "lucide-react";
@@ -10,13 +12,13 @@ export function PracticeInsightsView() {
     from: new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10),
     to: new Date().toISOString().slice(0, 10),
   }));
-  const [data, setData] = useState<PracticeInsights | null>(null);
+  const [data, setData] = useState<(PracticeInsights & {preview?:boolean}) | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch(`/api/v1/insights?${new URLSearchParams(range)}`, {
+    workspaceFetch(`/api/v1/insights?${new URLSearchParams(range)}`, {
       signal: controller.signal,
       cache: "no-store",
     })
@@ -41,6 +43,7 @@ export function PracticeInsightsView() {
 
   return (
     <>
+      {data?.preview?<p className="notice">Local preview: pipeline and workload come from the current demo jobs. No dated quote, payment or report issue records are available for the selected period.</p>:null}
       <form
         className="panel action-panel form-grid"
         action={(form) => {
@@ -61,13 +64,13 @@ export function PracticeInsightsView() {
             Apply dates
           </button>
           {data && !loading ? (
-            <a
+            <WorkspaceAnchor
               className="button button-secondary"
               href={`/api/v1/insights?${new URLSearchParams({ ...range, format: "csv" })}`}
             >
               <Download size={14} />
               Export these indicators
-            </a>
+            </WorkspaceAnchor>
           ) : null}
         </div>
       </form>

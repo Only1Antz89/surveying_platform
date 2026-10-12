@@ -51,4 +51,16 @@ describe("reviewable Home Survey preloaded answers", () => {
     expect((await generateSourcedProposals({ template: homeSurveyTemplates[1], job, snapshots: [epc], currentValues: new Map() })).proposals).toHaveLength(0);
     expect((await generateSourcedProposals({ template, job, snapshots: [{ ...epc, sourceKey: "unapproved" }], currentValues: new Map() })).proposals).toHaveLength(0);
   });
+  it("preloads job and reusable identities while preserving inspection dates and surveyor findings",async()=>{
+    const input={template,snapshots:[],job:{...job,recordPrefill:true,propertyAddress:"1 Example Road"},identity:{practitioner:{id:"surveyor",name:"Jane Surveyor",ricsNumber:"123456",fingerprint:"profile"},firm:{id:"company",companyName:"Example Surveyors",fingerprint:"firm"}}};
+    const result=await generateSourcedProposals({...input,currentValues:new Map()});
+    expect(result.proposals.find(p=>p.fieldPath==="a.details.report_reference")?.proposedValue).toEqual({state:"provided",value:job.reference});
+    expect(result.proposals.find(p=>p.fieldPath==="a.details.property_address")?.proposedValue).toEqual({state:"provided",value:"1 Example Road"});
+    expect(result.proposals.find(p=>p.fieldPath==="a.details.surveyor_name")?.originClass).toBe("practice_record");
+    expect(result.proposals.some(p=>p.fieldPath==="a.details.inspection_date" || resolveField(template,p.fieldPath)?.field.fieldClass==="professional_assessment")).toBe(false);
+    const protectedResult=await generateSourcedProposals({...input,currentValues:new Map([["a.details.surveyor_name",{id:"manual",value:{state:"provided",value:"Actual Surveyor"}}]])});
+    expect(protectedResult.proposals.some(p=>p.fieldPath==="a.details.surveyor_name")).toBe(false);
+    expect(protectedResult.discrepancies.some(p=>p.fieldPath==="a.details.surveyor_name")).toBe(true);
+  });
+
 });

@@ -73,3 +73,19 @@ export async function readReviewedExternalEvent(provider:CalendarProvider,token:
   if(Math.abs(start-expectedStart)>1000||Math.abs(end-expectedEnd)>1000)throw new CalendarReviewError("The provider times changed after review. Synchronise and review them again.");
   return {id:eventId,version,cancelled:false as const,start:new Date(start),end:new Date(end)};
 }
+
+/** Remove only the unchanged Surveynt-owned event after a manager-confirmed reassignment. */
+export async function removeReassignedExternalEvent(provider:CalendarProvider,token:string,visitId:string,eventId:string,reviewedVersion:string|null,fetcher:typeof fetch=fetch){
+ const google=provider==="google",url=google?`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`:`https://graph.microsoft.com/v1.0/me/events/${encodeURIComponent(eventId)}`;
+ const response=await fetcher(url,{headers:{authorization:`Bearer ${token}`},redirect:"error",signal:AbortSignal.timeout(15000)});
+ if(response.status===404||response.status===410)return;
+ if(!response.ok)throw new CalendarReviewError("The previous surveyor’s calendar could not be checked.",502);
+ const body=await response.json() as Record<string,unknown>;
+ const marker=google?(body.extendedProperties as {private?:{surveyntAppointmentId?:string}}|undefined)?.private?.surveyntAppointmentId:Array.isArray(body.categories)?body.categories.find(v=>v===`surveynt:${visitId}`):undefined;
+ if(body.id!==eventId||marker!==(google?visitId:`surveynt:${visitId}`))throw new CalendarReviewError("Calendar event ownership changed. Review the previous surveyor’s event.");
+ if(body.status==="cancelled"||body.isCancelled===true)return;
+ const revision=body.etag??body.changeKey,etag=google?body.etag:body["@odata.etag"]??response.headers.get("etag");
+ if(!reviewedVersion||revision!==reviewedVersion||typeof etag!=="string"||!etag)throw new CalendarReviewError("The previous surveyor’s calendar event changed externally. Review it before removal.");
+ const removed=await fetcher(url,{method:"DELETE",headers:{authorization:`Bearer ${token}`,"if-match":etag},redirect:"error",signal:AbortSignal.timeout(15000)});
+ if(!removed.ok&&removed.status!==404&&removed.status!==410)throw new CalendarReviewError("The previous surveyor’s calendar event could not be removed safely.",removed.status===412?409:502);
+}

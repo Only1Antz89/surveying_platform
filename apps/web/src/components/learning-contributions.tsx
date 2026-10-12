@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { type FormEvent, useState } from "react";
 import { ShieldAlert } from "lucide-react";
@@ -25,13 +26,13 @@ export function LearningContributions({ initial, jobs, canManage, canWithdraw, d
   const [message, setMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
 
   async function refresh() {
-    const response = await fetch("/api/v1/learning", { cache: "no-store" });
+    const response = await workspaceFetch("/api/v1/learning", { cache: "no-store" });
     if (response.ok) setData((await response.json()).data);
   }
 
   async function send(url: string, body: unknown, done: (payload: { data?: { processed?: { message?: string } | null; withdrawal?: { message?: string } | null }; meta?: { demo?: boolean } }) => string) {
     setBusy(true); setMessage(null);
-    const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const response = await workspaceFetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const payload = await response.json().catch(() => null);
     setBusy(false);
     if (!response.ok) { setMessage({ tone: "error", text: [payload?.error?.message ?? "The change failed.", ...Object.values((payload?.error?.details?.fieldErrors ?? {}) as Record<string, string[]>).flat()].join(" ") }); return false; }

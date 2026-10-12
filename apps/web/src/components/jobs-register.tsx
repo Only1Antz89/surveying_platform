@@ -1,7 +1,11 @@
 "use client";
+import {WorkspaceAnchor} from "@/components/workspace-anchor";
+
+import {useUnsavedChanges} from "./unsaved-changes";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { type FormEvent, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/workspace-link";
 import { ClipboardList, Clock3, Download, Eye, Pencil, Plus, Search, X } from "lucide-react";
 import { canTransitionJob, jobStageLabels, jobStages, type JobStage } from "@surveynt/domain";
 import { StatusDot } from "@surveynt/ui";
@@ -39,10 +43,10 @@ export function JobsRegister({ slug, jobs: initialJobs, options, canEdit = true,
   const [creating, setCreating] = useState(false);
   const [detail, setDetail] = useState<JobDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState(false);const [dirty,setDirty]=useState(false);useUnsavedChanges(dirty&&(creating||Boolean(detail)));
   const [workingId, setWorkingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  useEffect(()=>{if(!initialSelectedId)return;let active=true;fetch(`/api/v1/jobs/${initialSelectedId}`).then(async r=>{const p=await r.json();if(!r.ok)throw new Error(p.error?.message??"Job could not be opened.");if(active)setDetail(p.data);}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[initialSelectedId]);
+  useEffect(()=>{if(!initialSelectedId)return;let active=true;workspaceFetch(`/api/v1/jobs/${initialSelectedId}`).then(async r=>{const p=await r.json();if(!r.ok)throw new Error(p.error?.message??"Job could not be opened.");if(active)setDetail(p.data);}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[initialSelectedId]);
   // A stage change refused by the survey's completion checks, waiting for fixes or recorded reasons.
   const [gate, setGate] = useState<{ jobId: string; body: Record<string, unknown>; details: StageGateDetails; message: string; onDone: (data: ApiJob) => Promise<void> | void } | null>(null);
   const [gateBusy, setGateBusy] = useState(false);
@@ -56,7 +60,7 @@ export function JobsRegister({ slug, jobs: initialJobs, options, canEdit = true,
     event.preventDefault(); setSaving(true); setError(null);
     const form = new FormData(event.currentTarget);
     const optional = (name: string) => String(form.get(name) || "") || undefined;
-    const response = await fetch("/api/v1/jobs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ clientId: form.get("clientId"), propertyId: form.get("propertyId"), reference: form.get("reference"), serviceName: form.get("serviceName"), priority: form.get("priority"), assignedSurveyorId: optional("assignedSurveyorId"), coordinatorId: optional("coordinatorId"), targetDate: optional("targetDate"), fee: optional("fee"), notes: optional("notes") }) });
+    const response = await workspaceFetch("/api/v1/jobs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ clientId: form.get("clientId"), propertyId: form.get("propertyId"), reference: form.get("reference"), serviceName: form.get("serviceName"), priority: form.get("priority"), assignedSurveyorId: optional("assignedSurveyorId"), coordinatorId: optional("coordinatorId"), targetDate: optional("targetDate"), fee: optional("fee"), notes: optional("notes") }) });
     const payload = await response.json(); setSaving(false);
     if (!response.ok) return setError(payload?.error?.message ?? "The job could not be created.");
     const created = payload.data as ApiJob;
@@ -69,7 +73,7 @@ export function JobsRegister({ slug, jobs: initialJobs, options, canEdit = true,
 
   async function loadDetail(job: Job) {
     setDetailLoading(true); setError(null); setDetail(null);
-    const response = await fetch(`/api/v1/jobs/${job.id}`);
+    const response = await workspaceFetch(`/api/v1/jobs/${job.id}`);
     const payload = await response.json(); setDetailLoading(false);
     if (!response.ok) return setError(payload?.error?.message ?? "The job record could not be opened.");
     setDetail(payload.data as JobDetail);
@@ -77,7 +81,7 @@ export function JobsRegister({ slug, jobs: initialJobs, options, canEdit = true,
 
   /** PATCHes a job; a completion-check refusal opens the stage gate dialog instead of a plain error. */
   async function patchJob(jobId: string, body: Record<string, unknown>, onDone: (data: ApiJob) => Promise<void> | void, fallback: string) {
-    const response = await fetch(`/api/v1/jobs/${jobId}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const response = await workspaceFetch(`/api/v1/jobs/${jobId}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const payload = await response.json().catch(() => null);
     if (response.ok) { setGate(null); await onDone(payload.data as ApiJob); return; }
     if (response.status === 422 && payload?.error?.code === "completion_checks_failed") { setGate({ jobId, body, details: payload.error.details as StageGateDetails, message: payload.error.message, onDone }); return; }
@@ -126,7 +130,7 @@ export function JobsRegister({ slug, jobs: initialJobs, options, canEdit = true,
       <div className="toolbar">
         <div className="search"><Search /><input className="input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search reference, client or address" aria-label="Search jobs" /></div>
         <select className="select" value={stage} onChange={(event) => setStage(event.target.value)} aria-label="Job stage"><option>All stages</option>{Object.entries(jobStageLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-        <a className="button button-secondary" href={`data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`} download="surveynt-jobs.csv"><Download size={15} />Export</a>
+        <WorkspaceAnchor className="button button-secondary" href={`data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`} download="surveynt-jobs.csv"><Download size={15} />Export</WorkspaceAnchor>
         <button className="button button-primary" onClick={() => { setError(null); setCreating(true); }} disabled={!canCreate || !canEdit}><Plus size={15} />New job</button>
       </div>
       {error && !creating && !detail && !detailLoading ? <div className="form-section"><p className="form-error" role="alert">{error}</p></div> : null}
@@ -134,7 +138,7 @@ export function JobsRegister({ slug, jobs: initialJobs, options, canEdit = true,
       <div className="table-footer"><span>Showing {visible.length} of {jobs.length} jobs</span><div className="pager"><button className="active" aria-label="Page 1">1</button></div></div>
     </section>
 
-    {creating ? <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setCreating(false); }}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="new-job-title"><div className="modal-header"><div><h2 id="new-job-title">New job</h2><p>Start a tracked instruction against an existing client and property.</p></div><button className="icon-button" aria-label="Close new job form" onClick={() => setCreating(false)}><X size={16} /></button></div><form onSubmit={createJob}><div className="form-section"><div className="form-grid">
+    {creating ? <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setCreating(false); }}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="new-job-title"><div className="modal-header"><div><h2 id="new-job-title">New job</h2><p>Start a tracked instruction against an existing client and property.</p></div><button className="icon-button" aria-label="Close new job form" onClick={() => setCreating(false)}><X size={16} /></button></div><form onChange={()=>setDirty(true)} onSubmit={createJob}><div className="form-section"><div className="form-grid">
       <div className="field"><label htmlFor="job-client">Client</label><select id="job-client" name="clientId" className="input" value={selectedClientId} onChange={(event) => setSelectedClientId(event.target.value)} required>{options.clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></div>
       <div className="field"><label htmlFor="job-property">Property</label><select key={selectedClientId} id="job-property" name="propertyId" className="input" required>{selectableProperties.length ? selectableProperties.map((property) => <option key={property.id} value={property.id}>{property.label}</option>) : <option value="">No property for this client</option>}</select></div>
       <div className="field"><label htmlFor="job-reference">Reference</label><input id="job-reference" name="reference" className="input" required minLength={3} maxLength={40} autoFocus placeholder="CS-2026-001" /></div>
@@ -148,7 +152,7 @@ export function JobsRegister({ slug, jobs: initialJobs, options, canEdit = true,
     </div>{error ? <p className="form-error" role="alert">{error}</p> : null}</div><div className="modal-actions"><button type="button" className="button button-secondary" onClick={() => setCreating(false)}>Cancel</button><button className="button button-primary" disabled={saving || selectableProperties.length === 0}>{saving ? "Creating…" : "Create job"}</button></div></form></section></div> : null}
 
     {detailLoading ? <div className="modal-backdrop"><section className="modal job-record-modal" role="dialog" aria-modal="true" aria-label="Loading job record"><div className="job-loading"><Clock3 size={18} />Loading job record…</div></section></div> : null}
-    {detail ? <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeDetail(); }}><section className="modal job-record-modal" role="dialog" aria-modal="true" aria-labelledby="job-record-title"><div className="modal-header"><div><span className="eyebrow">{detail.job.reference}</span><h2 id="job-record-title">Job record</h2><p>Operational details and permanent stage history.</p></div><button className="icon-button" aria-label="Close job record" onClick={closeDetail}><X size={16} /></button></div><form onSubmit={updateJob}><div className="job-record-layout"><div className="form-section"><div className="form-grid">
+    {detail ? <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeDetail(); }}><section className="modal job-record-modal" role="dialog" aria-modal="true" aria-labelledby="job-record-title"><div className="modal-header"><div><span className="eyebrow">{detail.job.reference}</span><h2 id="job-record-title">Job record</h2><p>Operational details and permanent stage history.</p></div><button className="icon-button" aria-label="Close job record" onClick={closeDetail}><X size={16} /></button></div><form onChange={()=>setDirty(true)} onSubmit={updateJob}><div className="job-record-layout"><div className="form-section"><div className="form-grid">
       <div className="field full"><label htmlFor="edit-job-service">Service</label><input id="edit-job-service" name="serviceName" className="input" defaultValue={detail.job.serviceName} required minLength={2} maxLength={160} disabled={!canEdit} /></div>
       <div className="field"><label htmlFor="edit-job-stage">Stage</label><select id="edit-job-stage" name="stage" className="input" defaultValue={detail.job.stage} disabled={!canEdit}><option value={detail.job.stage}>{jobStageLabels[detail.job.stage]}</option>{jobStages.filter((candidate) => canTransitionJob(detail.job.stage, candidate)).map((candidate) => <option key={candidate} value={candidate}>{jobStageLabels[candidate]}</option>)}</select></div>
       <div className="field"><label htmlFor="edit-job-priority">Priority</label><select id="edit-job-priority" name="priority" className="input" defaultValue={detail.job.priority} disabled={!canEdit}><option value="normal">Normal</option><option value="high">High</option></select></div>

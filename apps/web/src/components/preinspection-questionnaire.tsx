@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 import { useCallback, useEffect, useState } from "react";
 import { preinspectionQuestionLabels, type PreinspectionAnswers } from "@surveynt/assistant";
 import { PreinspectionDocuments } from "./preinspection-documents";
@@ -13,7 +14,7 @@ export function PreinspectionQuestionnaire({ quoteId, token, jobId, canEdit = tr
   const [failed, setFailed] = useState(false);
   const base = jobId ? `/api/v1/jobs/${jobId}/questionnaire` : `/api/v1/public/quotes/${quoteId}/questionnaire`;
   const request = useCallback(async (path: string, init?: RequestInit, scoped?: string) => {
-    const response = await fetch(path, { ...init, cache: "no-store", headers: { "content-type": "application/json", ...(token ? { "x-quote-token": token, "x-questionnaire-token": scoped ?? scopeToken } : {}), ...init?.headers } });
+    const response = await workspaceFetch(path, { ...init, cache: "no-store", headers: { "content-type": "application/json", ...(token ? { "x-quote-token": token, "x-questionnaire-token": scoped ?? scopeToken } : {}), ...init?.headers } });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error?.message ?? "The questionnaire is unavailable.");
     return payload.data;
@@ -24,12 +25,12 @@ export function PreinspectionQuestionnaire({ quoteId, token, jobId, canEdit = tr
       try {
         let scoped = "";
         if (!jobId) {
-          const response = await fetch(`${base}/access`, { method: "POST", headers: { "x-quote-token": token ?? "" } });
+          const response = await workspaceFetch(`${base}/access`, { method: "POST", headers: { "x-quote-token": token ?? "" } });
           const payload = await response.json();
           if (!response.ok) throw new Error(payload.error?.message ?? "Your questionnaire link is unavailable.");
           scoped = payload.data.token;
         }
-        const response = await fetch(base, { cache: "no-store", headers: { "x-quote-token": token ?? "", "x-questionnaire-token": scoped } });
+        const response = await workspaceFetch(base, { cache: "no-store", headers: { "x-quote-token": token ?? "", "x-questionnaire-token": scoped } });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error?.message ?? "The questionnaire is unavailable.");
         if (current) { setScopeToken(scoped); setView(payload.data); setAnswers(payload.data.draft.answers); }

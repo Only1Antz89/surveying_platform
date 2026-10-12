@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { auditEvents, createDatabase, organisationOperationalSettings, withTenant } from "@surveynt/db";
@@ -22,7 +23,7 @@ export async function PATCH(request:Request) {
     // Canonical schema order makes the review independent of JSON key ordering.
     if (JSON.stringify(emailTemplatesSchema.parse(current.emailTemplates)) !== JSON.stringify(parsed.data.expected)) return problem(409,"template_changed","The saved template changed. Reload and review it again.");
     await tx.update(organisationOperationalSettings).set({emailTemplates:parsed.data.templates,updatedAt:new Date()}).where(eq(organisationOperationalSettings.organisationId,context.organisationId));
-    await tx.insert(auditEvents).values({organisationId:context.organisationId,actorUserId:context.internalUserId,action:"notification.templates_updated",resourceType:"organisation",resourceId:context.organisationId,metadata:{previous:current.emailTemplates,next:parsed.data.templates,confirmed:true}});
+    await tx.insert(auditEvents).values(workspaceAudit(context,{organisationId:context.organisationId,actorUserId:context.internalUserId,action:"notification.templates_updated",resourceType:"organisation",resourceId:context.organisationId,metadata:{previous:current.emailTemplates,next:parsed.data.templates,confirmed:true}}));
     return ok(parsed.data.templates);
   });
 }

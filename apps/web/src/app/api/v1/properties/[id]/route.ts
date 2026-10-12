@@ -1,10 +1,11 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { z } from "zod";
 import { and, eq, sql } from "drizzle-orm";
 import { canMutateOperations } from "@surveynt/domain";
 import { auditEvents, clients, createDatabase, jobs, properties } from "@surveynt/db";
 import { apiContext, canWriteWorkspace } from "@/lib/access";
-import { ok, parseBody, problem } from "@/lib/api";
+import { ok, parseBody, problem, invalidId } from "@/lib/api";
 import { jobs as demoJobs, properties as demoProperties } from "@/lib/demo-data";
 
 const patchProperty = z.object({
@@ -23,6 +24,7 @@ export async function GET(request: Request, route: RouteContext<"/api/v1/propert
   const accessDenial = await workspaceApiGuard(request, context);
   if (accessDenial) return accessDenial;
   const { id } = await route.params;
+  const invalid = invalidId(context, id); if (invalid) return invalid;
   if (context.demo) {
     const property = demoProperties.find((item) => item.id === id);
     return property ? ok({
@@ -52,6 +54,7 @@ export async function PATCH(request: Request, route: RouteContext<"/api/v1/prope
   const parsed = await parseBody(request, patchProperty);
   if (!parsed.success) return problem(400, "invalid_request", "The property changes are invalid.", parsed.error.flatten());
   const { id } = await route.params;
+  const invalid = invalidId(context, id); if (invalid) return invalid;
   if (context.demo) return ok({ id, ...parsed.data, version: parsed.data.version + 1 }, { demo: true, persisted: false });
   const db = createDatabase();
   const result = await db.transaction(async (tx) => {
@@ -75,7 +78,7 @@ export async function PATCH(request: Request, route: RouteContext<"/api/v1/prope
       updatedAt: new Date(),
     }).where(and(eq(properties.id, id), eq(properties.organisationId, context.organisationId), eq(properties.version, current.version))).returning();
     if (!updated) return { kind: "conflict" as const };
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: parsed.data.archived ? "property.archived" : "property.updated", resourceType: "property", resourceId: id, metadata: { fromVersion: current.version, toVersion: updated.version, identityCleared: identityChanged } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: parsed.data.archived ? "property.archived" : "property.updated", resourceType: "property", resourceId: id, metadata: { fromVersion: current.version, toVersion: updated.version, identityCleared: identityChanged } }));
     return { kind: "updated" as const, property: updated };
   });
   if (result.kind === "missing") return problem(404, "property_not_found", "The property could not be found.");

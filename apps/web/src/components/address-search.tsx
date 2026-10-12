@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { KeyboardEvent, useId, useState } from "react";
 import { MapPin, Search } from "lucide-react";
@@ -31,7 +32,7 @@ export function AddressSearch({ initialQuery = "", onSelect, disabled = false, l
     setError(null);
     setResult(null);
     try {
-      const response = await fetch(`/api/v1/address/search?q=${encodeURIComponent(query.trim())}`);
+      const response = await workspaceFetch(`/api/v1/address/search?q=${encodeURIComponent(query.trim())}`);
       const payload = await response.json();
       if (!response.ok) setError(payload?.error?.message ?? "Address search is unavailable. Enter the address manually.");
       else setResult(payload.data as AddressSearchResponse);

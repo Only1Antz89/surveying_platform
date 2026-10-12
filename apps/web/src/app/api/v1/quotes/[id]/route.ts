@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { z } from "zod";
 import { and, desc, eq } from "drizzle-orm";
@@ -36,12 +37,12 @@ export async function PATCH(request: Request, route: RouteContext<"/api/v1/quote
       const email=parsed.data.email.toLowerCase(),changedEmail=email!==current.email;
       const [updated]=await tx.update(customerQuotes).set({firstName:parsed.data.firstName,lastName:parsed.data.lastName,email,phone:parsed.data.phone,version:current.version+1,updatedAt:new Date(),...(changedEmail?{tokenRevokedAt:new Date()}: {})}).where(and(eq(customerQuotes.id,id),eq(customerQuotes.organisationId,context.organisationId))).returning();
       await tx.insert(quoteSnapshots).values({organisationId:context.organisationId,quoteId:id,event:"contact_updated",snapshot:{firstName:updated.firstName,lastName:updated.lastName,email:updated.email,phone:updated.phone,version:updated.version,pricingVersionId:current.pricingVersionId}});
-      await tx.insert(auditEvents).values({organisationId:context.organisationId,actorUserId:context.internalUserId,action:"quote.contact_updated",resourceType:"quote",resourceId:id,metadata:{version:updated.version,previousLinkRevoked:changedEmail}});
+      await tx.insert(auditEvents).values(workspaceAudit(context,{organisationId:context.organisationId,actorUserId:context.internalUserId,action:"quote.contact_updated",resourceType:"quote",resourceId:id,metadata:{version:updated.version,previousLinkRevoked:changedEmail}}));
       return {id,version:updated.version,status:updated.status,previousLinkRevoked:changedEmail};
     }
     const [quote] = await tx.update(customerQuotes).set({ ...(parsed.data.action === "cancel" ? { status: "cancelled" as const } : {}),...(token?{accessTokenHash:createHash("sha256").update(token).digest("hex")}:{}),tokenRevokedAt: token ? null : new Date(), version: parsed.data.version + 1, updatedAt: new Date() }).where(and(eq(customerQuotes.id, id), eq(customerQuotes.organisationId, context.organisationId), eq(customerQuotes.version, parsed.data.version))).returning();
     if (!quote) return null;
     await tx.insert(quoteSnapshots).values({ organisationId: context.organisationId, quoteId: quote.id, event: parsed.data.action, snapshot: { status: quote.status, version: quote.version, tokenRevokedAt: quote.tokenRevokedAt?.toISOString() ?? null } });
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: `quote.${parsed.data.action}`, resourceType: "quote", resourceId: quote.id, metadata: { version: quote.version } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: `quote.${parsed.data.action}`, resourceType: "quote", resourceId: quote.id, metadata: { version: quote.version } }));
     return {id:quote.id,version:quote.version,status:quote.status,...(token?{url:`/quote/${quote.id}#${token}`}:{})};
   }); return result ? ok(result) : problem(409, "quote_changed", "The quote changed, was cancelled, or is already converted. Reload and try again."); }

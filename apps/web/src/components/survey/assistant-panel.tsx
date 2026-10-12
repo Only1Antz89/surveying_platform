@@ -1,7 +1,8 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { useId, useState } from "react";
-import { AlertTriangle, Check, Lightbulb, PencilLine, RefreshCw, X } from "lucide-react";
+import { AlertTriangle, Check, Bot, PencilLine, RefreshCw, X } from "lucide-react";
 import { homeSurveyEvidenceInventory, proposalOriginLabels, resolveField, type EvidenceRef, type FieldValue, type FormTemplate, type ProposalOrigin } from "@surveynt/assistant";
 import type { SurveyPack } from "@/lib/surveys";
 import { EvidenceReadiness } from "./evidence-readiness";
@@ -18,7 +19,7 @@ function valueLabel(template: FormTemplate, fieldPath: string, value: FieldValue
  * form until a person accepts or edits it; professional assessments need an
  * explicit confirmation as well.
  */
-export function AssistantPanel({ surveyId, pack, sectionKey, fieldPath, hideSuggestions = false, canEdit, canJudge, online, onChanged }: { surveyId: string; pack: SurveyPack; sectionKey?: string; fieldPath?: string; hideSuggestions?: boolean; canEdit: boolean; canJudge: boolean; online: boolean; onChanged: () => Promise<void> }) {
+export function AssistantPanel({ surveyId, pack, sectionKey, fieldPath, hideSuggestions = false, canEdit, canJudge, online, onChanged, onPreviewReview }: { surveyId: string; pack: SurveyPack; sectionKey?: string; fieldPath?: string; hideSuggestions?: boolean; canEdit: boolean; canJudge: boolean; online: boolean; onPreviewReview?: (id:string, body:Record<string,unknown>)=>Promise<void>; onChanged: () => Promise<void> }) {
   const headingId = useId();
   const [busy, setBusy] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -31,7 +32,11 @@ export function AssistantPanel({ surveyId, pack, sectionKey, fieldPath, hideSugg
 
   async function review(proposalId: string, body: Record<string, unknown>) {
     setBusy(proposalId); setMessage(null);
-    const response = await fetch(`/api/v1/surveys/${surveyId}/proposals/${proposalId}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    if (onPreviewReview) {
+      try {await onPreviewReview(proposalId,body);setMessage("Preview answer saved on this device.");setEditing(null);} catch(error) {setMessage(error instanceof Error ? error.message : "Could not apply suggestion.");} finally {setBusy(null);}
+      return;
+    }
+    const response = await workspaceFetch(`/api/v1/surveys/${surveyId}/proposals/${proposalId}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const payload = await response.json().catch(() => null);
     setBusy(null);
     if (!response.ok) setMessage(payload?.error?.message ?? "The suggestion could not be reviewed.");
@@ -41,8 +46,9 @@ export function AssistantPanel({ surveyId, pack, sectionKey, fieldPath, hideSugg
   }
 
   async function refresh() {
+    if (onPreviewReview) {setMessage("Showing simulated sources for this job. Live sources require company configuration.");return;}
     setBusy("refresh"); setMessage(null);
-    const response = await fetch(`/api/v1/surveys/${surveyId}/proposals`, { method: "POST" });
+    const response = await workspaceFetch(`/api/v1/surveys/${surveyId}/proposals`, { method: "POST" });
     const payload = await response.json().catch(() => null);
     setBusy(null);
     if (!response.ok) setMessage(payload?.error?.message ?? "Suggestions could not be refreshed.");
@@ -54,7 +60,7 @@ export function AssistantPanel({ surveyId, pack, sectionKey, fieldPath, hideSugg
     const note = window.prompt(status === "resolved" ? "How was this resolved?" : "Why is this being dismissed?");
     if (note === null) return;
     setBusy(taskId);
-    await fetch(`/api/v1/surveys/${surveyId}/tasks/${taskId}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status, note: note.trim() || null }) });
+    await workspaceFetch(`/api/v1/surveys/${surveyId}/tasks/${taskId}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status, note: note.trim() || null }) });
     setBusy(null);
     await onChanged();
   }
@@ -65,7 +71,7 @@ export function AssistantPanel({ surveyId, pack, sectionKey, fieldPath, hideSugg
 
   if (fieldPath && !proposals.length && !discrepancies.length) return null;
   return <section className="panel assistant-panel" aria-labelledby={headingId}>
-    {!fieldPath ? <div className="panel-header"><div><h2 id={headingId}>Preloaded answers and checks</h2><p>Load existing property evidence and historical weather for the saved inspection date. Review each answer before applying it; your recorded answers are never replaced.</p><p className="form-help">EPC: property type and approximate build period, when configured. Planning/heritage/flood layers: local context, not an inspection assessment. Extension and conversion completion dates need documentary evidence or manual entry.</p></div>
+    {!fieldPath ? <div className="panel-header"><div><h2 id={headingId}>SurvAI · pre-fill assistance</h2><p>Load existing property evidence and historical weather for the saved inspection date. Review each answer before applying it; your recorded answers are never replaced.</p><p className="form-help">EPC: property type and approximate build period, when configured. Planning/heritage/flood layers: local context, not an inspection assessment. Extension and conversion completion dates need documentary evidence or manual entry.</p></div>
       {canEdit && enabled ? <button type="button" className="button button-quiet" onClick={() => void refresh()} disabled={!online || busy !== null}><RefreshCw size={14} />Load evidence</button> : null}
     </div> : <h3 id={headingId}>Review source suggestions</h3>}
     {!online ? <p className="identity-warning">Reviewing suggestions needs a connection, so the server can check they are still current.</p> : null}
@@ -73,7 +79,7 @@ export function AssistantPanel({ surveyId, pack, sectionKey, fieldPath, hideSugg
     {message ? <p className="form-success identity-message" role="status">{message}</p> : null}
     {inventory.length ? <details className="assistant-group"><summary>Evidence opportunities in this section</summary><p className="form-help">This inventory describes supported mappings and planned source connections, not a claim that records are available. Current template: {pack.template.version}. Manual entry is always available.</p><ul>{inventory.map(item => <li key={item.path} className="assistant-item"><strong>{item.element}: {item.label}</strong><span>{item.mode === "manual_only" ? "Surveyor entry only" : item.mode === "context_only" ? "Context only — not an answer" : "Reviewable source mapping"}</span><span>{item.boundary}</span>{item.sources.length ? <span className="form-help">Sources: {item.sources.map(source => source.replace(/_/g, " ")).join(", ")}</span> : null}</li>)}</ul></details> : null}
     {discrepancies.length ? <div className="assistant-group"><h3><AlertTriangle size={14} aria-hidden="true" />Discrepancies</h3><ul>{discrepancies.map((task) => <li key={task.id} className="assistant-item discrepancy"><strong>{task.title}</strong><span>{task.detail}</span>{canEdit && task.evidence.retentionRemoved !== true ? <div className="row-actions"><button type="button" className="button button-secondary" disabled={!online || busy !== null} onClick={() => void closeTask(task.id, "resolved")}>Mark resolved</button><button type="button" className="button button-quiet" disabled={!online || busy !== null} onClick={() => void closeTask(task.id, "dismissed")}>Dismiss</button></div> : null}</li>)}</ul></div> : null}
-    {!enabled || hideSuggestions ? null : proposals.length ? <div className="assistant-group"><h3><Lightbulb size={14} aria-hidden="true" />Suggestions for this section</h3><ul>{proposals.map((proposal) => {
+    {!enabled || hideSuggestions ? null : proposals.length ? <div className="assistant-group"><h3><Bot size={14} aria-hidden="true" />Suggestions for this section</h3><ul>{proposals.map((proposal) => {
       if (proposal.proposedValue.retentionRemoved === true) return <li key={proposal.id} className="assistant-item"><strong>Proposal content removed after retention review</strong><p>Review history is retained. This proposal cannot be applied or edited.</p></li>;
       const resolved = resolveField(pack.template, proposal.fieldPath);
       const professional = resolved?.field.fieldClass === "professional_assessment";

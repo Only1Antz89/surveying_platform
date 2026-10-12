@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { useEffect, useState } from "react";
 import { AlertCircle, FileText, Receipt } from "lucide-react";
@@ -23,7 +24,7 @@ export function CustomerRecords({
   invoices: Invoice[];
 }) {
   const [reports, setReports] = useState<
-    { id: string; version: number; approvedAt: string; content: ComposedReport }[]
+    { id: string; version: number; approvedAt: string; accessExpiresAt: string; content: ComposedReport }[]
   >([]);
   const [error, setError] = useState("");
   const [confirming, setConfirming] = useState<string | null>(null);
@@ -31,7 +32,7 @@ export function CustomerRecords({
   async function confirmReceipt(reportVersionId: string) {
     setConfirming(reportVersionId); setError("");
     try {
-      const response = await fetch(`/api/v1/public/quotes/${id}/reports`, {
+      const response = await workspaceFetch(`/api/v1/public/quotes/${id}/reports`, {
         method: "POST", headers: { "content-type": "application/json", "x-quote-token": token },
         body: JSON.stringify({ reportVersionId, confirmed: true }),
       });
@@ -44,7 +45,7 @@ export function CustomerRecords({
 
   useEffect(() => {
     let active = true;
-    fetch(`/api/v1/public/quotes/${id}/reports`, {
+    workspaceFetch(`/api/v1/public/quotes/${id}/reports`, {
       headers: { "x-quote-token": token },
       cache: "no-store",
     })
@@ -129,7 +130,7 @@ export function CustomerRecords({
                 <FileText size={16} style={{ color: "var(--blue)" }} />
                 <span>
                   Approved report · version {r.version} ·{" "}
-                  {new Date(r.approvedAt).toLocaleDateString("en-GB")}
+                  {new Date(r.approvedAt).toLocaleDateString("en-GB")} · Customer access ends {new Date(r.accessExpiresAt).toLocaleDateString("en-GB")}
                 </span>
               </div>
             </summary>

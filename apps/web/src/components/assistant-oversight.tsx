@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { type FormEvent, useState } from "react";
 import { StatusDot } from "@surveynt/ui";
@@ -25,12 +26,12 @@ export function AssistantOversight({ metrics, register: initial, canManage, demo
 
   async function send(url: string, body: unknown, done: string) {
     setBusy(true); setMessage(null);
-    const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const response = await workspaceFetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const payload = await response.json().catch(() => null);
     setBusy(false);
     if (!response.ok) return setMessage({ tone: "error", text: payload?.error?.message ?? "The change failed." });
     setMessage({ tone: "success", text: payload?.meta?.demo ? "Demo workspace: nothing was saved." : done });
-    const list = await fetch("/api/platform/ai-models", { cache: "no-store" });
+    const list = await workspaceFetch("/api/platform/ai-models", { cache: "no-store" });
     if (list.ok) setRegister((await list.json()).data);
   }
 

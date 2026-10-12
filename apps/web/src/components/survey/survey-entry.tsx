@@ -1,12 +1,14 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { FormEvent, useEffect, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/workspace-link";
 import { ArrowLeft, ClipboardList } from "lucide-react";
 import { builtInTemplates, serviceLevelLabels, serviceLevels, type ServiceLevel } from "@surveynt/assistant";
 import { ukCountries, ukCountryLabels } from "@surveynt/domain";
 import { offlineStore, setOfflineScope } from "@/lib/offline-store";
 import { SurveyWorkspace } from "./survey-workspace";
+import { activeReportTemplates, bookedReportTemplate, type ReportTemplateSettings } from "@/lib/report-template-settings";
 import { suggestedServiceScope } from "@/lib/service-scope";
 
 /** Resolves (or starts) the survey for a job. Works offline for surveys already opened on this device. */
@@ -17,15 +19,18 @@ export function SurveyEntry({ slug, jobId, offlineScope, canEdit, canJudge, canA
   const [starting, setStarting] = useState(false);
   const [suggestedScope, setSuggestedScope] = useState("");
   const [selectedScope, setSelectedScope] = useState("");
+  const [configuration,setConfiguration]=useState<ReportTemplateSettings|null>(null);
+  const [defaultTemplate,setDefaultTemplate]=useState<string|null>(null);
+  const [configurationReady,setConfigurationReady]=useState(false);
   const [wholeFormEnabled, setWholeFormEnabled] = useState(false);
-  const templates = builtInTemplates.filter(template => template.serviceLevels.includes(selectedScope as ServiceLevel) && (template.version !== "1.2.0" || wholeFormEnabled));
+  const templates = builtInTemplates.filter(template => template.serviceLevels.includes(selectedScope as ServiceLevel) && (template.version !== "1.2.0" || wholeFormEnabled) && (!configuration || !template.key.startsWith("surveynt-home-survey-") || activeReportTemplates(configuration).some(row=>row.templateKey===template.key && row.templateVersion===template.version)));
 
   useEffect(() => {
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" }).catch(() => undefined);
     (async () => {
       await offlineStore.expireStalePacks().catch(() => 0);
       try {
-        const response = await fetch(`/api/v1/jobs/${jobId}/survey`, { cache: "no-store" });
+        const response = await workspaceFetch(`/api/v1/jobs/${jobId}/survey`, { cache: "no-store" });
         const payload = await response.json();
         if ([401, 403, 404].includes(response.status)) {
           const remembered = await offlineStore.surveyForJob(jobId);
@@ -35,7 +40,14 @@ export function SurveyEntry({ slug, jobId, offlineScope, canEdit, canJudge, canA
           return;
         }
         if (!response.ok) throw new Error(payload?.error?.message ?? "The survey could not be opened.");
-        const scope = suggestedServiceScope(payload.data.serviceName ?? "") ?? "";
+        const configResponse=await workspaceFetch("/api/v1/report-templates",{cache:"no-store"});
+        const configPayload=await configResponse.json();if(!configResponse.ok)throw new Error(configPayload.error?.message??"Company templates could not be loaded.");
+        let settings:ReportTemplateSettings|null=configPayload.data;
+        if(configPayload.meta?.demo){try{settings=JSON.parse(localStorage.getItem("surveynt:preview-report-templates")??"null");}catch{settings=null;}}
+        setConfiguration(settings);setConfigurationReady(true);
+        const matched=bookedReportTemplate(settings,payload.data.serviceName??"");
+        const scope = matched?.serviceLevel ?? suggestedServiceScope(payload.data.serviceName ?? "") ?? "";
+        setDefaultTemplate(matched?`${matched.templateKey}@${matched.templateVersion}`:null);
         setSuggestedScope(scope); setSelectedScope(scope);
         setWholeFormEnabled(payload.data.wholeFormEnabled === true);
         if (payload.data.surveyId) await offlineStore.rememberSurveyForJob(jobId, payload.data.surveyId);
@@ -53,7 +65,7 @@ export function SurveyEntry({ slug, jobId, offlineScope, canEdit, canJudge, canA
     setStarting(true); setError(null);
     const form = new FormData(event.currentTarget);
     const [templateKey, templateVersion] = String(form.get("template") ?? "").split("@");
-    const response = await fetch(`/api/v1/jobs/${jobId}/survey`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ serviceLevel: form.get("serviceLevel"), jurisdiction: form.get("jurisdiction") || undefined, templateKey, templateVersion }) });
+    const response = await workspaceFetch(`/api/v1/jobs/${jobId}/survey`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ serviceLevel: form.get("serviceLevel"), jurisdiction: form.get("jurisdiction") || undefined, templateKey, templateVersion }) });
     const payload = await response.json(); setStarting(false);
     if (!response.ok) return setError(payload?.error?.message ?? "The survey could not be started.");
     await offlineStore.rememberSurveyForJob(jobId, payload.data.surveyId);
@@ -66,9 +78,9 @@ export function SurveyEntry({ slug, jobId, offlineScope, canEdit, canJudge, canA
       <div className="panel-header"><div><h2>Start the survey</h2><p>Choose the agreed service scope. The form template and its version are pinned to this survey.</p></div><ClipboardList size={17} color="#3b82f6" aria-hidden="true" /></div>
       {canEdit && !error?.startsWith("You are offline") ? <form className="form-section" onSubmit={start}><div className="form-grid">
         <div className="field"><label htmlFor="survey-scope">Service scope</label><select id="survey-scope" name="serviceLevel" className="select" required value={selectedScope} onChange={event => setSelectedScope(event.target.value)}>{[<option key="" value="" disabled>Select scope</option>, ...serviceLevels.map((level) => <option key={level} value={level}>{serviceLevelLabels[level]}</option>)]}</select>{suggestedScope ? <small>Suggested from the agreed service. Confirm before starting.</small> : null}</div>
-        <div className="field"><label htmlFor="survey-template">Recording template</label><select id="survey-template" name="template" className="select" key={selectedScope} required defaultValue={templates.find(template => template.key.startsWith("surveynt-home-survey")) ? `${templates.find(template => template.key.startsWith("surveynt-home-survey"))!.key}@${templates.find(template => template.key.startsWith("surveynt-home-survey"))!.version}` : "surveynt-residential@1.0.0"}>{templates.map(template => <option key={`${template.key}@${template.version}`} value={`${template.key}@${template.version}`}>{template.title} · v{template.version}</option>)}</select><small>Firm drafts need professional review and any required RICS licence verification before report issue. Version 1.1 supports reviewable property-data answers; existing pinned surveys are unchanged.</small></div>
+        <div className="field"><label htmlFor="survey-template">Recording template</label><select id="survey-template" name="template" className="select" key={selectedScope} required defaultValue={defaultTemplate && templates.some(template=>`${template.key}@${template.version}`===defaultTemplate) ? defaultTemplate : templates.find(template => template.key.startsWith("surveynt-home-survey")) ? `${templates.find(template => template.key.startsWith("surveynt-home-survey"))!.key}@${templates.find(template => template.key.startsWith("surveynt-home-survey"))!.version}` : "surveynt-residential@1.0.0"}>{templates.map(template => <option key={`${template.key}@${template.version}`} value={`${template.key}@${template.version}`}>{template.title} · v{template.version}</option>)}</select><small>Firm drafts need professional review and any required RICS licence verification before report issue. Version 1.1 supports reviewable property-data answers; existing pinned surveys are unchanged.</small></div>
         <div className="field"><label htmlFor="survey-jurisdiction">Jurisdiction</label><select id="survey-jurisdiction" name="jurisdiction" className="select" defaultValue=""><option value="">Use the property&apos;s country</option>{ukCountries.map((country) => <option key={country} value={country}>{ukCountryLabels[country]}</option>)}</select></div>
-        <div className="form-actions full"><button className="button button-primary" disabled={starting}>{starting ? "Starting…" : "Start survey"}</button></div>
+        <div className="form-actions full"><button className="button button-primary" disabled={starting || !configurationReady}>{starting ? "Starting…" : "Start survey"}</button></div>
       </div>{error ? <p className="form-error" role="alert">{error}</p> : null}</form> : <div className="empty-state">{error ? <strong>{error}</strong> : <strong>No survey has been started for this job.</strong>}</div>}
     </section>}
   </>;

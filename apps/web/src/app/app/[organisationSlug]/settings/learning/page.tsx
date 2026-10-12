@@ -1,5 +1,5 @@
 import { requireWorkspacePageAccess } from "@/lib/workspace-page-access";
-import Link from "next/link";
+import Link from "@/components/workspace-link";
 import { desc, eq } from "drizzle-orm";
 import { createDatabase, jobs, withTenant } from "@surveynt/db";
 import { canManageTeam, canMutateOperations } from "@surveynt/domain";

@@ -1,4 +1,5 @@
-import { assignedJobScope } from "@/lib/workspace-scope";
+import {workspaceAudit} from "@/lib/workspace-audit";
+import { assignedJobScope, scopedDemoJobs } from "@/lib/workspace-scope";
 import { workspaceApiGuard } from "@/lib/workspace-api-guard";
 import { z } from "zod";
 import { canMutateOperations, jobStages } from "@surveynt/domain";
@@ -15,7 +16,7 @@ export async function GET(request: Request) {
   if (!context) return problem(401, "unauthorised", "Authentication and an active organisation are required.");
   const accessDenial = await workspaceApiGuard(request, context);
   if (accessDenial) return accessDenial;
-  if (context.demo) return ok(demoJobs, { demo: true, nextCursor: null });
+  if (context.demo) return ok(scopedDemoJobs(demoJobs,context.role), { demo: true, nextCursor: null });
   const db = createDatabase();
   const rows = await db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.current_organisation_id', ${context.organisationId}, true)`);
@@ -50,7 +51,7 @@ export async function POST(request: Request) {
       const [created] = await tx.insert(jobs).values({ organisationId: context.organisationId, ...jobValues }).returning();
       if (coordinatorId) await tx.insert(jobAssignments).values({ organisationId: context.organisationId, jobId: created.id, userId: coordinatorId, responsibility: "coordinator" });
       await tx.insert(jobStageEvents).values({ organisationId: context.organisationId, jobId: created.id, toStage: created.stage, changedByUserId: context.internalUserId, reason: "Job created" });
-      await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "job.created", resourceType: "job", resourceId: created.id, metadata: { reference: created.reference } });
+      await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "job.created", resourceType: "job", resourceId: created.id, metadata: { reference: created.reference } }));
       return { kind: "created" as const, job: created };
     });
     if (result.kind === "client_missing") return problem(400, "invalid_client", "The selected client does not belong to this workspace.");
