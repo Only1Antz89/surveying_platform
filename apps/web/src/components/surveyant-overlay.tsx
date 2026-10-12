@@ -39,6 +39,15 @@ function SurvaiOverlay({mode,slug,quoteId,token,name,role,platformRole}:OverlayP
   },0);
   return()=>{active=false;controller.abort();clearTimeout(reset);};
  },[endpoint,jobId,token,slug,mode,audience,contextKey,pageContext.page,pageContext.resourceId,effectiveRole,platformRole]);
+ async function searchWeb(proposal:{query:string;token:string},retryId?:string){
+  if(sending.current||mode!=="firm")return;
+  sending.current=true;historyController.current?.abort();const turn=++requestId.current;
+  const id=retryId??`web:${turn}`;const review:SurvaiReview={id,title:"Web search",question:`Web search: ${proposal.query}`,status:"working",webToken:proposal.token};
+  setBusy(true);setError("");setReviews(v=>retryId?v.map(item=>item.id===id?review:item):[...v,review]);setSelectedReview(id);setView("results");
+  try{const r=await workspaceFetch(`${endpoint}/web`,{method:"POST",headers:{"content-type":"application/json",...(slug?{"x-demo-organisation-slug":slug}:{})},body:JSON.stringify({token:proposal.token,pageContext,...(jobId?{jobId}:{})})});const p=await r.json();if(!r.ok)throw Error(p.error?.message??"Web search is unavailable.");if(requestId.current===turn)setReviews(v=>v.map(item=>item.id===id?{...item,status:"ready",answer:p.data.message}:item));}
+  catch(e){if(requestId.current===turn)setReviews(v=>v.map(item=>item.id===id?{...item,status:"error",error:(e as Error).message}:item));}
+  finally{if(requestId.current===turn){sending.current=false;setBusy(false);}}
+ }
  async function ask(question:string,clearDraft=false,title="Your request",retryId?:string){
   question=question.trim();if(!question||sending.current||!pageCopy.allowed)return;
   sending.current=true;historyController.current?.abort();const turn=++requestId.current;
@@ -98,7 +107,7 @@ function SurvaiOverlay({mode,slug,quoteId,token,name,role,platformRole}:OverlayP
    <div className="surveyant-context"><span aria-hidden="true"/>{scope} · {pageCopy.title}</div>
    {resultView&&currentReview&&<SurvaiResultsToolbar index={visibleReviews.indexOf(currentReview)} count={visibleReviews.length} busy={busy} onBack={()=>setView("menu")} onSelect={index=>setSelectedReview(visibleReviews[index].id)}/>}
    <div className="surveyant-messages" aria-live="polite"><SurvaiPages key={`${contextKey}:${resultView?currentReview?.id:"menu"}`} followUpdates={false} revision={`${contextKey}:${open}:${view}:${currentReview?.id}:${currentReview?.status}:${visibleReviews.length}:${error}`}>
-    {resultView&&currentReview?<SurvaiResults review={currentReview} pageTitle={pageCopy.title} slug={slug} busy={busy} onRetry={()=>void ask(currentReview.question,false,currentReview.title,currentReview.id)}/>:<>
+    {resultView&&currentReview?<SurvaiResults review={currentReview} pageTitle={pageCopy.title} slug={slug} busy={busy} onRetry={()=>void (currentReview.webToken?searchWeb({query:currentReview.question,token:currentReview.webToken},currentReview.id):ask(currentReview.question,false,currentReview.title,currentReview.id))} onSearchWeb={mode==="firm"?proposal=>void searchWeb(proposal):undefined}/>:<>
      <div className="surveyant-welcome"><div className="surveyant-drawing"><SurveyantMark/></div><h3>{pageCopy.title}</h3><p>{pageCopy.description}</p></div>
      {prompts.length>0&&<div className="surveyant-prompts">{prompts.map(({icon:Icon,label,question})=><button key={label} type="button" disabled={busy} onClick={()=>void ask(question,false,label)}><Icon size={20}/><span>{label}</span><ChevronRight size={17}/></button>)}</div>}
      {visibleReviews.length>0&&<button type="button" className="survai-saved-reviews" onClick={()=>setView("results")}><FileCheck2 size={16}/>View your reviews<ChevronRight size={15}/></button>}

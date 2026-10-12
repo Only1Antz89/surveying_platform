@@ -16,6 +16,17 @@ export function daysAhead(date: string, now = new Date()) {
   return Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
 }
 
+/** One day's forecast from an Open-Meteo-compatible endpoint on the approved outbound host list. */
+export async function fetchDailyForecast(endpoint: string, point: { latitude: number; longitude: number }, date: string, secret?: string): Promise<DailyForecast> {
+  const raw = await connectionJson(endpoint, "/v1/forecast", { query: { latitude: String(point.latitude), longitude: String(point.longitude), daily: "precipitation_sum,precipitation_probability_max,wind_speed_10m_max,weather_code,temperature_2m_max,temperature_2m_min", timezone: "Europe/London", start_date: date, end_date: date, ...(secret ? { apikey: secret } : {}) } }) as { daily?: Record<string, unknown[]> };
+  const daily = raw.daily;
+  if (!daily || !Array.isArray(daily.time) || daily.time[0] !== date) throw new Error("Invalid forecast");
+  return {
+    date, precipitationSumMm: number(daily.precipitation_sum?.[0]), precipitationProbabilityPercent: number(daily.precipitation_probability_max?.[0]), windSpeedMaxKmh: number(daily.wind_speed_10m_max?.[0]),
+    weatherCode: number(daily.weather_code?.[0]), temperatureMaxC: number(daily.temperature_2m_max?.[0]), temperatureMinC: number(daily.temperature_2m_min?.[0]),
+  };
+}
+
 /** Daily forecast for one visit, through the practice's governed weather connection. */
 export async function visitForecast(organisationId: string, point: { latitude: number; longitude: number } | null, date: string): Promise<VisitForecast> {
   if (!point) return { status: "coordinates_unavailable", message: "The property has no confirmed location, so no forecast can be requested." };
@@ -30,13 +41,7 @@ export async function visitForecast(organisationId: string, point: { latitude: n
   try {
     const connection = selected.connection, secret = connection.credentialEnv ? process.env[connection.credentialEnv] : undefined;
     if (connection.credentialEnv && !secret) throw new Error("Credential unavailable");
-    const raw = await connectionJson(connection.endpoint, "/v1/forecast", { query: { latitude: String(point.latitude), longitude: String(point.longitude), daily: "precipitation_sum,precipitation_probability_max,wind_speed_10m_max,weather_code,temperature_2m_max,temperature_2m_min", timezone: "Europe/London", start_date: date, end_date: date, ...(secret ? { apikey: secret } : {}) } }) as { daily?: Record<string, unknown[]> };
-    const daily = raw.daily;
-    if (!daily || !Array.isArray(daily.time) || daily.time[0] !== date) throw new Error("Invalid forecast");
-    value = { status: "available", source: "Open-Meteo (CC BY 4.0)", retrievedAt: new Date().toISOString(), evaluationOnly: connection.evaluationOnly, forecast: {
-      date, precipitationSumMm: number(daily.precipitation_sum?.[0]), precipitationProbabilityPercent: number(daily.precipitation_probability_max?.[0]), windSpeedMaxKmh: number(daily.wind_speed_10m_max?.[0]),
-      weatherCode: number(daily.weather_code?.[0]), temperatureMaxC: number(daily.temperature_2m_max?.[0]), temperatureMinC: number(daily.temperature_2m_min?.[0]),
-    } };
+    value = { status: "available", source: "Open-Meteo (CC BY 4.0)", retrievedAt: new Date().toISOString(), evaluationOnly: connection.evaluationOnly, forecast: await fetchDailyForecast(connection.endpoint, point, date, secret) };
   } catch {
     value = { status: "unavailable", message: "The weather service did not return a usable forecast. Check again later." };
   }

@@ -1,13 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
-const mocked = vi.hoisted(() => ({ answer: vi.fn() }));
+const mocked = vi.hoisted(() => ({ answer: vi.fn(), web: vi.fn(), forecast: vi.fn(), postcode: vi.fn() }));
 vi.mock("./surveyant-chat", () => ({ conversationalAnswer: mocked.answer }));
+vi.mock("./gemini-native", () => ({ groundedWebAnswer: mocked.web }));
+vi.mock("./visit-forecast", () => ({ fetchDailyForecast: mocked.forecast }));
+vi.mock("@surveynt/property-data", async original => ({ ...await original<typeof import("@surveynt/property-data")>(), lookupPostcode: mocked.postcode }));
 vi.mock("./demo-store", () => ({ demoStore: { snapshot: async () => ({ tenants: [{ id: "demo-org", name: "Fictional practice", status: "active" }], clients: [] }) } }));
-import { demoSurvaiSources, sendDemoSurvai } from "./survai-demo";
+import { demoSurvaiSources, sendDemoSurvai, sendDemoWebAnswer } from "./survai-demo";
 import { survaiContextCopy } from "./survai-context";
 const manager = { demo: true, mode: "firm" as const, organisationId: "demo-org", role: "manager" as const };
 beforeEach(() => {
- mocked.answer.mockReset();
+ mocked.answer.mockReset(); mocked.web.mockReset(); mocked.forecast.mockReset(); mocked.postcode.mockReset();
  vi.stubEnv("SURVEYNT_DEMO_AI_ENABLED", "true"); vi.stubEnv("SURVEYNT_CONNECTION_SECRET_GEMINI", "test-only-secret");
  vi.stubEnv("SURVEYNT_DEMO_AI_MODEL", "gemini-3.1-flash-lite"); vi.stubEnv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", ""); vi.stubEnv("CLERK_SECRET_KEY", "");
 });
@@ -86,5 +89,42 @@ describe("fictional Gemini demo adapter", () => {
   const outlooks = sources.filter(source => source.id.startsWith("demo:forecast:"));
   expect(outlooks.length).toBeGreaterThan(0);
   expect(outlooks.some(source => (source.data as { assessment: { flags: { code: string }[] } }).assessment.flags.some(flag => flag.code === "heavy_rain"))).toBe(true);
+ });
+ it("offers a confirmed web search only with free evaluation services enabled and records falling short", async () => {
+  mocked.answer.mockResolvedValue({ content: "Not in the fictional records.", citations: [], coverage: "not_in_records", webQuery: "Party Wall Act notice period for loft conversions" });
+  const off = await sendDemoSurvai(manager, { message: "What notice does the Party Wall Act need?", pageContext: { page: "overview" } });
+  expect(off.message.webProposal).toBeNull();
+  vi.stubEnv("SURVEYNT_DEMO_EVALUATION_SERVICES", "true");
+  const on = await sendDemoSurvai(manager, { message: "What notice does the Party Wall Act need for a loft?", pageContext: { page: "overview" } });
+  expect(on.message.webProposal).toMatchObject({ query: "Party Wall Act notice period for loft conversions" });
+  mocked.answer.mockResolvedValue({ content: "Answered from records.", citations: [{ id: "demo:x", label: "x", href: "jobs" }], coverage: "answered", webQuery: null });
+  expect((await sendDemoSurvai(manager, { message: "Summarise my cases", pageContext: { page: "overview" } })).message.webProposal).toBeNull();
+  mocked.answer.mockResolvedValue({ content: "No.", citations: [], coverage: "not_in_records", webQuery: "average survey fees UK" });
+  expect((await sendDemoSurvai(manager, { message: "Benchmark our fees", pageContext: { page: "finance" } })).message.webProposal).toBeNull();
+ });
+ it("runs only the confirmed query, for the same demo user, and labels the answer as web content", async () => {
+  vi.stubEnv("SURVEYNT_DEMO_EVALUATION_SERVICES", "true");
+  mocked.answer.mockResolvedValue({ content: "Not in records.", citations: [], coverage: "not_in_records", webQuery: "Met Office heavy rain warning guidance" });
+  const proposal = (await sendDemoSurvai(manager, { message: "What does an amber rain warning mean?", pageContext: { page: "overview" } })).message.webProposal!;
+  await expect(sendDemoWebAnswer({ ...manager, role: "surveyor" }, { token: proposal.token })).rejects.toThrow("expired");
+  await expect(sendDemoWebAnswer(manager, { token: `${proposal.token}x` })).rejects.toThrow("expired");
+  mocked.web.mockResolvedValue({ content: "Amber means be prepared.", citations: [{ id: "web:1", label: "Met Office", href: "https://www.metoffice.gov.uk/" }], searchQueries: [] });
+  const result = await sendDemoWebAnswer(manager, { token: proposal.token });
+  expect(mocked.web).toHaveBeenCalledWith(expect.objectContaining({ query: "Met Office heavy rain warning guidance", credentialEnv: "SURVEYNT_CONNECTION_SECRET_GEMINI" }));
+  expect(result.message).toMatchObject({ web: true, query: "Met Office heavy rain warning guidance", citations: [{ id: "web:1" }] });
+  expect(result.message.content).toBe("Amber means be prepared.");
+ });
+ it("replaces the fictional outlook with a live free forecast for the visit postcode area, falling back safely", async () => {
+  vi.stubEnv("SURVEYNT_DEMO_EVALUATION_SERVICES", "true");
+  // Earlier failed lookups are cached briefly; move past that window.
+  vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(Date.now() + 60 * 60_000);
+  mocked.postcode.mockResolvedValue({ status: "matched", result: { latitude: 51.5, longitude: -0.12 } });
+  mocked.forecast.mockImplementation(async (_endpoint: string, _point: unknown, date: string) => ({ date, precipitationSumMm: 22, precipitationProbabilityPercent: 90, windSpeedMaxKmh: 30, weatherCode: 65, temperatureMaxC: 12, temperatureMinC: 8 }));
+  const live = (await demoSurvaiSources(manager, { page: "calendar" })).filter(source => source.id.startsWith("demo:forecast:"));
+  expect(live.length).toBeGreaterThan(0);
+  expect(live[0].label).toContain("live weather forecast");
+  expect(live[0].data).toMatchObject({ forecast: { precipitationSumMm: 22 }, source: expect.stringContaining("Open-Meteo") });
+  expect(mocked.forecast.mock.calls[0][0]).toBe("https://api.open-meteo.com");
+  vi.useRealTimers();
  });
 });

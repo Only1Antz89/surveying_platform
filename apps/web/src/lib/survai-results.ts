@@ -1,7 +1,11 @@
 import type { SurvaiAction } from "./survai-context";
 
-export type SurvaiAnswer = { role: string; content: string; demo?: boolean; model?: string; citations?: { id: string; label: string; href: string }[] };
-export type SurvaiReview = { id: string; title: string; question: string; status: "working" | "ready" | "error"; answer?: SurvaiAnswer; error?: string };
+export type SurvaiWebProposal = { query: string; reason: string; token: string; expiresAt: string };
+export type SurvaiAnswer = { role: string; content: string; demo?: boolean; model?: string; citations?: { id: string; label: string; href: string }[]; coverage?: "answered" | "partial" | "not_in_records"; webProposal?: SurvaiWebProposal | null; web?: boolean; query?: string };
+export type SurvaiReview = { id: string; title: string; question: string; status: "working" | "ready" | "error"; answer?: SurvaiAnswer; error?: string; webToken?: string };
+
+/** Web citations link out to public pages; record citations stay inside the workspace. */
+export const isWebCitation = (citation: { id: string; href: string }) => citation.id.startsWith("web:") && citation.href.startsWith("https://");
 export type SurvaiResultBlock = { kind: "paragraph" | "heading"; text: string } | { kind: "list"; items: string[] };
 
 /** Requests stay in the governed conversation; only answers enter the results UI. */

@@ -34,3 +34,36 @@ Live staged application requests returned cited Gemini answers for the empty Fin
 A staged cold request exposed the legacy 15-second provider timeout in the safe failure log. Gemini calls now receive 45 seconds without retrying billable requests automatically. Transport tests cover both the default integration timeout and the extended AI window.
 
 Deployment `dpl_DEiZ9GDZ84UxkR9W56K4TeqCiSPM` (application commit `75fd8d1`) was promoted to the existing stakeholder domain. The public Manager Finance action produced a cited Gemini answer, explicitly reported balances as unknown and preserved the unique-request draft. The temporary credential file was removed. All four stakeholder overview links returned HTTP 200 with SurvAI present.
+
+## Web search with user confirmation (native endpoint)
+
+SurvAI now has a second Gemini endpoint that sits alongside the OpenAI-compatible one. Both use the same host and the same credential:
+
+| Endpoint | Used for |
+| --- | --- |
+| `https://generativelanguage.googleapis.com/v1beta/openai` (`/chat/completions`) | Record-grounded answers, as before. |
+| `https://generativelanguage.googleapis.com/v1beta` (`/models/{model}:generateContent`, `tools: [{google_search: {}}]`) | Web answers with Google Search grounding, only after the user confirms. The key goes in the `x-goog-api-key` header. |
+
+**How the decision maker works** (`lib/survai-web-router.ts`):
+
+1. Every record-grounded answer now reports `coverage`: `answered`, `partial` or `not_in_records`. It may suggest a `webQuery` when public information could help. An uncited answer is accepted only when it says the records do not cover the question.
+2. Deterministic rules then decide whether to offer a web search. A search is never offered when:
+   - the records answered the question;
+   - the feature is off;
+   - the page is about private practice data (finance, billing, quotes, team, governance, documents, account, the client case or a support session);
+   - fewer than three words remain after the query is cleaned.
+3. Cleaning removes email addresses, UK phone numbers and the names of clients, contacts and people found in the supplied records.
+4. The user sees the exact query, with "Search the web" and "Not now". The query is signed with HMAC and bound to the practice and user, and it expires after 10 minutes. `POST /api/v1/surveyant/web` runs only that signed query, so nothing else can be searched.
+5. Web answers carry `web:N` citations that link out to the source pages. They are labelled "From the web — not your practice records". An answer without web sources is rejected and nothing is saved.
+
+**Demo** (free evaluation services): web search is offered when `SURVEYNT_DEMO_AI_ENABLED=true`, `SURVEYNT_DEMO_EVALUATION_SERVICES=true` and the Gemini credential are all set. Demo web answers are not stored, and the existing per-instance rate limits apply.
+
+**Production:** off unless all of these hold:
+- `SURVAI_WEB_SEARCH_ENABLED=true`;
+- the practice's selected AI connection has provider key `gemini` and the OpenAI-compatible endpoint above;
+- the AI governance gate allows it.
+
+Each web answer counts against the practice's message allowance. It is saved to the conversation and audited as `surveyant.web_answer_recorded` with the query and the number of sources.
+
+Turning this on for real practices is a separate governance decision, because the confirmed query is sent to Google Search. Before enabling it, check the current grounding quotas and prices in [Grounding with Google Search](https://ai.google.dev/gemini-api/docs/google-search) and [Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing). The free-tier search allowance is limited. Grounded results come with Google's display requirements for search suggestions, which should be reviewed before production use.
+

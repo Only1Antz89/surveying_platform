@@ -53,12 +53,7 @@ Without a weather connection, a confirmed property location, or a visit within 1
 
 ## Not provided
 
-- **Live web search.** Google Search grounding is a native Gemini API tool and is not available through the OpenAI-compatible endpoint SurvAI uses ([Google AI forum](https://discuss.ai.google.dev/t/is-it-possible-to-use-search-grounding-with-openai-api/89197)). Adding it needs:
-  - the native API;
-  - a separate governance decision, because user questions would be sent to a search service;
-  - citation handling for web results.
-
-  Until then, "online" answers come from Surveynt's own governed public-data integrations and labelled general knowledge.
+- **Unconfirmed web search.** SurvAI never searches the web on its own. When the records fall short, it proposes a cleaned query, and the search runs only after the user confirms it. See [gemini.md](gemini.md#web-search-with-user-confirmation-native-endpoint).
 - **Shared-learning examples.** They are not supplied while the programme is inactive.
 
 ## Cost
@@ -70,3 +65,17 @@ With the fictional demo, a survey-page request adds about 5,400 input tokens (11
 - **Unit tests:** weather rules (5), forecast fetch with a mocked connection (4), demo knowledge (4 new), and existing SurvAI context, route and demo tests (updated).
 - **Integration test** `survai-knowledge.integration.test.ts`: form state, history, intelligence coverage, wording and an honest "not configured" forecast for the assigned surveyor; exclusion of another surveyor's case and property; postcode search; citation re-authorisation.
 - **Browser check (local preview):** the new actions appear on the case, survey, property, calendar and overview pages, and requests carry the page and record context. Answers need the Gemini credential, which is configured only on the stakeholder demo project, not in this environment.
+
+## Free evaluation services for the stakeholder demo
+
+With `SURVEYNT_DEMO_EVALUATION_SERVICES=true`, the fictional demo uses free public services instead of fixed outlooks:
+
+- **Postcodes.io:** finds the postcode area of each fictional visit. It is open data under the OGL. A successful lookup is cached for 24 hours and a failed one for 5 minutes.
+- **Open-Meteo free API** (`https://api.open-meteo.com`, overridable with `SURVEYNT_DEMO_WEATHER_ENDPOINT`): supplies a real daily forecast for that area. Results are cached for 30 minutes. This API is for non-commercial and evaluation use only and needs CC BY 4.0 attribution, which the source label carries. Production practices keep using their own approved weather connection.
+- **Gemini with Google Search grounding:** used for web searches the user has confirmed. See [gemini.md](gemini.md).
+
+The visits stay fictional, and their labels say so. If a lookup fails, the demo falls back to the fixed fictional outlook.
+
+The demo Vercel project also needs these hosts in `SURVEYNT_OUTBOUND_HOSTS`, alongside `generativelanguage.googleapis.com`:
+- `api.open-meteo.com`
+- `api.postcodes.io`

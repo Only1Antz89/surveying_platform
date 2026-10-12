@@ -190,7 +190,7 @@ export async function authorisedKnowledgeIds(context: KnowledgeContext, ids: str
   const propertyIds = new Set<string>(), surveyIds = new Set<string>(), appointmentIds = new Set<string>(), clauseIds = new Set<string>();
   for (const id of ids) {
     const [kind, first] = id.split(":");
-    if (kind === "general" || kind === "public") permitted.add(id);
+    if (kind === "general" || kind === "public" || kind === "web") permitted.add(id);
     else if ((kind === "property-intel" || kind === "history" || kind === "property-match") && uuid.test(first)) propertyIds.add(first);
     else if (kind === "form" && uuid.test(first)) surveyIds.add(first);
     else if (kind === "forecast" && uuid.test(first)) appointmentIds.add(first);
