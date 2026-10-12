@@ -1,9 +1,10 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 import { useEffect,useState } from "react";
 import { deviceAlertKey,newDeviceEvents,showDeviceAlert,type DeviceEvent } from "@/lib/device-notifications";
 export function DeviceNotificationSettings(){
   const [permission,setPermission]=useState("checking"),[enabled,setEnabled]=useState(false),[message,setMessage]=useState(""),[scope,setScope]=useState("");
-  useEffect(()=>{let active=true;Promise.resolve().then(async()=>{try{const response=await fetch("/api/v1/me/notifications",{cache:"no-store"});if(!response.ok)throw new Error();const payload=await response.json(),scope=payload.meta?.notificationScope??"preview";if(active){setScope(scope);setPermission("Notification" in window&&"serviceWorker" in navigator&&window.isSecureContext?Notification.permission:"unsupported");setEnabled(localStorage.getItem(`${deviceAlertKey}:${scope}`)==="enabled");}}catch{if(active){setPermission("unsupported");setMessage("Sign in again or reload to manage device notification settings.");}}});return()=>{active=false;};},[]);
+  useEffect(()=>{let active=true;Promise.resolve().then(async()=>{try{const response=await workspaceFetch("/api/v1/me/notifications",{cache:"no-store"});if(!response.ok)throw new Error();const payload=await response.json(),scope=payload.meta?.notificationScope??"preview";if(active){setScope(scope);setPermission("Notification" in window&&"serviceWorker" in navigator&&window.isSecureContext?Notification.permission:"unsupported");setEnabled(localStorage.getItem(`${deviceAlertKey}:${scope}`)==="enabled");}}catch{if(active){setPermission("unsupported");setMessage("Sign in again or reload to manage device notification settings.");}}});return()=>{active=false;};},[]);
   async function enable(){
     try{const result=await Notification.requestPermission();setPermission(result);if(result==="granted"){await navigator.serviceWorker.register("/sw.js",{scope:"/",updateViaCache:"none"});localStorage.setItem(`${deviceAlertKey}:${scope}`,"enabled");localStorage.setItem(deviceAlertKey,"enabled");setEnabled(true);window.dispatchEvent(new Event("surveynt-device-alerts"));setMessage("Device alerts enabled while Surveynt is open.");}else setMessage("Notification permission was not granted. You can change it in your browser site settings.");}catch{setMessage("This browser could not enable device alerts.");}
   }
@@ -17,7 +18,7 @@ export function DeviceNotificationListener({slug}:{slug:string}){
       if(stopped||inFlight||!("Notification" in window)||Notification.permission!=="granted"||localStorage.getItem(deviceAlertKey)!=="enabled")return;
       inFlight=true;
       try{
-        const response=await fetch("/api/v1/me/notifications",{cache:"no-store"});if(!response.ok)return;
+        const response=await workspaceFetch("/api/v1/me/notifications",{cache:"no-store"});if(!response.ok)return;
         const payload=await response.json(),scope=payload.meta?.notificationScope;if(!scope||localStorage.getItem(`${deviceAlertKey}:${scope}`)!=="enabled")return;
         const key=`surveynt:seen-alerts:${scope}`,stored=localStorage.getItem(key),rows=payload.data as DeviceEvent[],seen=stored?JSON.parse(stored) as string[]:null;
         // First load establishes a baseline: do not notify for old audit history.

@@ -1,8 +1,9 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 import { useRef, useState } from "react";
 
-type Register = { questionnaireAnswers?: { submissionCount: number; draft: boolean; contentDisposed: boolean }; evidenceAnnotations: { id: string; evidenceType: string; contentDisposed: boolean }[]; mediaMetadata: { id: string; kind: string; metadataDisposed: boolean }[]; recordedElements: { id: string; sectionKey: string; elementKey: string; contentDisposed: boolean }[]; recordedObservations: { id: string; kind: string; contentDisposed: boolean }[]; recordedValues: { id: string; fieldPath: string; contentDisposed: boolean }[]; reportVersions: { id: string; versionNumber: number; contentDisposed: boolean }[]; fieldProposals: { id: string; reviewStatus: string; contentDisposed: boolean }[]; adviserTasks: { id: string; status: string; contentDisposed: boolean }[]; mediaAnalyses: { id: string; mediaId: string; status: string; analysisDisposed: boolean }[]; removals: { id: string; status: string; manifestVersion: string; createdAt: string; completedAt: string | null; reviewMessage: string | null; canCancel: boolean }[]; removalHistoryHasMore: boolean; analysisCount: number; adviserRecordCount: number; questionnaireDocuments: { id: string; name: string; supersededAt: string | null; analysisDisposed: boolean }[]; media: { id: string; filename: string | null; kind: string; derivation: string }[]; evidenceReferenceCount: number; externalEvidenceReferenceCount: number; hold: { revision: number; kind: string | null; reason: string } | null; reference: string; reportCount: number; deliveryCount: number; assessment: { reviewVersion: string; reason: string; retentionUntil: string | null; eligibleForManagerReview: boolean }; documents: { id: string; name: string; legalHold: boolean; archivedAt: string | null }[] };
-const reasons: Record<string, string> = { evidence_review_required: "Evidence is shared, missing or inconsistent. Resolve its references before retention review.", policy_approval_required: "The practice policy needs approval in Operations settings.", protected: "A complaint, claim or legal hold protects this file.", job_open: "The job must be closed before retention review.", date_review_required: "Reliable final report delivery and closure dates are required.", retention_active: "The one-year retention period has not expired.", manager_review_required: "The retention period has expired. Review the file and any outstanding complaints or claims." };
+type Register = { questionnaireAnswers?: { submissionCount: number; draft: boolean; contentDisposed: boolean }; evidenceAnnotations: { id: string; evidenceType: string; contentDisposed: boolean }[]; mediaMetadata: { id: string; kind: string; metadataDisposed: boolean }[]; recordedElements: { id: string; sectionKey: string; elementKey: string; contentDisposed: boolean }[]; recordedObservations: { id: string; kind: string; contentDisposed: boolean }[]; recordedValues: { id: string; fieldPath: string; contentDisposed: boolean }[]; reportVersions: { id: string; versionNumber: number; contentDisposed: boolean }[]; fieldProposals: { id: string; reviewStatus: string; contentDisposed: boolean }[]; adviserTasks: { id: string; status: string; contentDisposed: boolean }[]; mediaAnalyses: { id: string; mediaId: string; status: string; analysisDisposed: boolean }[]; removals: { id: string; status: string; manifestVersion: string; createdAt: string; completedAt: string | null; reviewMessage: string | null; canCancel: boolean }[]; removalHistoryHasMore: boolean; analysisCount: number; adviserRecordCount: number; questionnaireDocuments: { id: string; name: string; supersededAt: string | null; analysisDisposed: boolean }[]; media: { id: string; filename: string | null; kind: string; derivation: string }[]; evidenceReferenceCount: number; externalEvidenceReferenceCount: number; hold: { revision: number; kind: string | null; reason: string } | null; reference: string; reportCount: number; deliveryCount: number; assessment: { reviewVersion: string; reason: string; retentionUntil: string | null; archiveUntil: string | null; daysUntilDeletionReview: number | null; archiveOffer: boolean; eligibleForManagerReview: boolean }; documents: { id: string; name: string; legalHold: boolean; archivedAt: string | null }[] };
+const reasons: Record<string, string> = { evidence_review_required: "Evidence is shared, missing or inconsistent. Resolve its references before retention review.", policy_approval_required: "The practice policy needs approval in Operations settings.", protected: "A complaint, claim or legal hold protects this file.", job_open: "The job must be closed before retention review.", date_review_required: "Reliable final report delivery and closure dates are required.", retention_active: "The retention period has not expired.", manager_review_required: "The retention period has expired. Review the file and any outstanding complaints or claims." };
 export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; canEdit: boolean }) {
   const [register, setRegister] = useState<Register | null>(null);
   const [busy, setBusy] = useState(false);
@@ -12,7 +13,7 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
   async function load() {
     setBusy(true); setMessage(""); setRegister(null);
     try {
-      const response = await fetch(`/api/v1/jobs/${jobId}/retention`, { cache: "no-store" });
+      const response = await workspaceFetch(`/api/v1/jobs/${jobId}/retention`, { cache: "no-store" });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "Retention assessment unavailable.");
       setRegister(payload.data); pendingRemoval.current = null;
@@ -20,11 +21,23 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : "Retention assessment unavailable."); }
     finally { setBusy(false); }
   }
+  async function extendArchive(form: FormData) {
+    if (!register) return;
+    setBusy(true); setMessage("");
+    try {
+      const response = await workspaceFetch(`/api/v1/jobs/${jobId}/retention/archive`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reviewVersion: register.assessment.reviewVersion, archiveUntil: form.get("archiveUntil"), reason: form.get("reason") }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error?.message ?? "Archive extension failed.");
+      setRegister(null); setReviewedVersion(null); pendingRemoval.current = null;
+      setMessage(payload.data.persisted ? "Company archive extended. Reload the assessment to see the new countdown. Customer access remains limited to one year." : "Preview only. No archive date was saved.");
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : "Archive extension failed."); }
+    finally { setBusy(false); }
+  }
   async function review(form: FormData) {
     if (!register) return;
     setBusy(true); setMessage("");
     try {
-      const response = await fetch(`/api/v1/jobs/${jobId}/retention`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reviewVersion: register.assessment.reviewVersion, reason: form.get("reason"), noUnresolvedComplaintOrClaim: form.get("claimsChecked") === "on", confirmed: form.get("confirmed") === "on" }) });
+      const response = await workspaceFetch(`/api/v1/jobs/${jobId}/retention`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reviewVersion: register.assessment.reviewVersion, reason: form.get("reason"), noUnresolvedComplaintOrClaim: form.get("claimsChecked") === "on", confirmed: form.get("confirmed") === "on" }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "File review failed.");
       if (payload.data.persisted) setReviewedVersion(register.assessment.reviewVersion);
@@ -36,7 +49,7 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
     if (!register) return;
     setBusy(true); setMessage("");
     try {
-      const response = await fetch(`/api/v1/jobs/${jobId}/retention`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: register.hold?.revision ?? 0, kind: form.get("kind") || null, reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
+      const response = await workspaceFetch(`/api/v1/jobs/${jobId}/retention`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: register.hold?.revision ?? 0, kind: form.get("kind") || null, reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "Hold review failed.");
       setRegister(null);
@@ -50,7 +63,7 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
     const decision = pendingRemoval.current ?? { action: "request" as const, requestId: crypto.randomUUID(), reviewVersion: register.assessment.reviewVersion, reason: String(form.get("reason") ?? ""), confirmed: form.get("confirmed") === "on" };
     pendingRemoval.current = decision;
     try {
-      const response = await fetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(decision) });
+      const response = await workspaceFetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(decision) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "Removal request failed.");
       pendingRemoval.current = null; setRegister(null); setReviewedVersion(null);
@@ -61,7 +74,7 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
   async function cancelRemoval(id: string, manifestVersion: string, form: FormData) {
     setBusy(true); setMessage("");
     try {
-      const response = await fetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "cancel", id, manifestVersion, reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
+      const response = await workspaceFetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "cancel", id, manifestVersion, reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "Removal cancellation failed.");
       setRegister(null); setMessage(payload.data.persisted ? "Removal request cancelled. Reload the assessment to see the recorded outcome." : "Preview only. No request changed.");
@@ -71,7 +84,7 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
   async function startRemoval(id: string, manifestVersion: string, form: FormData) {
     setBusy(true); setMessage("");
     try {
-      const response = await fetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "start", id, manifestVersion, reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
+      const response = await workspaceFetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "start", id, manifestVersion, reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "Removal execution failed.");
       setRegister(null);
@@ -82,7 +95,7 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
   async function resumeRemoval(id: string, manifestVersion: string, form: FormData) {
     setBusy(true); setMessage("");
     try {
-      const response = await fetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "resume", id, manifestVersion, reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
+      const response = await workspaceFetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "resume", id, manifestVersion, reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "Removal resumption failed.");
       setRegister(null);
@@ -93,7 +106,7 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
   async function observeRemoval(id: string, manifestVersion: string, form: FormData) {
     setBusy(true); setMessage("");
     try {
-      const response = await fetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "observe", id, manifestVersion, reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
+      const response = await workspaceFetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "observe", id, manifestVersion, reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "Original observation failed.");
       setRegister(null);
@@ -104,7 +117,7 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
   async function disposeAnalysis(id: string, manifestVersion: string, form: FormData) {
     setBusy(true); setMessage("");
     try {
-      const response = await fetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "dispose_analysis", id, manifestVersion, documentId: form.get("documentId"), reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
+      const response = await workspaceFetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "dispose_analysis", id, manifestVersion, documentId: form.get("documentId"), reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "Analysis cleanup failed.");
       setRegister(null); setMessage(payload.data.persisted ? payload.data.duplicate ? "This questionnaire analysis was already removed." : "Questionnaire analysis removed. Original checksums and audit evidence are retained." : "Preview only. No analysis was removed.");
@@ -114,7 +127,7 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
   async function disposeQuestionnaireAnswers(id: string, manifestVersion: string, form: FormData) {
     setBusy(true); setMessage("");
     try {
-      const response = await fetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "dispose_questionnaire_answers", id, manifestVersion, reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
+      const response = await workspaceFetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "dispose_questionnaire_answers", id, manifestVersion, reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "Customer statement cleanup failed.");
       setRegister(null); setMessage(payload.data.persisted ? "Customer statements removed. Version numbers, submission sources, dates and audit evidence are retained." : "Preview only. No customer statements were removed.");
@@ -124,7 +137,7 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
   async function disposeEvidenceAnnotation(id: string, manifestVersion: string, form: FormData) {
     setBusy(true); setMessage("");
     try {
-      const response = await fetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "dispose_evidence_annotation", id, manifestVersion, linkId: form.get("linkId"), reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
+      const response = await workspaceFetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "dispose_evidence_annotation", id, manifestVersion, linkId: form.get("linkId"), reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "Evidence annotation cleanup failed.");
       setRegister(null); setMessage(payload.data.persisted ? "Evidence annotation content removed. Evidence annotation identity, provenance history and audit evidence are retained." : "Preview only. No evidence annotation content was removed.");
@@ -134,7 +147,7 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
   async function disposeMediaMetadata(id: string, manifestVersion: string, form: FormData) {
     setBusy(true); setMessage("");
     try {
-      const response = await fetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "dispose_media_metadata", id, manifestVersion, mediaId: form.get("mediaId"), reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
+      const response = await workspaceFetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "dispose_media_metadata", id, manifestVersion, mediaId: form.get("mediaId"), reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "Media metadata cleanup failed.");
       setRegister(null); setMessage(payload.data.persisted ? "Media metadata content removed. Media metadata identity, provenance history and audit evidence are retained." : "Preview only. No media metadata content was removed.");
@@ -144,7 +157,7 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
   async function disposeElement(id: string, manifestVersion: string, form: FormData) {
     setBusy(true); setMessage("");
     try {
-      const response = await fetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "dispose_element", id, manifestVersion, elementId: form.get("elementId"), reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
+      const response = await workspaceFetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "dispose_element", id, manifestVersion, elementId: form.get("elementId"), reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "Inspection note cleanup failed.");
       setRegister(null); setMessage(payload.data.persisted ? "Inspection note content removed. Inspection note identity, provenance history and audit evidence are retained." : "Preview only. No inspection note content was removed.");
@@ -154,7 +167,7 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
   async function disposeObservation(id: string, manifestVersion: string, form: FormData) {
     setBusy(true); setMessage("");
     try {
-      const response = await fetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "dispose_observation", id, manifestVersion, observationId: form.get("observationId"), reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
+      const response = await workspaceFetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "dispose_observation", id, manifestVersion, observationId: form.get("observationId"), reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "Observation cleanup failed.");
       setRegister(null); setMessage(payload.data.persisted ? "Observation content removed. Observation identity, provenance history and audit evidence are retained." : "Preview only. No observation content was removed.");
@@ -164,7 +177,7 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
   async function disposeValue(id: string, manifestVersion: string, form: FormData) {
     setBusy(true); setMessage("");
     try {
-      const response = await fetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "dispose_value", id, manifestVersion, valueId: form.get("valueId"), reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
+      const response = await workspaceFetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "dispose_value", id, manifestVersion, valueId: form.get("valueId"), reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "Recorded answer cleanup failed.");
       setRegister(null); setMessage(payload.data.persisted ? "Recorded answer content removed. Answer identity, provenance history and audit evidence are retained." : "Preview only. No answer content was removed.");
@@ -174,7 +187,7 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
   async function disposeReport(id: string, manifestVersion: string, form: FormData) {
     setBusy(true); setMessage("");
     try {
-      const response = await fetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "dispose_report", id, manifestVersion, reportId: form.get("reportId"), reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
+      const response = await workspaceFetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "dispose_report", id, manifestVersion, reportId: form.get("reportId"), reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "Report cleanup failed.");
       setRegister(null); setMessage(payload.data.persisted ? "Report content removed. Version identity, approval history and audit evidence are retained." : "Preview only. No report content was removed.");
@@ -184,7 +197,7 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
   async function disposeProposal(id: string, manifestVersion: string, form: FormData) {
     setBusy(true); setMessage("");
     try {
-      const response = await fetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "dispose_proposal", id, manifestVersion, proposalId: form.get("proposalId"), reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
+      const response = await workspaceFetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "dispose_proposal", id, manifestVersion, proposalId: form.get("proposalId"), reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "Proposal cleanup failed.");
       setRegister(null); setMessage(payload.data.persisted ? "Proposal content removed. Review history and audit evidence are retained." : "Preview only. No proposal content was removed.");
@@ -194,7 +207,7 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
   async function disposeTask(id: string, manifestVersion: string, form: FormData) {
     setBusy(true); setMessage("");
     try {
-      const response = await fetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "dispose_task", id, manifestVersion, taskId: form.get("taskId"), reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
+      const response = await workspaceFetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "dispose_task", id, manifestVersion, taskId: form.get("taskId"), reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "Adviser task cleanup failed.");
       setRegister(null); setMessage(payload.data.persisted ? "Adviser task content removed. Resolution history and audit evidence are retained." : "Preview only. No task content was removed.");
@@ -204,7 +217,7 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
   async function disposeMedia(id: string, manifestVersion: string, form: FormData) {
     setBusy(true); setMessage("");
     try {
-      const response = await fetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "dispose_media_analysis", id, manifestVersion, analysisId: form.get("analysisId"), reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
+      const response = await workspaceFetch(`/api/v1/jobs/${jobId}/retention/removals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "dispose_media_analysis", id, manifestVersion, analysisId: form.get("analysisId"), reason: form.get("reason"), confirmed: form.get("confirmed") === "on" }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "Media analysis cleanup failed.");
       setRegister(null); setMessage(payload.data.persisted ? payload.data.duplicate ? "This media analysis was already removed." : "Media analysis removed. Original checksums and audit evidence remain recorded." : "Preview only. No media analysis was removed.");
@@ -216,6 +229,14 @@ export function SurveyFileRetentionReview({ jobId, canEdit }: { jobId: string; c
     <button className="button button-secondary" type="button" onClick={() => void load()} disabled={busy}>{busy ? "Working…" : "Load current file assessment"}</button>
     {register ? <><p>{reasons[register.assessment.reason] ?? "Review the current file protection."}</p><p>{register.reportCount} report versions · {register.deliveryCount} confirmed deliveries · {register.documents.length} registered originals · {register.media.length} survey media files · {register.questionnaireDocuments.length} questionnaire originals</p><p>{register.analysisCount} extracted analyses · {register.adviserRecordCount} adviser records · {register.evidenceReferenceCount} evidence links · {register.externalEvidenceReferenceCount} references from other files</p>
       {register.assessment.retentionUntil ? <p>Retain until {new Date(register.assessment.retentionUntil).toLocaleDateString("en-GB", { timeZone: "UTC" })}</p> : null}
+      {register.assessment.daysUntilDeletionReview !== null ? <p role="status"><strong>{register.assessment.daysUntilDeletionReview} days until deletion review</strong>{register.assessment.reason === "protected" ? " · deletion blocked by an active hold" : ""}. Expiry requires manager review before removal.</p> : null}
+      {register.assessment.archiveUntil ? <p>Company archive extended until {new Date(register.assessment.archiveUntil).toLocaleDateString("en-GB", { timeZone: "UTC" })}. Customer access is not extended.</p> : null}
+      {canEdit && register.assessment.archiveOffer ? <form action={extendArchive} className="form-grid">
+        <h3>Keep the company archive longer</h3><p>This file is in its final 30 days or awaiting deletion review. Choose a later archive date to retain its report and evidence.</p>
+        <label className="field">Archive until<input name="archiveUntil" type="date" required disabled={busy} min={new Date(new Date(register.assessment.retentionUntil!).getTime()+86_400_000).toISOString().slice(0,10)} /></label>
+        <label className="field">Archive reason<textarea name="reason" required minLength={10} maxLength={2000} disabled={busy} /></label>
+        <button className="button button-secondary" disabled={busy}>Extend company archive</button>
+      </form> : null}
       <ul>{register.documents.map(document => <li key={document.id}>{document.name}{document.legalHold ? " · legal hold" : ""}{document.archivedAt ? " · archived" : " · active"}</li>)}</ul>
       <ul>{register.media.map(media => <li key={media.id}>{media.filename ?? media.kind} · {media.derivation}</li>)}</ul>
       <ul>{register.questionnaireDocuments.map(document => <li key={document.id}>{document.name} · questionnaire original{document.analysisDisposed ? " · Analysis removed" : ""}{document.supersededAt ? " · superseded" : ""}</li>)}</ul>

@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { z } from "zod";
 import { and,eq } from "drizzle-orm";
 import { auditEvents,createDatabase,organisationDocuments,withTenant } from "@surveynt/db";
@@ -20,7 +21,7 @@ export async function PATCH(request:Request,route:RouteContext<"/api/v1/document
     if(document.checksum!==parsed.data.expectedChecksum||document.updatedAt.toISOString()!==parsed.data.expectedUpdatedAt||document.legalHold!==parsed.data.expectedLegalHold||(document.retentionUntil?.toISOString()??null)!==parsed.data.expectedRetentionUntil)return problem(409,"document_changed","The document or its protection changed. Reload and review it again.");
     const retentionUntil=parsed.data.retentionUntil?new Date(parsed.data.retentionUntil):null;
     const [updated]=await tx.update(organisationDocuments).set({retentionUntil,legalHold:parsed.data.legalHold,updatedAt:new Date()}).where(eq(organisationDocuments.id,id)).returning();
-    await tx.insert(auditEvents).values({organisationId:context.organisationId,actorUserId:context.internalUserId,action:"document.retention_reviewed",resourceType:"organisation_document",resourceId:id,metadata:{checksum:document.checksum,reason:parsed.data.reason,confirmed:true,archivedAt:document.deletedAt,previous:{retentionUntil:document.retentionUntil,legalHold:document.legalHold},next:{retentionUntil,legalHold:updated.legalHold}}});
+    await tx.insert(auditEvents).values(workspaceAudit(context,{organisationId:context.organisationId,actorUserId:context.internalUserId,action:"document.retention_reviewed",resourceType:"organisation_document",resourceId:id,metadata:{checksum:document.checksum,reason:parsed.data.reason,confirmed:true,archivedAt:document.deletedAt,previous:{retentionUntil:document.retentionUntil,legalHold:document.legalHold},next:{retentionUntil,legalHold:updated.legalHold}}}));
     return ok({id:updated.id,updatedAt:updated.updatedAt,retentionUntil:updated.retentionUntil,legalHold:updated.legalHold,retainedOriginal:true});
   });
 }

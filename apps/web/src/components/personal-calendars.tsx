@@ -1,4 +1,7 @@
 "use client";
+import {WorkspaceAnchor} from "@/components/workspace-anchor";
+
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { useEffect, useState } from "react";
 import { AlertCircle, CheckCircle2, Info, RefreshCw } from "lucide-react";
@@ -21,8 +24,8 @@ export function PersonalCalendars() {
 
   async function load() {
     const [cr, pr] = await Promise.all([
-      fetch("/api/v1/me/calendar-connections", { cache: "no-store" }),
-      fetch("/api/v1/capabilities", { cache: "no-store" }),
+      workspaceFetch("/api/v1/me/calendar-connections", { cache: "no-store" }),
+      workspaceFetch("/api/v1/capabilities", { cache: "no-store" }),
     ]);
     const [connections, capabilities] = await Promise.all([cr.json(), pr.json()]);
     if (!cr.ok || !pr.ok) throw new Error("Calendar settings could not load.");
@@ -105,7 +108,7 @@ export function PersonalCalendars() {
     }
     setBusy(true);
     try {
-      const response = await fetch("/api/v1/me/calendar-connections", {
+      const response = await workspaceFetch("/api/v1/me/calendar-connections", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id, action }),
@@ -141,9 +144,9 @@ export function PersonalCalendars() {
               <span className="status status-blue">{provider.state}</span>
             </div>
             {provider.connectHref ? (
-              <a className="button button-primary" href={provider.connectHref}>
+              <WorkspaceAnchor className="button button-primary" href={provider.connectHref}>
                 {provider.action}
-              </a>
+              </WorkspaceAnchor>
             ) : (
               <p className="form-help">
                 {preview

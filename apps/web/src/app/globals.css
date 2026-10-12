@@ -753,3 +753,20 @@ fieldset.field legend { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
+
+/* Surveyant overlay: provenance colours never carry into printable reports. */
+.survey-field.human-entered .input,.survey-field.human-entered .textarea,.survey-field.human-entered select:not(.state-select){color:#000}
+.survey-field.prefilled .input,.survey-field.prefilled .textarea,.survey-field.prefilled select:not(.state-select){color:#215bf5}
+.survey-view-toolbar{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:1rem;padding:1rem 0}
+.survey-view-toolbar p{font-size:.8rem}.prefill-key{color:#215bf5}
+.questionnaire-progress{padding:1.25rem;background:#fff;border:1px solid #d8e2f3;border-radius:8px;margin-bottom:1rem}
+.questionnaire-progress progress{width:100%;accent-color:#215bf5;height:8px}.questionnaire-progress h2{margin:1rem 0 .5rem}
+.report-preview{background:#fff;color:#000}.report-preview h3,.report-preview h4,.report-preview h5{color:#4d2d69}
+.survey-field fieldset{border:1px solid #d8e2f3;border-radius:6px;padding:.75rem}
+
+.questionnaire-progress progress{appearance:none;border:0;border-radius:4px;overflow:hidden;background:#e7edfa}
+.questionnaire-progress progress::-webkit-progress-bar{background:#e7edfa}
+.questionnaire-progress progress::-webkit-progress-value{background:#215bf5}
+.questionnaire-progress progress::-moz-progress-bar{background:#215bf5}
+
+.photo-strip video{width:240px;max-width:100%;height:160px;object-fit:contain;background:#0f172a;border-radius:6px}

@@ -1,3 +1,4 @@
+import {ConnectionsPanel} from "@/components/connections-panel";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Building2, ShieldCheck } from "lucide-react";
 import Link from "next/link";
@@ -32,5 +33,5 @@ export default async function TenantPage({ params }: { params: Promise<{ tenantI
       <section className="panel"><div className="panel-header"><h2>Usage snapshot</h2></div><dl className="detail-grid"><div className="detail"><dt>Clients</dt><dd>{detail.usage.clients}</dd></div><div className="detail"><dt>Properties</dt><dd>{detail.usage.properties}</dd></div><div className="detail"><dt>Jobs</dt><dd>{detail.usage.jobs}</dd></div><div className="detail"><dt>Active jobs</dt><dd>{detail.usage.activeJobs}</dd></div></dl></section>
       <section className="panel"><div className="panel-header"><h2>Onboarding</h2></div>{detail.onboarding.length ? <div className="panel-body"><ul className="activity-list">{detail.onboarding.map((step) => <li className="activity-item" key={step.key}><strong>{step.key.replaceAll("_", " ")}</strong><time>{step.completedAt ? `Completed ${date(step.completedAt)}` : "Incomplete"}</time></li>)}</ul></div> : <div className="empty-state compact"><strong>No onboarding steps</strong><span>This tenant has not recorded onboarding progress.</span></div>}</section>
     </aside></div>
-  </main>;
+  {operator.role==="super_admin"?<ConnectionsPanel scope="tenant" tenantId={tenantId}/>:null}</main>;
 }

@@ -1,4 +1,7 @@
 "use client";
+import {WorkspaceAnchor} from "@/components/workspace-anchor";
+
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { useMemo, useState } from "react";
 import { Activity, ExternalLink, History, Search } from "lucide-react";
@@ -26,13 +29,13 @@ export function DataSourceManager({ sources: initial, canOperate, demo }: { sour
   const current = sources.find((source) => source.key === selected) ?? null;
 
   async function refresh() {
-    const response = await fetch("/api/platform/data-sources", { cache: "no-store" });
+    const response = await workspaceFetch("/api/platform/data-sources", { cache: "no-store" });
     if (response.ok) setSources((await response.json()).data);
   }
 
   async function act(url: string, body: Record<string, unknown>, done: string) {
     setBusy(true); setMessage(null);
-    const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const response = await workspaceFetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const payload = await response.json().catch(() => null);
     setBusy(false);
     if (!response.ok) return setMessage({ tone: "error", text: payload?.error?.message ?? "The action failed." });
@@ -73,7 +76,7 @@ export function DataSourceManager({ sources: initial, canOperate, demo }: { sour
             <div className="detail"><dt>Last release check</dt><dd>{current.releaseCheck ? `${formatDate(current.releaseCheck.at)}: ${current.releaseCheck.note}` : "None recorded"}</dd></div>
             <div className="detail"><dt>Last probe</dt><dd>{current.probe ? `${current.probe.status}: ${current.probe.message}` : "None"}</dd></div>
           </dl>
-          <a className="button button-quiet" href={current.documentationUrl} target="_blank" rel="noopener noreferrer">Official documentation<ExternalLink size={12} aria-hidden="true" /></a>
+          <WorkspaceAnchor className="button button-quiet" href={current.documentationUrl} target="_blank" rel="noopener noreferrer">Official documentation<ExternalLink size={12} aria-hidden="true" /></WorkspaceAnchor>
           {canOperate ? <div className="data-source-actions">
             <label className="field"><span>Notes (what you verified or checked)</span><textarea className="textarea" rows={2} value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={2000} placeholder="For example: licence and terms checked on the official page on 2 Oct 2026; endpoint confirmed" /></label>
             <div className="row-actions">

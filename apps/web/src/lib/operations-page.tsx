@@ -12,5 +12,6 @@ export async function operationsPage(section: OperationsSection, params: Promise
   if (access.userRole === "surveyor" && section === "customers") notFound();
   if((section==="finance"||section==="performance")&&!isManagementRole(access.userRole)&&(section!=="finance"||access.userRole!=="finance"))notFound();
   const data = access.userId === "demo_user" ? { quotes: [], appointments: [], finance: [], documents: [], totals:{quotes:0,converted:0,receipts:0,outstanding:0,invoices:0,currencies:[]} } : await listFirmOperations(access.organisationId, { role: access.userRole, userId: access.internalUserId });
-  return <FirmOperationsView section={section} slug={organisationSlug} data={data} canEdit={access.accessLevel==="full"&&canMutateOperations(access.userRole)} canManage={access.accessLevel==="full"&&(section === "finance" ? canManageFinance(access.userRole) : isManagementRole(access.userRole))} />;
+  const view = <FirmOperationsView section={section} slug={organisationSlug} data={data} canEdit={access.accessLevel==="full"&&canMutateOperations(access.userRole)} canManage={access.userId!=="demo_user"&&access.accessLevel==="full"&&(section === "finance" ? canManageFinance(access.userRole) : isManagementRole(access.userRole))} />;
+  return access.userId==="demo_user" && section==="finance" ? <><p className="notice">Local preview: no live invoices or verified payment records. Sign into a configured company to create invoices, record payments and export its ledger.</p>{view}</> : view;
 }

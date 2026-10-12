@@ -1,0 +1,28 @@
+{
+  "name": "@surveynt/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start --dev-client",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "build": "EXPO_NO_TELEMETRY=1 EXPO_OFFLINE=1 expo export --platform all"
+  },
+  "dependencies": {
+    "expo": "57.0.27",
+    "expo-location": "57.0.20",
+    "expo-task-manager": "57.0.21",
+    "expo-secure-store": "57.0.4",
+    "expo-dev-client": "~57.0.19",
+    "@clerk/expo": "4.8.1",
+    "react": "19.2.3",
+    "react-native": "0.86.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "@types/react": "^19.2.17"
+  }
+}

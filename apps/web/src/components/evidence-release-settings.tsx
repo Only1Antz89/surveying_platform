@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { useState } from "react";
 import { AlertCircle, CheckCircle2 } from "lucide-react";
@@ -18,7 +19,7 @@ export function EvidenceReleaseSettings({
     setBusy(true);
     setMessage("");
     try {
-      const response = await fetch("/api/v1/operations/evidence", {
+      const response = await workspaceFetch("/api/v1/operations/evidence", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ enabled: !enabled }),

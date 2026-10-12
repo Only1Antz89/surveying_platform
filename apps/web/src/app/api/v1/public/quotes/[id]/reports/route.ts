@@ -3,6 +3,7 @@ import { z } from "zod";
 import { and,desc,eq,inArray,isNull } from "drizzle-orm";
 import { auditEvents,createDatabase,customerQuotes,jobs,organisations,reportApprovals,reportDeliveries,reportVersions,surveys,withTenant } from "@surveynt/db";
 import { readPublicQuote } from "@/lib/firm-operations";
+import { surveyFileRetentionExpiry } from "@/lib/survey-file-retention";
 import { currentReportInput } from "@/lib/reports";
 import { ok,parseBody,problem } from "@/lib/api";
 export async function GET(request:Request,route:RouteContext<"/api/v1/public/quotes/[id]/reports">){
@@ -11,11 +12,13 @@ export async function GET(request:Request,route:RouteContext<"/api/v1/public/quo
     const [job]=await tx.select().from(jobs).where(and(eq(jobs.id,found.row.jobId!),eq(jobs.organisationId,found.row.organisationId),inArray(jobs.stage,["issued","paid"]))).limit(1);if(!job)return ok([]);
     const [survey]=await tx.select().from(surveys).where(and(eq(surveys.jobId,job.id),eq(surveys.organisationId,job.organisationId),eq(surveys.status,"approved"))).limit(1);if(!survey)return ok([]);
     const [record]=await tx.select({report:reportVersions,approvedAt:reportApprovals.createdAt}).from(reportVersions).innerJoin(reportApprovals,and(eq(reportApprovals.reportVersionId,reportVersions.id),eq(reportApprovals.organisationId,job.organisationId))).where(and(eq(reportVersions.surveyId,survey.id),eq(reportVersions.organisationId,job.organisationId))).orderBy(desc(reportVersions.versionNumber)).limit(1);if(!record)return ok([]);
+    const accessExpiresAt=surveyFileRetentionExpiry(record.approvedAt);
+    if(accessExpiresAt<=new Date())return problem(410,"report_access_expired","Customer access to this report has expired after one year. Contact your survey company.");
     if(record.report.content.retentionRemoved===true)return problem(410,"report_content_removed","Report content was removed after retention review.");
     const current=await currentReportInput(tx,{organisationId:job.organisationId},survey.id);if(current?.fingerprint!==record.report.inputFingerprint)return ok([]);
     await tx.insert(auditEvents).values({organisationId:job.organisationId,action:"customer.report_viewed",resourceType:"report_version",resourceId:record.report.id,metadata:{quoteId:found.row.id}});
     // Content only: internal trace, drafts, observations and evidence files are not exposed.
-    return ok([{id:record.report.id,version:record.report.versionNumber,approvedAt:record.approvedAt,content:record.report.content}]);
+    return ok([{id:record.report.id,version:record.report.versionNumber,approvedAt:record.approvedAt,accessExpiresAt,content:record.report.content}]);
   });
 }
 
@@ -37,8 +40,9 @@ export async function POST(request:Request,route:RouteContext<"/api/v1/public/qu
     if(!job)return problem(409,"report_unavailable","The report is no longer available for receipt confirmation.");
     const [survey]=await tx.select().from(surveys).where(and(eq(surveys.jobId,job.id),eq(surveys.organisationId,job.organisationId),eq(surveys.status,"approved"))).limit(1);
     if(!survey)return problem(409,"report_unavailable","The report is no longer available for receipt confirmation.");
-    const [record]=await tx.select({report:reportVersions}).from(reportVersions).innerJoin(reportApprovals,and(eq(reportApprovals.reportVersionId,reportVersions.id),eq(reportApprovals.organisationId,job.organisationId))).where(and(eq(reportVersions.surveyId,survey.id),eq(reportVersions.organisationId,job.organisationId))).orderBy(desc(reportVersions.versionNumber)).limit(1);
+    const [record]=await tx.select({report:reportVersions,approvedAt:reportApprovals.createdAt}).from(reportVersions).innerJoin(reportApprovals,and(eq(reportApprovals.reportVersionId,reportVersions.id),eq(reportApprovals.organisationId,job.organisationId))).where(and(eq(reportVersions.surveyId,survey.id),eq(reportVersions.organisationId,job.organisationId))).orderBy(desc(reportVersions.versionNumber)).limit(1);
     if(!record||record.report.id!==parsed.data.reportVersionId)return problem(409,"report_changed","Reload and confirm receipt of the current issued report.");
+    if(surveyFileRetentionExpiry(record.approvedAt)<=new Date())return problem(410,"report_access_expired","Customer access to this report has expired after one year. Contact your survey company.");
     if(record.report.content.retentionRemoved===true)return problem(410,"report_content_removed","Report content was removed after retention review.");
     const current=await currentReportInput(tx,{organisationId:job.organisationId},survey.id);
     if(current?.fingerprint!==record.report.inputFingerprint)return problem(409,"report_changed","The report needs a new professional review.");

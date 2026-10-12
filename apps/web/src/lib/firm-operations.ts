@@ -1,3 +1,5 @@
+import {workspaceAudit} from "./workspace-audit";
+import type {WorkspaceMode} from "./workspace-mode";
 import { invoiceBalance, refreshInvoiceBalance } from "./invoice-balance";
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
@@ -50,7 +52,7 @@ export async function resolvePublicOrganisation(request: Request, requestedSlug?
   return record ?? null;
 }
 
-export async function createPublicQuote(input: { organisationId: string; requestId: string; actorUserId?:string; serviceId?: string; firstName?: string; lastName?: string; email?: string; phone?: string; answers?: Record<string, unknown>; surchargeKeys?: string[]; websiteSubmission?: FormSubmission }) {
+export async function createPublicQuote(input: { organisationId: string; requestId: string; actorUserId?:string;workspaceMode?:WorkspaceMode;actorRole?:OrganisationRole; serviceId?: string; firstName?: string; lastName?: string; email?: string; phone?: string; answers?: Record<string, unknown>; surchargeKeys?: string[]; websiteSubmission?: FormSubmission }) {
   const db = createDatabase();
   const demo = await isDemoOrganisation(input.organisationId, db);
   const rawToken = demo ? randomBytes(32).toString("base64url") : tokenForRequest(input.organisationId, input.requestId);
@@ -86,7 +88,7 @@ export async function createPublicQuote(input: { organisationId: string; request
     const snapshot = { service: service.name, pricingVersion: pricing.version, baseAmountMinor: pricing.baseAmountMinor, surcharges: Object.fromEntries(surchargeEntries), vatBasisPoints: pricing.vatBasisPoints, depositBasisPoints: pricing.depositBasisPoints, durationMinutes: pricing.durationMinutes };
     const [quote] = await tx.insert(customerQuotes).values({ organisationId: input.organisationId, publicRequestId: input.requestId, serviceDefinitionId: service.id, pricingVersionId: pricing.id, reference, status: input.email ? "issued" : "draft", firstName: input.firstName, lastName: input.lastName, email: input.email?.toLowerCase(), phone: input.phone, propertyAddress: input.websiteSubmission ? [input.websiteSubmission.address.line1, input.websiteSubmission.address.line2, input.websiteSubmission.address.city, input.websiteSubmission.address.postcode].filter(Boolean).join(", ") : undefined, answers: input.answers ?? {}, recommendation: { serviceId: service.id, serviceName: service.name, basis: input.serviceId ? "customer_selected" : "clifton_adviser_v1", reason: input.websiteSubmission && pricing.recommendationRules.source !== "clifton_adviser_v1" ? "You selected this service. The practice will confirm its suitability and agreed scope." : recommendation.reason }, pricingSnapshot: snapshot, currency: pricing.currency, subtotalMinor, vatMinor, totalMinor, depositMinor, accessTokenHash: tokenHash(rawToken), expiresAt, issuedAt: input.email ? new Date() : null }).returning();
     await tx.insert(quoteSnapshots).values({ organisationId: input.organisationId, quoteId: quote.id, event: "created", snapshot: publicQuote(quote) });
-    await tx.insert(auditEvents).values({ organisationId: input.organisationId, action: "quote.created", resourceType: "quote", resourceId: quote.id, metadata: { reference, serviceId: service.id } });
+    await tx.insert(auditEvents).values(workspaceAudit(input,{ organisationId: input.organisationId,actorUserId:input.actorUserId??null, action: "quote.created", resourceType: "quote", resourceId: quote.id, metadata: { reference, serviceId: service.id } }));
     return { quote: publicQuote(quote), token: rawToken };
   });
 }

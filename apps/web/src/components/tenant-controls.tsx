@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
@@ -21,7 +22,7 @@ export function TenantControls({ tenantId, initialStatus, canManage, canSupport,
       setSaving(true);
       setError(null);
       const form = new FormData(event.currentTarget);
-      const response = await fetch(`/api/platform/tenants/${tenantId}/status`, {
+      const response = await workspaceFetch(`/api/platform/tenants/${tenantId}/status`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ status: targetStatus, reason: form.get("reason") }),
@@ -46,7 +47,7 @@ export function TenantControls({ tenantId, initialStatus, canManage, canSupport,
       event.preventDefault(); setSaving(true); setError(null);
       const form = new FormData(event.currentTarget);
       const breakGlass = requestingSupport === "breakGlass";
-      const response = await fetch(`/api/platform/tenants/${tenantId}/support-sessions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ticketReference: form.get("ticketReference"), reason: form.get("reason"), permission: breakGlass ? "write" : form.get("permission"), breakGlass }) });
+      const response = await workspaceFetch(`/api/platform/tenants/${tenantId}/support-sessions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ticketReference: form.get("ticketReference"), reason: form.get("reason"), permission: breakGlass ? "write" : form.get("permission"), breakGlass }) });
       const payload = await response.json(); setSaving(false);
       if (!response.ok) return setError(payload?.error?.message ?? "The support session could not be requested.");
       setRequestingSupport(null);

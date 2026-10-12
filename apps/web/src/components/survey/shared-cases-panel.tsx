@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { type FormEvent, useState } from "react";
 import { BookOpen } from "lucide-react";
@@ -23,7 +24,7 @@ export function SharedCasesPanel({ pack, sectionKey, online }: { pack: SurveyPac
   const [feedback, setFeedback] = useState<Record<string, string>>({});
 
   async function sendFeedback(id: string, rating: "helpful" | "not_helpful" | "incorrect" | "identifying", note?: string) {
-    const response = await fetch(`/api/v1/shared-cases/${id}/feedback`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ rating, note: note ?? null }) });
+    const response = await workspaceFetch(`/api/v1/shared-cases/${id}/feedback`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ rating, note: note ?? null }) });
     const payload = await response.json().catch(() => null);
     const message = !response.ok ? payload?.error?.message ?? "Feedback could not be sent." : payload?.data?.suspended ? "Thank you. The example has been withdrawn from use while it is reviewed." : "Thank you. Feedback goes to reviewers and is never used for training.";
     setFeedback((current) => ({ ...current, [id]: message }));
@@ -36,7 +37,7 @@ export function SharedCasesPanel({ pack, sectionKey, online }: { pack: SurveyPac
     const params = new URLSearchParams({ element: String(form.get("element") ?? ""), q: String(form.get("q") ?? "").trim() });
     if (pack.survey.jurisdiction) params.set("jurisdiction", pack.survey.jurisdiction);
     setBusy(true); setError(null);
-    const response = await fetch(`/api/v1/shared-cases?${params}`, { cache: "no-store" });
+    const response = await workspaceFetch(`/api/v1/shared-cases?${params}`, { cache: "no-store" });
     setBusy(false);
     if (!response.ok) { setError("Reviewed examples could not be loaded."); return; }
     setResult((await response.json()).data);

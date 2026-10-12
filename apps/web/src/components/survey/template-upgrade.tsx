@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 import { useEffect, useState } from "react";
 import type { SurveyPack } from "@/lib/surveys";
 
@@ -8,7 +9,7 @@ export function TemplateUpgrade({ pack, disabled, onChanged }: { pack: SurveyPac
   const [message, setMessage] = useState("");
   useEffect(() => {
     let current = true;
-    fetch(`/api/v1/jobs/${pack.survey.jobId}/survey`, { cache: "no-store" }).then(response => response.ok ? response.json() : null).then(payload => { if (current) setAvailable(payload?.data?.wholeFormEnabled === true); }).catch(() => undefined);
+    workspaceFetch(`/api/v1/jobs/${pack.survey.jobId}/survey`, { cache: "no-store" }).then(response => response.ok ? response.json() : null).then(payload => { if (current) setAvailable(payload?.data?.wholeFormEnabled === true); }).catch(() => undefined);
     return () => { current = false; };
   }, [pack.survey.jobId]);
   if (!available || !["1.0.0", "1.1.0"].includes(pack.survey.templateVersion) || !pack.survey.templateKey.startsWith("surveynt-home-survey-")) return null;
@@ -16,7 +17,7 @@ export function TemplateUpgrade({ pack, disabled, onChanged }: { pack: SurveyPac
     if (!window.confirm("Upgrade this open survey to evidence mappings 1.2? Recorded answers, observations and photos stay unchanged. Pending suggestions will be superseded. Sync all device changes first.")) return;
     setBusy(true); setMessage("");
     try {
-      const response = await fetch(`/api/v1/surveys/${pack.survey.id}/template`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ version: pack.survey.version, confirm: true }) });
+      const response = await workspaceFetch(`/api/v1/surveys/${pack.survey.id}/template`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ version: pack.survey.version, confirm: true }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "The upgrade could not be completed.");
       await onChanged(); setMessage("Template upgraded. Load evidence to create fresh suggestions.");

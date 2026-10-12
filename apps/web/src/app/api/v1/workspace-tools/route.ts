@@ -22,7 +22,7 @@ export async function GET(request: Request) {
       if(!resources.length)return ok([]);
       const rows=await tx.select({id:auditEvents.id,action:auditEvents.action,resourceType:auditEvents.resourceType,resourceId:auditEvents.resourceId,occurredAt:auditEvents.occurredAt}).from(auditEvents).where(and(assignedAuditScope(context),eq(auditEvents.organisationId,context.organisationId),inArray(auditEvents.resourceType,resources))).orderBy(desc(auditEvents.occurredAt)).limit(20);
       const destination:Record<string,string>={job:"jobs",quote:"customers?view=quotes",invoice:"finance",client_payment:"finance",appointment:"calendar",report_version:"reports",property:"properties"};
-      return ok(rows.map(r=>({id:r.id,label:r.action.replaceAll("."," · ").replaceAll("_"," "),detail:r.occurredAt.toLocaleString("en-GB",{timeZone:"Europe/London"}),href:`/app/{slug}/${destination[r.resourceType]??"overview"}`})),{notificationScope:createHash("sha256").update(`${context.organisationId}:${context.internalUserId}`).digest("hex").slice(0,24)});
+      return ok(rows.map(r=>({id:r.id,label:r.action.replaceAll("."," · ").replaceAll("_"," "),detail:r.occurredAt.toLocaleString("en-GB",{timeZone:"Europe/London"}),href:`/app/{slug}/${destination[r.resourceType]??"overview"}`})),{notificationScope:createHash("sha256").update(`${context.organisationId}:${context.internalUserId}:${context.workspaceMode}`).digest("hex").slice(0,24)});
     }
     const pattern=`%${term.replaceAll("\\","\\\\").replaceAll("%","\\%").replaceAll("_","\\_")}%`,org=context.organisationId;
     const [customers,work,buildings,quotes]=await Promise.all([

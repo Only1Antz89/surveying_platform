@@ -1,7 +1,8 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { FormEvent, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/workspace-link";
 import { Archive, Building2, Eye, Pencil, Plus, X } from "lucide-react";
 import { ukCountries, ukCountryLabels } from "@surveynt/domain";
 import type { Client, Property } from "@/lib/demo-data";
@@ -42,7 +43,7 @@ export function PropertyRegister({ slug, properties: initialProperties, clients,
     setSaving(true);
     setError(null);
     const form = new FormData(event.currentTarget);
-    const response = await fetch("/api/v1/properties", {
+    const response = await workspaceFetch("/api/v1/properties", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -59,7 +60,7 @@ export function PropertyRegister({ slug, properties: initialProperties, clients,
     const created = payload.data as ApiProperty;
     // The search result becomes an approximate location only after the record exists; failure here never loses the property.
     if (selection && selection.candidate.source !== "demo" && !payload.meta?.demo) {
-      const located = await fetch(`/api/v1/properties/${created.id}/identity`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "set_location", lookupId: selection.lookupId, index: selection.candidate.index, version: created.version }) });
+      const located = await workspaceFetch(`/api/v1/properties/${created.id}/identity`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "set_location", lookupId: selection.lookupId, index: selection.candidate.index, version: created.version }) });
       if (!located.ok) setNotice("The property was created, but its approximate location could not be saved. Open the record to try again.");
       else created.version += 1;
     }
@@ -72,7 +73,7 @@ export function PropertyRegister({ slug, properties: initialProperties, clients,
     event.preventDefault(); if (!editing) return;
     setSaving(true); setError(null);
     const form = new FormData(event.currentTarget);
-    const response = await fetch(`/api/v1/properties/${editing.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ line1: form.get("line1"), city: form.get("city"), postcode: form.get("postcode"), propertyType: String(form.get("propertyType") || "") || null, version: editing.version ?? 1 }) });
+    const response = await workspaceFetch(`/api/v1/properties/${editing.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ line1: form.get("line1"), city: form.get("city"), postcode: form.get("postcode"), propertyType: String(form.get("propertyType") || "") || null, version: editing.version ?? 1 }) });
     const payload = await response.json(); setSaving(false);
     if (!response.ok) return setError(payload?.error?.message ?? "The property could not be updated.");
     setProperties((current) => current.map((property) => property.id === editing.id ? { ...property, address: payload.data.line1, town: payload.data.city, postcode: payload.data.postcode, type: payload.data.propertyType ?? "Not recorded", version: payload.data.version } : property));
@@ -82,7 +83,7 @@ export function PropertyRegister({ slug, properties: initialProperties, clients,
   async function archiveProperty(property: Property) {
     if (!window.confirm(`Archive ${property.address}? Existing jobs will retain their property reference.`)) return;
     setError(null);
-    const response = await fetch(`/api/v1/properties/${property.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ archived: true, version: property.version ?? 1 }) });
+    const response = await workspaceFetch(`/api/v1/properties/${property.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ archived: true, version: property.version ?? 1 }) });
     const payload = await response.json();
     if (!response.ok) return setError(payload?.error?.message ?? "The property could not be archived.");
     setProperties((current) => current.filter((item) => item.id !== property.id));

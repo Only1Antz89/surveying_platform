@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import "server-only";
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
@@ -45,7 +46,7 @@ export async function seedDemoEvidenceDocuments(context: PreinspectionStaff, quo
           if (result.duplicate) skipped++; else prepared.push({ id: result.id, name: fixture.name });
         } finally { if (stored.key) newKeys.push(stored.key); }
       }
-      await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "demo.evidence_documents_prepared", resourceType: "job", resourceId: job.id, metadata: { prepared: prepared.length, skipped, simulated: true, automaticWorksAssociation: false } });
+      await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "demo.evidence_documents_prepared", resourceType: "job", resourceId: job.id, metadata: { prepared: prepared.length, skipped, simulated: true, automaticWorksAssociation: false } }));
       return { prepared, skipped, jobId: job.id, demo: true, message: "Fictional private documents prepared. Review them in the job questionnaire; no works association or survey answer was applied." };
     });
   } catch (error) {

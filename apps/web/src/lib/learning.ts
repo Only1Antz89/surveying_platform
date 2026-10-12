@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { contributionConfirmations, contributionScopes, currentGrant, programmeStatus, type ContributionScope } from "@surveynt/learning";
@@ -75,7 +76,7 @@ export async function recordContributionGrant(context: LearningContext, input: z
       policyVersion: input.status === "granted" ? programme.status.policyVersion! : current!.policyVersion,
       confirmations: input.status === "granted" ? input.confirmations : [], basis: input.status === "granted" ? input.basis : null, recordedByUserId: context.internalUserId,
     }).returning();
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: `learning.scope_${input.status}`, resourceType: "learning_scope", resourceId: input.scope, metadata: { policyVersion: grant.policyVersion } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: `learning.scope_${input.status}`, resourceType: "learning_scope", resourceId: input.scope, metadata: { policyVersion: grant.policyVersion } }));
     if (input.status !== "revoked") return { grant, withdrawalId: null };
     const [request] = await tx.insert(learningWithdrawalRequests).values({ organisationId: context.organisationId, scope: input.scope, reason: "Scope revoked by the firm.", requestedByUserId: context.internalUserId }).returning({ id: learningWithdrawalRequests.id });
     return { grant, withdrawalId: request.id };
@@ -99,7 +100,7 @@ export async function requestWithdrawal(context: LearningContext, input: z.infer
       if (!job) throw new LearningError(404, "job_not_found", "The job could not be found.");
     }
     const [created] = await tx.insert(learningWithdrawalRequests).values({ organisationId: context.organisationId, scope: input.scope, jobId: input.jobId, reason: input.reason, requestedByUserId: context.internalUserId }).returning();
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "learning.withdrawal_requested", resourceType: "learning_withdrawal", resourceId: created.id, metadata: { scope: input.scope, jobId: input.jobId } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "learning.withdrawal_requested", resourceType: "learning_withdrawal", resourceId: created.id, metadata: { scope: input.scope, jobId: input.jobId } }));
     return created;
   });
   return { request, processed: await processWithdrawal(context.organisationId, request.id) };
@@ -124,7 +125,7 @@ export async function recordCaseFeedback(context: LearningContext, sharedCaseId:
   if (!shared) throw new LearningError(404, "not_found", "The shared case could not be found.");
   const feedback = await withTenant(db, context.organisationId, async (tx) => {
     const [created] = await tx.insert(learningCaseFeedback).values({ organisationId: context.organisationId, sharedCaseId, releaseVersion: shared.version, rating: input.rating, note: input.note?.trim() || null, createdByUserId: context.internalUserId }).returning();
-    await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "learning.case_feedback", resourceType: "shared_case", resourceId: sharedCaseId, metadata: { rating: input.rating } });
+    await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "learning.case_feedback", resourceType: "shared_case", resourceId: sharedCaseId, metadata: { rating: input.rating } }));
     return created;
   });
   const restricted = input.rating === "identifying" ? learningDb() : null;

@@ -1,4 +1,7 @@
 "use client";
+import {WorkspaceAnchor} from "@/components/workspace-anchor";
+
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { useState } from "react";
 import { ExternalLink, FileText, Upload } from "lucide-react";
@@ -24,7 +27,7 @@ export function DocumentsPanel({ surveyId, pack, canEdit, online, demo, onChange
     const form = new FormData();
     form.set("file", file);
     form.set("metadata", JSON.stringify({ clientGeneratedId: `doc_${crypto.randomUUID().replace(/-/g, "")}` }));
-    const response = await fetch(`/api/v1/surveys/${surveyId}/media`, { method: "POST", body: form });
+    const response = await workspaceFetch(`/api/v1/surveys/${surveyId}/media`, { method: "POST", body: form });
     const payload = await response.json().catch(() => null);
     setBusy(false);
     if (!response.ok) return setMessage(payload?.error?.message ?? "The document could not be uploaded.");
@@ -46,7 +49,7 @@ export function DocumentsPanel({ surveyId, pack, canEdit, online, demo, onChange
       const facts = analysis?.facts;
       const row = (label: string, fact: { value: string; span: { page: number } } | null | undefined, date = true) => fact ? <div><dt>{label}</dt><dd>{date ? formatDate(fact.value) : fact.value} <span className="cell-sub">(page {fact.span.page})</span></dd></div> : null;
       return <li key={item.id}>
-        <div className="document-head"><FileText size={16} aria-hidden="true" /><strong>{facts?.documentType ? certificateTypeLabels[facts.documentType.value] : item.originalFilename ?? "Document"}</strong>{demo ? null : <a href={`/api/v1/media/${item.id}`} target="_blank" rel="noopener noreferrer">Open original<ExternalLink size={12} aria-hidden="true" /></a>}</div>
+        <div className="document-head"><FileText size={16} aria-hidden="true" /><strong>{facts?.documentType ? certificateTypeLabels[facts.documentType.value] : item.originalFilename ?? "Document"}</strong>{demo ? null : <WorkspaceAnchor href={`/api/v1/media/${item.id}`} target="_blank" rel="noopener noreferrer">Open original<ExternalLink size={12} aria-hidden="true" /></WorkspaceAnchor>}</div>
         <span className="cell-sub">{item.originalFilename ?? "Uploaded document"} · uploaded {new Date(item.createdAt).toLocaleDateString("en-GB", { dateStyle: "medium" })}</span>
         {!item.analysis ? <span className="cell-sub">Reading the text layer…</span> : null}
         {item.analysis && item.analysis.status !== "completed" ? <span className="cell-sub">{analysis?.reason ?? "This document could not be analysed."}</span> : null}

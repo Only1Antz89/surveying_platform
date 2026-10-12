@@ -1,5 +1,5 @@
 import { requireWorkspacePageAccess } from "@/lib/workspace-page-access";
-import Link from "next/link";
+import Link from "@/components/workspace-link";
 import { canManageTeam, canMutateOperations } from "@surveynt/domain";
 import { AiGovernancePanel } from "@/components/ai-governance-panel";
 import { PageHeader } from "@/components/page-header";

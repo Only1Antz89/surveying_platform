@@ -1,0 +1,1 @@
+ALTER TABLE "organisation_operational_settings" ADD COLUMN "report_template_settings" jsonb;

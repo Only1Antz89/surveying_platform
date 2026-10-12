@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CalendarReviewSummary } from "@/lib/calendar-review-summary";
@@ -19,7 +20,7 @@ export function CalendarReviewDetails(review: CalendarReviewSummary & { jobId: s
     setMessage("");
     try {
       const date = form.get("expiresAt");
-      const response = await fetch(`/api/platform/background-jobs/${review.jobId}/calendar-review`, {
+      const response = await workspaceFetch(`/api/platform/background-jobs/${review.jobId}/calendar-review`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

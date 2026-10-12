@@ -1,15 +1,17 @@
+import {PracticeAdministration} from "@/components/practice-administration";
 import { requireWorkspacePageAccess } from "@/lib/workspace-page-access";
-import Link from "next/link";
+import Link from "@/components/workspace-link";
 import Image from "next/image";
 import { DemoLauncher } from "@/components/demo-launcher";
 import { BriefcaseBusiness, CalendarDays, CirclePoundSterling, Users } from "lucide-react";
 import { StatusDot } from "@surveynt/ui";
 import { jobStageLabels } from "@surveynt/domain";
 import { PageHeader } from "@/components/page-header";
+import { SurveyorCapacityView } from "@/components/surveyor-capacity";
+import { loadSurveyorCapacity } from "@/lib/load-surveyor-capacity";
 import { loadOverview } from "@/lib/data";
 import { requireFirmAccess } from "@/lib/access";
-import { MyWork } from "@/components/my-work";
-import { redirect } from "next/navigation";
+import {redirectWorkspace as redirect} from "@/lib/workspace-redirect";
 
 export const metadata = { title: "Overview" };
 
@@ -18,12 +20,13 @@ const currency = new Intl.NumberFormat("en-GB", { style: "currency", currency: "
 export default async function OverviewPage({ params }: { params: Promise<{ organisationSlug: string }> }) {
   const { organisationSlug } = await params; await requireWorkspacePageAccess(organisationSlug, "overview");
   const access = await requireFirmAccess(organisationSlug);
-  if (access.userRole === "finance") redirect(`/app/${organisationSlug}/finance`);
-  if (access.userRole === "surveyor") return <MyWork slug={organisationSlug} />;
+  if (access.userRole === "finance") await redirect(`/app/${organisationSlug}/finance`);
+  if(access.workspaceMode==="administration")return <PracticeAdministration slug={organisationSlug}/>;
   const [context, overview] = await Promise.all([
     requireFirmAccess(organisationSlug),
     loadOverview(organisationSlug),
   ]);
+  const capacity = access.workspaceMode === "manager" ? await loadSurveyorCapacity({organisationId:access.organisationId,internalUserId:access.internalUserId,role:access.userRole,workspaceMode:access.workspaceMode,demo:access.userId==="demo_user"}) : [];
   const firstName = context.userName.split(/\s+/)[0];
   const today = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "Europe/London" }).format(new Date());
   const metrics = [
@@ -39,6 +42,7 @@ export default async function OverviewPage({ params }: { params: Promise<{ organ
     <section className="metric-grid" aria-label="Practice summary">
       {metrics.map((metric) => <Link className="metric" key={metric.label} href={metric.href}><div className="metric-head"><span>{metric.label}</span><span className="metric-icon"><metric.icon /></span></div><div className="metric-value">{metric.value}</div><div className="metric-foot"><strong>{metric.foot}</strong></div></Link>)}
     </section>
+    {access.workspaceMode === "manager" ? <SurveyorCapacityView people={capacity} slug={organisationSlug} compact/> : null}
     <div className="dashboard-grid">
       <div>
         <section className="panel">

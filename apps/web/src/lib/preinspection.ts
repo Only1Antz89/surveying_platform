@@ -11,7 +11,7 @@ export class PreinspectionError extends Error {
   constructor(public status: number, public code: string, message: string) { super(message); }
 }
 export type Scope = { organisationId: string; jobId: string; propertyId: string; actorUserId: string | null; source: "customer" | "staff_transcribed_client"; valuation: boolean };
-export type PreinspectionStaff = { organisationId: string; internalUserId: string | null; role: OrganisationRole };
+export type PreinspectionStaff = { organisationId: string; internalUserId: string | null; role: OrganisationRole; actorRole?: OrganisationRole };
 const hash = (token: string) => createHash("sha256").update(token).digest("hex");
 const denied = () => new PreinspectionError(404, "questionnaire_unavailable", "This questionnaire is unavailable or your link has expired.");
 
@@ -45,10 +45,10 @@ export async function staffPreinspection<T>(context: PreinspectionStaff, jobId: 
   if (!z.uuid().safeParse(jobId).success) throw denied();
   return withTenant(createDatabase(), context.organisationId, async tx => {
     const [member] = await tx.select().from(organisationMemberships).where(and(eq(organisationMemberships.organisationId, context.organisationId), eq(organisationMemberships.userId, context.internalUserId ?? "00000000-0000-0000-0000-000000000000"), eq(organisationMemberships.active, true))).for("share").limit(1);
-    if (!member || member.role !== context.role || (!isManagementRole(member.role) && member.role !== "surveyor")) throw denied();
+    if (!member || member.role !== (context.actorRole??context.role) || (!isManagementRole(member.role) && member.role !== "surveyor")) throw denied();
     await enabled(tx, context.organisationId);
     const [job] = await tx.select().from(jobs).where(and(eq(jobs.id, jobId), eq(jobs.organisationId, context.organisationId))).for("update").limit(1);
-    if (!job || (member.role === "surveyor" && job.assignedSurveyorId !== context.internalUserId)) throw denied();
+    if (!job || (context.role === "surveyor" && job.assignedSurveyorId !== context.internalUserId)) throw denied();
     return work(tx, { organisationId: context.organisationId, jobId, propertyId: job.propertyId, actorUserId: context.internalUserId, source: "staff_transcribed_client", valuation: /valuation/i.test(job.serviceName) });
   });
 }

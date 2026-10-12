@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import Stripe from "stripe";
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
@@ -38,7 +39,7 @@ export async function POST(request: Request, route: RouteContext<"/api/v1/financ
       if (session.status === "open") session = await stripe.checkout.sessions.expire(session.id,{},{ idempotencyKey: `resolve-checkout-${payment.id}-${session.id}` });
       if (!matches() || session.status !== "expired" || session.payment_status === "paid") return problem(409,"checkout_pending","The provider has not confirmed that this unpaid Checkout expired.");
       await tx.update(clientPayments).set({ status: "failed", updatedAt: new Date() }).where(eq(clientPayments.id,id));
-      await tx.insert(auditEvents).values({ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "client_payment.checkout_resolved", resourceType: "client_payment", resourceId: id, metadata: { checkoutSessionId: session.id, providerStatus: session.status, reason: parsed.data.reason, fundsTransferred: false } });
+      await tx.insert(auditEvents).values(workspaceAudit(context,{ organisationId: context.organisationId, actorUserId: context.internalUserId, action: "client_payment.checkout_resolved", resourceType: "client_payment", resourceId: id, metadata: { checkoutSessionId: session.id, providerStatus: session.status, reason: parsed.data.reason, fundsTransferred: false } }));
       return ok({ id, resolved: true },{ fundsTransferred: false });
     });
   } catch { return problem(503,"provider_unavailable","Checkout resolution could not be confirmed. Retry the same session; no resolution has been confirmed."); }

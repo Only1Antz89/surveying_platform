@@ -29,7 +29,7 @@ export async function clientApiContext(request: Request): Promise<ClientApiConte
     if (session.permission === "read" && request.method !== "GET") return null;
     organisationId = session.organisationId; permission = session.permission;
   }
-  return { userId: operator.userId, internalUserId: null, clerkOrganisationId: "support", organisationId, role: "administrator", canRecordSurvey: false, canApproveReports: false, accessLevel: permission === "write" ? "full" : "read_only", demo: operator.demo, platformStaffId: operator.platformStaffId, supportSessionId: match[1] };
+  return { userId: operator.userId, internalUserId: null, clerkOrganisationId: "support", organisationId, role: "administrator", actorRole: "administrator", workspaceMode: "administration", canRecordSurvey: false, canApproveReports: false, accessLevel: permission === "write" ? "full" : "read_only", demo: operator.demo, platformStaffId: operator.platformStaffId, supportSessionId: match[1] };
 }
 export function clientAuditActor(context: ClientApiContext) {
   return { actorUserId: context.internalUserId, ...(context.platformStaffId ? { platformStaffId: context.platformStaffId, supportSessionId: context.supportSessionId } : {}) };

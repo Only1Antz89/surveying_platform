@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 
 import { type FormEvent, useState } from "react";
 import { Pencil, ShieldCheck, UserPlus, X } from "lucide-react";
@@ -18,7 +19,7 @@ export function PlatformStaffManager({ staff, currentStaffId, canManage }: { sta
   const [error, setError] = useState<string | null>(null);
 
   async function send(url: string, method: "POST" | "PATCH", body: unknown) {
-    const response = await fetch(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const response = await workspaceFetch(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload?.error?.message ?? "The platform access change could not be completed.");
     router.refresh();

@@ -1,5 +1,5 @@
 import { suggestedServiceScope } from "./service-scope";
-import { defaultTemplate, homeSurveyTemplatesV1_1 as homeSurveyTemplates } from "@surveynt/assistant";
+import { defaultTemplate, homeSurveyTemplatesV1_2 as homeSurveyTemplates } from "@surveynt/assistant";
 import { jobs as demoJobs, properties as demoProperties } from "./demo-data";
 
 /** Labelled demo pack so the capture workflow can be explored without a database. Nothing is persisted. */
@@ -21,6 +21,11 @@ export function demoSurveyPack(jobId: string) {
     evidence: [],
     assistantEnabled: true,
     proposals: [
+      ...(template.key === defaultTemplate.key ? [] : [
+        {id:"demo-job-reference",fieldPath:"a.details.report_reference",proposedValue:{state:"provided",value:job.reference},originClass:"job_record",evidenceRefs:[{type:"job",id:job.id,label:`DEMO job ${job.reference}`}],limitations:["Demo job record — confirm before use."],baseValueId:null,createdAt:new Date().toISOString()},
+        {id:"demo-property-address",fieldPath:"a.details.property_address",proposedValue:{state:"provided",value:[property?.address ?? job.address,property?.town,property?.postcode].filter(Boolean).join(", ")},originClass:"job_record",evidenceRefs:[{type:"job",id:job.id,label:"DEMO linked property record"}],limitations:["Verify the property identity before inspection."],baseValueId:null,createdAt:new Date().toISOString()},
+        {id:"demo-surveyor-name",fieldPath:"a.details.surveyor_name",proposedValue:{state:"provided",value:job.assignee},originClass:"practice_record",evidenceRefs:[{type:"job",id:job.id,label:"DEMO assigned surveyor"}],limitations:["Confirm the actual inspecting surveyor; no RICS membership number has been assumed."],baseValueId:null,createdAt:new Date().toISOString()},
+      ]),
       { id: "demo-proposal-1", fieldPath: template.key === defaultTemplate.key ? "about.property.construction_period" : "c.details.built_year", proposedValue: { state: "provided", value: template.key === defaultTemplate.key ? "1900_1929" : "1900–1929" }, originClass: "external_record", evidenceRefs: [{ type: "intelligence_snapshot", id: "demo", label: "DEMO energy certificate lodged 2023-06-12" }], limitations: ["SIMULATED EXAMPLE — not a live record for this property.", "EPC construction band: verify during inspection; not an exact year."], baseValueId: null, createdAt: new Date().toISOString() },
       ...(template.key === defaultTemplate.key ? [] : [{ id: "demo-proposal-2", fieldPath: "c.details.property_type", proposedValue: { state: "provided", value: "Semi-detached house" }, originClass: "external_record", evidenceRefs: [{ type: "intelligence_snapshot", id: "demo-type", label: "DEMO energy certificate" }], limitations: ["SIMULATED EXAMPLE — confirm the current property type yourself."], baseValueId: null, createdAt: new Date().toISOString() }]),
     ],

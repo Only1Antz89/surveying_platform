@@ -72,3 +72,21 @@ describe("reviewed external decisions",()=>{
     await expect(readReviewedExternalEvent("microsoft","token",visit.id,"linked",null,reviewed,fetcher)).rejects.toThrow();
   });
 });
+
+describe("manager-confirmed reassignment cleanup",()=>{
+ it("conditionally removes only the unchanged owned event",async()=>{
+  const {removeReassignedExternalEvent}=await import("./calendar-provider-review");
+  const fetcher=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({id:"event",etag:"rev1",extendedProperties:{private:{surveyntAppointmentId:"visit"}}}))).mockResolvedValueOnce(new Response(null,{status:204}));
+  await removeReassignedExternalEvent("google","token","visit","event","rev1",fetcher);
+  expect(fetcher.mock.calls[1][1]).toMatchObject({method:"DELETE",headers:{"if-match":"rev1"}});
+ });
+ it("holds externally changed events for review",async()=>{
+  const {removeReassignedExternalEvent}=await import("./calendar-provider-review");
+  const fetcher=vi.fn().mockResolvedValue(new Response(JSON.stringify({id:"event",etag:"rev2",extendedProperties:{private:{surveyntAppointmentId:"visit"}}})));
+  await expect(removeReassignedExternalEvent("google","token","visit","event","rev1",fetcher)).rejects.toThrow("changed externally");expect(fetcher).toHaveBeenCalledTimes(1);
+ });
+ it("recovers a removal whose local transaction was interrupted",async()=>{
+  const {removeReassignedExternalEvent}=await import("./calendar-provider-review");const fetcher=vi.fn().mockResolvedValue(new Response(null,{status:404}));
+  await expect(removeReassignedExternalEvent("microsoft","token","visit","event","rev1",fetcher)).resolves.toBeUndefined();expect(fetcher).toHaveBeenCalledTimes(1);
+ });
+});

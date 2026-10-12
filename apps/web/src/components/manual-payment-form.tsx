@@ -1,4 +1,5 @@
 "use client";
+import {workspaceFetch} from "@/lib/workspace-request";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, CheckCircle2, CreditCard } from "lucide-react";
@@ -30,7 +31,7 @@ export function ManualPaymentForm({ invoiceId, paymentId, quote, maximumMinor, c
       const body = JSON.stringify(fields);
       if (attempt.current?.body !== body) attempt.current = { body, id: crypto.randomUUID() };
       const url = quote ? `/api/v1/quotes/${quote.id}/manual-deposit` : paymentId ? `/api/v1/finance/payments/${paymentId}/manual-refund` : `/api/v1/finance/invoices/${invoiceId}/manual-payments`;
-      const response = await fetch(url, {
+      const response = await workspaceFetch(url, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ ...fields, requestId: attempt.current.id }),

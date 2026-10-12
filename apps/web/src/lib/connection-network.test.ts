@@ -1,0 +1,4 @@
+import {vi,describe,it,expect} from "vitest";
+vi.mock("server-only",()=>({}));
+import {allowedEndpoint,publicAddress} from "./connection-network";
+describe("approved provider outbound boundary",()=>{it("requires an exact approved HTTPS host",()=>{expect(allowedEndpoint("https://example.com/v1",["example.com"]).hostname).toBe("example.com");for(const url of ["http://example.com","https://other.com","https://u:p@example.com","https://example.com?key=secret","https://example.com:8080","https://127.0.0.1"]){expect(()=>allowedEndpoint(url,["example.com"])).toThrow();}});it("rejects private, loopback, link-local and mapped IPv6 addresses",()=>{for(const ip of ["127.0.0.1","10.1.2.3","169.254.169.254","172.16.0.1","192.168.0.1","100.64.0.1","::1","::ffff:127.0.0.1","fd00::1","fe80::1","2001:db8::1"]){expect(publicAddress(ip)).toBe(false);}expect(publicAddress("8.8.8.8")).toBe(true);});});

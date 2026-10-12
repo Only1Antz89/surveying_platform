@@ -1,3 +1,4 @@
+import {workspaceAudit} from "@/lib/workspace-audit";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -32,7 +33,7 @@ export async function POST(request: Request, route: RouteContext<"/api/v1/financ
     if(input.amountMinor>invoice.totalMinor-balance.creditedMinor || input.vatMinor>invoice.vatMinor-balance.creditedVatMinor || input.amountMinor-input.vatMinor>invoice.subtotalMinor-balance.creditedMinor+balance.creditedVatMinor)return problem(409,"credit_exceeds_invoice","The credit exceeds the remaining original gross, VAT or net amount.");
     const [credit]=await tx.insert(invoiceCredits).values({organisationId:c.organisationId,invoiceId:id,requestId:input.requestId,number:`CN-${input.requestId.replaceAll("-","").toUpperCase()}`,amountMinor:input.amountMinor,vatMinor:input.vatMinor,reason:input.reason,evidence:input.evidence,fingerprint,issuedByUserId:c.internalUserId!}).returning();
     const updated=await refreshInvoiceBalance(tx,invoice);
-    await tx.insert(auditEvents).values({organisationId:c.organisationId,actorUserId:c.internalUserId,action:"invoice.credit_issued",resourceType:"invoice_credit",resourceId:credit.id,metadata:{invoiceId:id,number:credit.number,amountMinor:credit.amountMinor,vatMinor:credit.vatMinor,currency:invoice.currency,overpaidMinor:updated.overpaidMinor}});
+    await tx.insert(auditEvents).values(workspaceAudit(c,{organisationId:c.organisationId,actorUserId:c.internalUserId,action:"invoice.credit_issued",resourceType:"invoice_credit",resourceId:credit.id,metadata:{invoiceId:id,number:credit.number,amountMinor:credit.amountMinor,vatMinor:credit.vatMinor,currency:invoice.currency,overpaidMinor:updated.overpaidMinor}}));
     return ok(credit,{fundsTransferred:false,refundRequiredMinor:updated.overpaidMinor});
   });
 }
