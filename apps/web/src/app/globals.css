@@ -788,3 +788,12 @@ fieldset.field legend { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
 .floor-schematic .room-area { font-size: 9px; fill: var(--muted); }
 .floor-schematic figcaption { font-size: 10px; color: var(--muted); }
 .floor-plan-panel .completion-footer { display: flex; flex-wrap: wrap; gap: 8px; }
+/* Terms of engagement */
+.terms-editor { min-height: 260px; font-family: var(--font-geist-sans), Arial, sans-serif; line-height: 1.55; resize: vertical; }
+.client-terms-text { max-height: 320px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--canvas); padding: 14px 16px; font-size: 13px; line-height: 1.6; color: var(--ink); }
+.client-terms-text h3 { margin: 0 0 8px; font-size: 15px; }
+.client-terms-text p { margin: 0 0 10px; white-space: pre-line; }
+.client-terms-text:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.quote-form .client-terms-agree { display: flex; align-items: flex-start; gap: 8px; color: var(--ink); font-weight: 500; }
+.quote-form .client-terms-agree input { min-height: 0; margin-top: 3px; }
+.client-terms-signed { display: flex; align-items: center; gap: 8px; color: var(--success); font-weight: 600; }
