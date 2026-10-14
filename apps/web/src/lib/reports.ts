@@ -2,6 +2,8 @@ import {workspaceAudit} from "@/lib/workspace-audit";
 import { hasProfessionalPermission } from "@surveynt/domain";
 import { currentProfessionalPermission } from "./professional-membership";
 import { and, desc, eq, inArray, max } from "drizzle-orm";
+import { surveyRoomsFor } from "./floor-plans";
+import { accommodationSchedule } from "./floor-plan-model";
 import { canonicalJson, composeReport, composerInputFingerprint, COMPOSER, REPORT_SIGN_OFF_STATEMENT, type ComposedReport, type ComposerInput, type FieldValue, type InspectionStatus, type ServiceLevel } from "@surveynt/assistant";
 import { auditEvents, completionOverrides, createDatabase, jobs, reportApprovals, reportVersions, surveyFileRemovals, surveys, withTenant, type TenantTransaction } from "@surveynt/db";
 import { completionReportFromPack } from "./completion-input";
@@ -37,7 +39,11 @@ export async function currentReportInput(tx: TenantTransaction, context: Pick<Su
   const pack = await readSurveyPack(tx, context, surveyId);
   if (!pack) return null;
   const input = composerInput(pack, await approvedClauses(tx, context.organisationId));
-  return { pack, input, fingerprint: await composerInputFingerprint(input) };
+  const rooms = await surveyRoomsFor(tx, context.organisationId, surveyId);
+  const composed = await composerInputFingerprint(input);
+  // Measurements join the fingerprint only when recorded, so existing reports stay current.
+  const fingerprint = rooms.length ? await sha256(canonicalJson({ composer: composed, rooms: rooms.map(({ floor, name, lengthM, widthM, heightM, areaOverrideM2 }) => ({ floor, name, lengthM, widthM, heightM, areaOverrideM2 })) })) : composed;
+  return { pack, input, rooms, fingerprint };
 }
 
 /** Composes a new, immutable draft version from approved material only. */
@@ -55,7 +61,7 @@ export async function composeSurveyReport(context: SurveyContext, surveyId: stri
     const completion = completionReportFromPack(current.pack);
     const [{ latest }] = await tx.select({ latest: max(reportVersions.versionNumber) }).from(reportVersions).where(and(eq(reportVersions.surveyId, surveyId), eq(reportVersions.organisationId, context.organisationId)));
     const [survey] = await tx.select({ templateFingerprint: surveys.templateFingerprint }).from(surveys).where(eq(surveys.id, surveyId)).limit(1);
-    const content = report as unknown as Record<string, unknown>;
+    const content = { ...report, ...(current.rooms.length ? { accommodation: accommodationSchedule(current.rooms) } : {}) } as unknown as Record<string, unknown>;
     const [created] = await tx.insert(reportVersions).values({
       organisationId: context.organisationId, surveyId, jobId: current.pack.survey.jobId, versionNumber: (latest ?? 0) + 1, composer: COMPOSER,
       templateKey: current.pack.survey.templateKey, templateVersion: current.pack.survey.templateVersion, templateFingerprint: survey.templateFingerprint, ruleSetVersion: completion?.ruleSetVersion ?? null,

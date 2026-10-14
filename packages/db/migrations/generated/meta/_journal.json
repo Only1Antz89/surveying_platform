@@ -575,6 +575,20 @@
       "when": 1791735938116,
       "tag": "0081_solid_onslaught",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1791971995672,
+      "tag": "0082_practice_completion",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1791977419595,
+      "tag": "0083_client_portal",
+      "breakpoints": true
     }
   ]
 }

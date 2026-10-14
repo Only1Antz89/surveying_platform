@@ -4,6 +4,7 @@ import { appointments, auditEvents, createDatabase, jobs, jobStageEvents, organi
 import { readPublicQuote } from "@/lib/firm-operations";
 import { ok, parseBody, problem } from "@/lib/api";
 import { availableSurveyor, quoteSlots, schedulingAvailability } from "@/lib/booking-slots";
+import { termsBlockBooking } from "@/lib/engagement-terms";
 
 export async function GET(request:Request,route:RouteContext<"/api/v1/public/quotes/[id]/appointments">){
   const found=await readPublicQuote((await route.params).id,request.headers.get("x-quote-token")??"");
@@ -30,6 +31,7 @@ export async function POST(request: Request, route: RouteContext<"/api/v1/public
     if(existing)return existing.status==="cancelled"?{kind:"unavailable" as const}:{kind:"created" as const,appointment:existing};
     const [job]=await tx.select().from(jobs).where(and(eq(jobs.id,found.row.jobId!),eq(jobs.organisationId,found.row.organisationId))).for("update").limit(1);
     if(!job||!["instructed","scheduled"].includes(job.stage))return {kind:"unavailable" as const};
+    if(await termsBlockBooking(tx,found.row.organisationId,job.id))return {kind:"terms_required" as const};
     const [settings] = await tx.select().from(organisationOperationalSettings).where(eq(organisationOperationalSettings.organisationId, found.row.organisationId)).limit(1);
     if (!settings) return { kind: "unavailable" as const };
     const timezone = settings.timezone;
@@ -44,5 +46,6 @@ export async function POST(request: Request, route: RouteContext<"/api/v1/public
     await tx.insert(auditEvents).values({ organisationId: found.row.organisationId, action: "appointment.confirmed", resourceType: "appointment", resourceId: appointment.id, metadata: { jobId: found.row.jobId, surveyorId, startsAt: startsAt.toISOString() } });
     return { kind: "created" as const, appointment };
   });
+  if (result.kind === "terms_required") return problem(409, "terms_required", "Please sign the terms of engagement before booking your visit.");
   return result.kind === "created" ? ok(result.appointment) : problem(409, "slot_unavailable", "That appointment is no longer available. Choose another time.");
 }

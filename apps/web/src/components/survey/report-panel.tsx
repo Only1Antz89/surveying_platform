@@ -1,5 +1,7 @@
 "use client";
+import type { AccommodationSchedule } from "@/lib/floor-plan-model";
 import { reportDocument } from "@/lib/report-document";
+import { downloadFile } from "@/lib/download";
 import {workspaceFetch} from "@/lib/workspace-request";
 
 import { useCallback, useEffect, useState } from "react";
@@ -105,6 +107,7 @@ export function ReportPanel({ surveyId, canEdit, canJudge, online, demo, onChang
     {preview ? <div className="row-actions"><button type="button" className="button button-secondary" onClick={() => {
       const blob=new Blob([reportDocument(preview)],{type:"text/html;charset=utf-8"});const url=URL.createObjectURL(blob);const link=document.createElement("a");link.href=url;link.download=`${preview.jobReference.replace(/[^a-z0-9-]/gi,"-")}-draft.html`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
     }}>Download printable draft</button><p className="form-help">Black answers, purple report headings. This draft is not the licensed RICS document.</p></div> : null}
+    {!demo && latest && !latest.contentRemoved ? <button type="button" className="button button-secondary" disabled={busy||!online} onClick={()=>{setBusy(true);downloadFile(`/api/v1/surveys/${surveyId}/report/practice-pdf`,"practice-report.pdf").catch(error=>setMessage({tone:"error",text:(error as Error).message})).finally(()=>setBusy(false));}}>Download practice report PDF{latest.approval && latest.current ? "" : " (review copy)"}</button> : null}
     {ricsPdfAvailable && !demo && latest?.current && !latest.contentRemoved ? <button type="button" className="button button-secondary" disabled={busy||!online} onClick={()=>void downloadRicsPdf()}>Download central RICS PDF review copy</button> : null}
     {preview ? <article className="report-preview" aria-label="Report preview">
       <header><h3>{preview.title}</h3><p>{preview.property.line1}{preview.property.city ? `, ${preview.property.city}` : ""} · {preview.jobReference} · template {preview.templateVersion}</p></header>
@@ -113,6 +116,7 @@ export function ReportPanel({ surveyId, canEdit, canJudge, online, demo, onChang
         {section.blocks.map((block) => <Block key={block.id} block={block} />)}
         {section.elements.map((element) => <div key={element.key} className="report-element"><h5>{element.title}</h5>{element.blocks.map((block) => <Block key={block.id} block={block} />)}</div>)}
       </section> : null)}
+      {(preview as ComposedReport & { accommodation?: AccommodationSchedule }).accommodation ? <AccommodationTable schedule={(preview as ComposedReport & { accommodation: AccommodationSchedule }).accommodation} /> : null}
       {preview.recommendations.length ? <section><h4>Recommendations</h4>{preview.recommendations.map((block) => <Block key={block.id} block={block} />)}</section> : null}
       {preview.omissions.length ? <section className="report-omissions"><h4>Left out of this version</h4><ul>{preview.omissions.map((item) => <li key={item}>{item}</li>)}</ul></section> : null}
     </article> : <p className="form-help assistant-empty">{latest?.contentRemoved ? "Report content was removed after retention review. Version and approval records remain." : "No report composed yet."}</p>}
@@ -125,3 +129,14 @@ export function ReportPanel({ surveyId, canEdit, canJudge, online, demo, onChang
     {latest && !latest.contentRemoved && !latest.current && !approved ? <p className="identity-warning intel-inline">The survey or approved wording changed after version {latest.versionNumber} was composed. Compose a new version to sign off.</p> : null}
   </section>;
 }
+
+function AccommodationTable({ schedule }: { schedule: AccommodationSchedule }) {
+  return <section className="report-accommodation"><h4>Accommodation and measurements</h4>
+    <div className="data-table-wrap"><table className="data-table"><thead><tr><th>Room</th><th>Dimensions</th><th>Area</th></tr></thead>
+      <tbody>{schedule.floors.flatMap((floor) => [<tr key={floor.label} className="table-group"><th colSpan={2}>{floor.label}</th><th>{floor.areaM2} m²</th></tr>, ...floor.rooms.map((room, index) => <tr key={`${floor.label}-${index}`}><td>{room.name}</td><td>{room.dimensions ?? "Not measured"}</td><td>{room.areaM2 != null ? `${room.areaM2} m²` : "—"}</td></tr>)])}</tbody>
+      <tfoot><tr><th colSpan={2}>Total measured</th><th>{schedule.totalAreaM2} m² ({schedule.totalAreaSqFt.toLocaleString("en-GB")} sq ft)</th></tr></tfoot>
+    </table></div>
+    <p className="form-help">{schedule.basis}</p>
+  </section>;
+}
+

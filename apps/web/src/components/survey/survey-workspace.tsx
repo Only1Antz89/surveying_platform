@@ -13,6 +13,7 @@ import { SurveyEvidenceProvider } from "./survey-evidence-context";
 import { TemplateUpgrade } from "./template-upgrade";
 import { CompletionPanel } from "./completion-panel";
 import { DocumentsPanel } from "./documents-panel";
+import { FloorPlanPanel } from "./floor-plan-panel";
 import { ReportPanel } from "./report-panel";
 import { SharedCasesPanel } from "./shared-cases-panel";
 
@@ -306,9 +307,10 @@ export function SurveyWorkspace({ surveyId, canEdit: initialCanEdit, canJudge: i
       })}
     </div>
     </div>
-    <aside className="survey-side" aria-label="Checks, suggestions, documents and report">
+    <aside className="survey-side" aria-label="Checks, measurements, suggestions, documents and report">
       <CompletionPanel pack={completionPack} pendingCount={demo ? 0 : pendingCount} onGoTo={(sectionKey, elementKey) => { goToSection(sectionKey); if(mode==="questionnaire"){const index=questions.findIndex(item=>item.section.key===sectionKey && item.element.key===elementKey);if(index>=0)setQuestionIndex(index);} window.setTimeout(() => document.getElementById(`element-${sectionKey}-${elementKey}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 50); }} />
       <DocumentsPanel surveyId={surveyId} pack={pack} canEdit={canEdit && pack.survey.status === "in_progress"} online={online} demo={demo} onChanged={fetchPack} />
+      <FloorPlanPanel surveyId={surveyId} canEdit={canEdit && pack.survey.status === "in_progress"} online={online} demo={demo} />
       <AssistantPanel surveyId={surveyId} pack={assistantPack} onPreviewReview={demo ? previewReview : undefined} hideSuggestions sectionKey={activeSection.key} canEdit={canEdit && pack.survey.status === "in_progress"} canJudge={canJudge} online={online && (demo || (outbox.length === 0 && uploads.length === 0))} onChanged={fetchPack} />
       <ReportPanel recordingTemplate={{key:pack.template.key,version:pack.template.version}} templateReviewed={pack.template.reviewStatus === "surveyor_reviewed"} surveyId={surveyId} canEdit={canEdit} canJudge={canApprove} online={online} demo={demo} composePreview={demo ? composePreview : undefined} onChanged={fetchPack} />
       <SharedCasesPanel pack={pack} sectionKey={activeSection.key} online={online} />
