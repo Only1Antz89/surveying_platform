@@ -821,9 +821,9 @@ fieldset.field legend { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
 /* Client messages */
 .message-settings { display: grid; grid-template-columns: minmax(180px, 240px) minmax(0, 1fr); gap: 18px; }
 .message-list { display: grid; gap: 6px; align-content: start; }
-.message-list button { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; text-align: left; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 10px 12px; font: inherit; cursor: pointer; }
-.message-list button span:not(.status-dot) { grid-column: 1; color: var(--muted); font-size: 11px; }
-.message-list button > :last-child { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+.message-list button { display: flex; align-items: center; justify-content: space-between; gap: 8px; text-align: left; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 10px 12px; font: inherit; cursor: pointer; }
+.message-list-text { display: grid; gap: 2px; min-width: 0; }
+.message-list-text > span { color: var(--muted); font-size: 11px; }
 .message-list button.active { border-color: var(--blue); background: var(--blue-soft); }
 .message-editor { min-width: 0; }
 .message-preview { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; background: var(--canvas); font-size: 13px; }
@@ -833,3 +833,4 @@ fieldset.field legend { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
 @media (max-width: 760px) { .message-settings { grid-template-columns: 1fr; } }
 .adoption-bar { display: inline-block; width: 80px; height: 6px; border-radius: 3px; background: var(--border); margin-right: 8px; vertical-align: middle; overflow: hidden; }
 .adoption-bar span { display: block; width: var(--share); height: 100%; background: var(--blue); }
+.panel-header h2 > svg { display: inline-block; vertical-align: -3px; margin-right: 6px; flex-shrink: 0; }

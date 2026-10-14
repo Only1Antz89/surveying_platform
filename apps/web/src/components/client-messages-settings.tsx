@@ -51,7 +51,7 @@ export function ClientMessagesSettings({ canEdit }: { canEdit: boolean }) {
     <section className="panel">
       <div className="panel-header"><div><h2><MessageSquareText size={17} /> Client messages</h2><p>Write each message once. Placeholders in braces are filled from the job when it is sent.</p></div></div>
       <div className="panel-body message-settings">
-        <nav className="message-list" aria-label="Messages">{messageKeys.map((item) => { const email = data.templates.find((row) => row.key === item && row.channel === "email"); return <button key={item} type="button" aria-current={item === key ? "true" : undefined} className={item === key ? "active" : ""} onClick={() => { setKey(item); setDraft(null); }}><strong>{messageMeta[item].label}</strong><span>{messageMeta[item].automatic ? "Automatic" : "Sent from the job"}</span><StatusDot tone={email?.enabled ? "green" : "slate"}>{email?.enabled ? "On" : "Off"}</StatusDot></button>; })}</nav>
+        <nav className="message-list" aria-label="Messages">{messageKeys.map((item) => { const email = data.templates.find((row) => row.key === item && row.channel === "email"); return <button key={item} type="button" aria-current={item === key ? "true" : undefined} className={item === key ? "active" : ""} onClick={() => { setKey(item); setDraft(null); }}><span className="message-list-text"><strong>{messageMeta[item].label}</strong><span>{messageMeta[item].automatic ? "Automatic" : "Sent from the job"}</span></span><StatusDot tone={email?.enabled ? "green" : "slate"}>{email?.enabled ? "On" : "Off"}</StatusDot></button>; })}</nav>
         {editing ? <form className="stack message-editor" onSubmit={save}>
           <p className="form-help">{messageMeta[key].when}</p>
           <div className="segmented" role="radiogroup" aria-label="Channel"><button type="button" role="radio" aria-checked={channel === "email"} className={channel === "email" ? "active" : ""} onClick={() => setChannel("email")}>Email</button><button type="button" role="radio" aria-checked={channel === "sms"} className={channel === "sms" ? "active" : ""} onClick={() => setChannel("sms")}>Text message</button></div>
@@ -72,7 +72,7 @@ export function ClientMessagesSettings({ canEdit }: { canEdit: boolean }) {
         <label className="checkbox-row field full"><input type="checkbox" name="reviewEnabled" defaultChecked={data.reviewRequests.enabled} disabled={!canEdit} /> Ask clients for a review after issue</label>
         <div className="field"><label htmlFor="review-url">Review link</label><input id="review-url" name="reviewUrl" type="url" className="input" placeholder="https://g.page/r/…" defaultValue={data.reviewRequests.reviewUrl ?? ""} disabled={!canEdit} /></div>
         <div className="field"><label htmlFor="review-delay">Days after issue</label><input id="review-delay" name="delayDays" type="number" min="0" max="30" className="input" defaultValue={data.reviewRequests.delayDays} disabled={!canEdit} /></div>
-        {canEdit ? <div className="form-actions"><button className="button button-secondary" disabled={busy}>Save review settings</button></div> : null}
+        {canEdit ? <div className="form-actions field full"><button className="button button-secondary" disabled={busy}>Save review settings</button></div> : null}
       </form>
     </section>
     <p role="status" className="form-help">{message}</p>
