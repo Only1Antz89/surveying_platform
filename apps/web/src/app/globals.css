@@ -818,3 +818,16 @@ fieldset.field legend { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
 .cost-list li > div { display: grid; min-width: 0; }
 .inline-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; }
 .inline-form .input { width: 110px; }
+/* Client messages */
+.message-settings { display: grid; grid-template-columns: minmax(180px, 240px) minmax(0, 1fr); gap: 18px; }
+.message-list { display: grid; gap: 6px; align-content: start; }
+.message-list button { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; text-align: left; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 10px 12px; font: inherit; cursor: pointer; }
+.message-list button span:not(.status-dot) { grid-column: 1; color: var(--muted); font-size: 11px; }
+.message-list button > :last-child { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+.message-list button.active { border-color: var(--blue); background: var(--blue-soft); }
+.message-editor { min-width: 0; }
+.message-preview { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; background: var(--canvas); font-size: 13px; }
+.message-preview p { white-space: pre-line; margin: 8px 0 0; }
+.message-log { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 12px; }
+.message-log li { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+@media (max-width: 760px) { .message-settings { grid-template-columns: 1fr; } }

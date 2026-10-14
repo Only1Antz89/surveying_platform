@@ -8,6 +8,7 @@ export const emailJobTypes = [
   "support_approval_requested",
   "support_break_glass_notification",
   "customer_quote_issued",
+  "client_message",
 ] as const;
 
 export type EmailJobType = (typeof emailJobTypes)[number];
@@ -22,6 +23,7 @@ const payloadSchemas = {
   payment_issue_notice: basePayload.extend({ status: z.enum(["past_due", "unpaid"]), graceEndsAt: z.iso.datetime().nullable(), billingUrl: z.url() }),
   support_approval_requested: basePayload.extend({ ticketReference: z.string().min(3).max(80), reason: z.string().min(10).max(500), approvalUrl: z.url(), expiresAt: z.iso.datetime() }),
   support_break_glass_notification: basePayload.extend({ ticketReference: z.string().min(3).max(80), reason: z.string().min(10).max(500), expiresAt: z.iso.datetime() }),
+  client_message: basePayload.extend({ subject: z.string().trim().min(1).max(200), body: z.string().trim().min(1).max(5000), actionLabel: z.string().trim().min(1).max(60).optional(), actionUrl: z.url().optional() }),
   customer_quote_issued: basePayload.extend({ customerName: z.string().min(1).max(160), quoteReference: z.string().min(3).max(80), total: z.string().min(1).max(40), expiresAt: z.iso.datetime(), quoteUrl: z.url() }),
 } satisfies Record<EmailJobType, z.ZodType>;
 
@@ -65,6 +67,13 @@ export function renderEmail(type: EmailJobType, rawPayload: unknown, templates?:
     const intro = `Surveynt support has requested time-limited write access to ${value.organisationName}.`;
     const details = [`Ticket: ${value.ticketReference}`, `Reason: ${value.reason}`, `Request expires: ${formatDate(value.expiresAt)}`, "No write access is granted unless a practice owner approves this request."];
     return { to: value.recipients, subject: `${title} · ${value.ticketReference}`, text: `${title}\n\n${intro}\n\n${details.join("\n")}\n\nReview request: ${value.approvalUrl}`, html: frame(title, intro, details, { label: "Review request", url: value.approvalUrl }) };
+  }
+  if (type === "client_message") {
+    const value = payloadSchemas.client_message.parse(payload);
+    const [intro, ...details] = value.body.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
+    const subject = value.subject.replace(/[\r\n]/g, " ");
+    const action = value.actionUrl && value.actionLabel ? { label: value.actionLabel, url: value.actionUrl } : undefined;
+    return { to: value.recipients, subject, text: `${value.body}${action ? `\n\n${action.label}: ${action.url}` : ""}\n\n${value.organisationName}`, html: frame(subject, intro ?? value.body, details, action) };
   }
   if (type === "customer_quote_issued") {
     const value = payloadSchemas.customer_quote_issued.parse(payload);

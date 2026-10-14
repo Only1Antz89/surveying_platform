@@ -8,6 +8,8 @@ import { isManagementRole } from "@surveynt/domain";
 import { notFound } from "next/navigation";
 import { WebsiteEnquiries } from "@/components/website-enquiries";
 import Link from "@/components/workspace-link";
+import { ReferralSources } from "@/components/referral-sources";
+import { ClientMessagesSettings } from "@/components/client-messages-settings";
 
 export const metadata = { title: "CRM Suite" }; export const dynamic = "force-dynamic";
 export default async function Page({ params,searchParams }: PageProps<"/app/[organisationSlug]/customers">) {
@@ -15,6 +17,14 @@ export default async function Page({ params,searchParams }: PageProps<"/app/[org
   const access = await requireWorkspacePageAccess(organisationSlug, "customers");
   const query = await searchParams;
 
+  if (query.view === "referrals") {
+    if (!isManagementRole(access.userRole)) notFound();
+    return <main className="page"><PageHeader title="Referral sources" description="Where instructions come from and what each source is worth."/><ReferralSources canEdit={access.accessLevel === "full"}/></main>;
+  }
+  if (query.view === "messages") {
+    if (!isManagementRole(access.userRole)) notFound();
+    return <main className="page"><PageHeader title="Client messages" description="Reminders, updates and review requests your clients receive."/><ClientMessagesSettings canEdit={access.accessLevel === "full"}/></main>;
+  }
   if (query.view === "enquiries") {
     if (!isManagementRole(access.userRole)) notFound();
     return <main className="page"><PageHeader title="Website enquiries" description="Customer requests collected through your website form."/><WebsiteEnquiries canEdit={access.accessLevel === "full" && access.userId !== "demo_user"}/></main>;
