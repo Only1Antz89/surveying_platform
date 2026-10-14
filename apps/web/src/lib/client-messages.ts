@@ -1,4 +1,3 @@
-import "server-only";
 import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { appointments, auditEvents, clientMessages, clients, createDatabase, jobStageEvents, jobs, messageTemplates, organisationOperationalSettings, organisations, properties, users, withTenant, type TenantTransaction } from "@surveynt/db";
 import { canMutateOperations, isManagementRole, type OrganisationRole } from "@surveynt/domain";

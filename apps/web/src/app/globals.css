@@ -831,3 +831,5 @@ fieldset.field legend { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
 .message-log { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 12px; }
 .message-log li { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 @media (max-width: 760px) { .message-settings { grid-template-columns: 1fr; } }
+.adoption-bar { display: inline-block; width: 80px; height: 6px; border-radius: 3px; background: var(--border); margin-right: 8px; vertical-align: middle; overflow: hidden; }
+.adoption-bar span { display: block; width: var(--share); height: 100%; background: var(--blue); }

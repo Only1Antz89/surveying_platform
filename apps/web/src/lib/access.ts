@@ -2,7 +2,8 @@ import {headers} from "next/headers";
 import {resolveWorkspace,workspaceRoute,workspaceHref} from "./workspace-mode";
 import { auth } from "@clerk/nextjs/server";
 import { resolveAccess } from "@surveynt/domain";
-import { createDatabase, entitlements, organisationMemberships, organisations, platformStaff, subscriptions, users } from "@surveynt/db";
+import { createDatabase, entitlements, organisationMemberships, organisationOperationalSettings, organisations, platformStaff, subscriptions, users } from "@surveynt/db";
+import { twoStepAccountPath, twoStepSatisfied } from "./two-step-policy";
 import { and, eq, sql } from "drizzle-orm";
 import { notFound, redirect } from "next/navigation";
 import { cache } from "react";
@@ -77,9 +78,11 @@ async function requireFirmAccessUncached(slug: string) {
       .where(eq(subscriptions.organisationId, organisation.id))
       .limit(1);
     const [billingExemption] = await tx.select({ enabled: entitlements.enabled }).from(entitlements).where(and(eq(entitlements.organisationId, organisation.id), eq(entitlements.key, "billing_exempt"), eq(entitlements.enabled, true))).limit(1);
-    return { member, subscription, billingExemption };
+    const [policy] = await tx.select({ requireTwoStep: organisationOperationalSettings.requireTwoStep }).from(organisationOperationalSettings).where(eq(organisationOperationalSettings.organisationId, organisation.id)).limit(1);
+    return { member, subscription, billingExemption, requireTwoStep: policy?.requireTwoStep ?? false };
   });
   if (!details.member) notFound();
+  if (!twoStepSatisfied(details.requireTwoStep, session.factorVerificationAge)) redirect(twoStepAccountPath);
   const instance=resolveWorkspace(details.member.role,requested);if(!instance)notFound();
   const userName = [details.member.firstName, details.member.lastName].filter(Boolean).join(" ") || details.member.email;
   const accessLevel = organisation.status === "active" && (details.billingExemption?.enabled || hasPilotExemption(organisation.id))
@@ -158,9 +161,12 @@ export async function apiContext(request: Request) {
       )).limit(1);
     const [subscription] = await tx.select({ status: subscriptions.status, graceEndsAt: subscriptions.graceEndsAt }).from(subscriptions).where(eq(subscriptions.organisationId, organisation.id)).limit(1);
     const [billingExemption] = await tx.select({ enabled: entitlements.enabled }).from(entitlements).where(and(eq(entitlements.organisationId, organisation.id), eq(entitlements.key, "billing_exempt"), eq(entitlements.enabled, true))).limit(1);
-    return { member, subscription, billingExemption };
+    const [policy] = await tx.select({ requireTwoStep: organisationOperationalSettings.requireTwoStep }).from(organisationOperationalSettings).where(eq(organisationOperationalSettings.organisationId, organisation.id)).limit(1);
+    return { member, subscription, billingExemption, requireTwoStep: policy?.requireTwoStep ?? false };
   });
   if (!details.member) return null;
+  // Practices requiring two-step sign-in admit only sessions verified with a second factor.
+  if (!twoStepSatisfied(details.requireTwoStep, session.factorVerificationAge) && !/^\/api\/(?:v1\/)?me(\/|$)/.test(new URL(request.url).pathname)) return null;
   const accessLevel = organisation.status === "active" && (details.billingExemption?.enabled || hasPilotExemption(organisation.id))
     ? "full" as const
     : resolveAccess(organisation.status, details.subscription?.status ?? "incomplete", details.subscription?.graceEndsAt);

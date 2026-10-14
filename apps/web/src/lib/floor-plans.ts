@@ -1,4 +1,3 @@
-import "server-only";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { auditEvents, createDatabase, jobs, surveyRooms, surveys, withTenant, type TenantTransaction } from "@surveynt/db";
 import { workspaceAudit } from "./workspace-audit";
