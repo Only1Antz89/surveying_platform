@@ -29,3 +29,17 @@ These features need no new supplier contracts.
 - **Two-step sign-in:** relies on Clerk's session factor-verification claim, which Clerk marks experimental. Enable MFA in the Clerk instance before a practice turns the policy on.
 - **Terms of engagement:** the default demo wording is fictional. Practices should have their own terms checked by their adviser.
 - **Accounting import:** uses sales account code 200 and standard UK VAT names. Practices with different charts of accounts should adjust after import, or this can be made a setting.
+
+## Client portal
+
+- **What the client sees.** A branded page at `/portal/<id>`, opened with a secure link. The page shows:
+  - the practice's name, https logo and accent colour;
+  - the illustrated building or land next to real photos from the survey;
+  - progress with dates and the appointment;
+  - documents: the RICS report and practice report once issued and still current, signed terms, the quote, and invoice PDFs;
+  - shared photos, video and certificates;
+  - property information released by the practice.
+- **Links.** Website-form clients get the link emailed automatically when their quote converts into a job. For manually created customers, the job record's **Client portal** panel emails the link, creates a link to copy, or turns it off. Each new link replaces the old one. Quote clients can also open the portal from their quote page.
+- **Sharing.** Photos and certificates appear only after the practice shares them from the panel. Reports appear once issued.
+- **Database.** Apply migration `0083_client_portal`. A fictional demonstration is at `/portal/demo`.
+

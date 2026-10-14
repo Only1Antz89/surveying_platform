@@ -25,8 +25,8 @@ export function demoPortalView(): PortalView {
       { id: "00000000-0000-4000-8000-000000000102", number: "INV-2057", status: "open", currency: "GBP", totalMinor: 145000, issuedAt: daysAgo(3), dueAt: daysAgo(-11) },
     ],
     files: [
-      { id: "demo-photo-1", category: "photo", title: "Front elevation", contentType: "image/webp", sharedAt: daysAgo(4, 16), previewSrc: "/surveynt-architecture.webp" },
-      { id: "demo-photo-2", category: "photo", title: "Rear terrace and garden wall", contentType: "image/webp", sharedAt: daysAgo(4, 16), previewSrc: "/property-artwork/terraced-row.webp" },
+      { id: "demo-photo-1", category: "photo", title: "Street elevation", contentType: "image/webp", sharedAt: daysAgo(4, 16), previewSrc: "/property-artwork/terraced-row.webp" },
+      { id: "demo-photo-2", category: "photo", title: "Rear and garden wall", contentType: "image/webp", sharedAt: daysAgo(4, 16), previewSrc: "/property-artwork/cottage.webp" },
       { id: "demo-cert-1", category: "certificate", title: "Gas safety record (2026)", contentType: "application/pdf", sharedAt: daysAgo(3, 11) },
       { id: "demo-cert-2", category: "certificate", title: "Electrical installation condition report", contentType: "application/pdf", sharedAt: daysAgo(3, 11) },
     ],

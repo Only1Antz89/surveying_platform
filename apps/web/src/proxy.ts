@@ -21,7 +21,7 @@ export default async function proxy(request: NextRequest, event: NextFetchEvent)
     return NextResponse.redirect(destination);
   }
   const response = !process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || !process.env.CLERK_SECRET_KEY ? workspaceResponse(request) : await clerkProxy(request, event) ?? workspaceResponse(request);
-  if(request.nextUrl.pathname.startsWith("/app/")||request.nextUrl.pathname.startsWith("/api/v1/workspaces/"))response.headers.set("Cache-Control","private, no-store");
+  if(request.nextUrl.pathname.startsWith("/app/")||request.nextUrl.pathname.startsWith("/api/v1/workspaces/")||request.nextUrl.pathname.startsWith("/portal/")||request.nextUrl.pathname.startsWith("/api/v1/portal/"))response.headers.set("Cache-Control","private, no-store");
   let ancestors = "'none'";
   const embed = request.nextUrl.pathname.match(/^\/embed\/([a-z0-9-]{2,80})\/?$/);
   if (embed) {
