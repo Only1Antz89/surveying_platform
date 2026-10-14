@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { FileSignature, ShieldCheck } from "lucide-react";
 import { workspaceFetch } from "@/lib/workspace-request";
+import { downloadFile } from "@/lib/download";
 
 type Terms = { id: string; version: number; title: string; body: string };
 type Signature = { version: number; signerName: string; signedAt: string; method: string };
@@ -37,7 +38,8 @@ export function ClientEngagementTerms({ quoteId, token, onSigned }: { quoteId: s
 
   return <section className="quote-form client-terms" aria-labelledby="client-terms-heading">
     <h2 id="client-terms-heading"><FileSignature />Terms of engagement</h2>
-    {current ? <p role="status" className="client-terms-signed"><ShieldCheck aria-hidden="true" />Signed by {state.acceptance!.signerName} on {when(state.acceptance!.signedAt)} · version {state.terms.version}{state.acceptance!.method === "recorded_by_practice" ? " · recorded by your practice" : ""}</p> : <>
+    {current && error ? <p className="form-error" role="alert">{error}</p> : null}
+    {current ? <p role="status" className="client-terms-signed"><ShieldCheck aria-hidden="true" />Signed by {state.acceptance!.signerName} on {when(state.acceptance!.signedAt)} · version {state.terms.version}{state.acceptance!.method === "recorded_by_practice" ? " · recorded by your practice" : ""} <button type="button" className="button button-quiet" onClick={() => downloadFile(`/api/v1/public/quotes/${quoteId}/terms/pdf`, "signed-terms.pdf", { headers: { "x-quote-token": token } }).catch((reason: Error) => setError(reason.message))}>Download signed copy</button></p> : <>
       <p>{state.required ? "Please read and sign these terms before you choose a visit." : "Please read and sign these terms. They explain what the survey covers."}</p>
       <div className="client-terms-text" tabIndex={0} aria-label={`${state.terms.title}, version ${state.terms.version}`}>
         <h3>{state.terms.title}</h3>

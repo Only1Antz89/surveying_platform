@@ -4,12 +4,13 @@ import { requireWorkspacePageAccess } from "@/lib/workspace-page-access";
 import Link from "@/components/workspace-link";
 import { notFound } from "next/navigation";
 import { ClipboardList } from "lucide-react";
-import { jobStageLabels, canConfirmPropertyIdentity, isManagementRole } from "@surveynt/domain";
+import { jobStageLabels, canConfirmPropertyIdentity, canMutateOperations, isManagementRole } from "@surveynt/domain";
 import { requireFirmAccess } from "@/lib/access";
 import { loadJobWorkspace } from "@/lib/job-workspace";
 import { PreinspectionQuestionnaire } from "@/components/preinspection-questionnaire";
 import { SurveyFileRetentionReview } from "@/components/survey-file-retention-review";
 import { EngagementPanel } from "@/components/engagement-panel";
+import { LetterPanel } from "@/components/letter-panel";
 export const metadata = { title: "Job record" };
 export default async function Page({ params }: PageProps<"/app/[organisationSlug]/jobs/[id]">) {
   const { organisationSlug: slug, id } = await params; await requireWorkspacePageAccess(slug, "jobs");
@@ -23,6 +24,7 @@ export default async function Page({ params }: PageProps<"/app/[organisationSlug
     <section className="panel"><div className="panel-header"><h2>Inspection workspace</h2></div><div className="panel-body"><dl className="detail-grid"><div><dt>Agreed service</dt><dd>{record.job.serviceName}</dd></div><div><dt>Survey status</dt><dd>{record.survey?.status.replaceAll("_", " ") ?? "Not started"}</dd></div><div><dt>Customer</dt><dd><Link href={`/app/${slug}/customers`}>{record.client.displayName}</Link></dd></div><div><dt>Property</dt><dd><Link href={`/app/${slug}/properties/${record.property.id}`}>{[record.property.line1, record.property.city, record.property.postcode].filter(Boolean).join(", ")}</Link></dd></div></dl>{!recording ? <p>An owner must grant professional recording permission before you can enter findings. You can still manage permitted operational records.</p> : null}</div></section>
     <section className="panel"><div className="panel-header"><h2>Appointments</h2><Link href={`/app/${slug}/calendar`}>Open calendar</Link></div><div className="panel-body">{record.appointments.length ? <ul>{record.appointments.map(visit => <li key={visit.id}>{visit.startsAt.toLocaleString("en-GB", { timeZone: "Europe/London" })} · {visit.status} · <Link href={href}>Open survey</Link></li>)}</ul> : <p>No appointment has been recorded.</p>}</div></section>
     <EngagementPanel jobId={id} slug={slug} canRecord={isManagementRole(access.userRole) && access.accessLevel === "full"}/>
+    {canMutateOperations(access.userRole) && access.accessLevel === "full" ? <LetterPanel jobId={id}/> : null}
     {isManagementRole(access.userRole)?<AllocationPanel jobId={id} version={record.job.version} canEdit={access.accessLevel==="full"} appointments={record.appointments.map(v=>({...v,startsAt:v.startsAt.toISOString(),endsAt:v.endsAt.toISOString()}))}/>:null}
     {!record.preview ? <PreinspectionQuestionnaire jobId={id} canAssociate={recording && access.accessLevel === "full"} canEdit={["owner", "administrator", "manager", "surveyor"].includes(access.userRole) && access.accessLevel === "full"}/> : null}
     {!record.preview&&isManagementRole(access.userRole)?<CasePublicationEditor jobId={id} propertyId={record.property.id} canEdit={access.accessLevel==="full"}/>:null}

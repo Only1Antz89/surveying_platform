@@ -1,6 +1,7 @@
 "use client";
 import type { AccommodationSchedule } from "@/lib/floor-plan-model";
 import { reportDocument } from "@/lib/report-document";
+import { downloadFile } from "@/lib/download";
 import {workspaceFetch} from "@/lib/workspace-request";
 
 import { useCallback, useEffect, useState } from "react";
@@ -106,6 +107,7 @@ export function ReportPanel({ surveyId, canEdit, canJudge, online, demo, onChang
     {preview ? <div className="row-actions"><button type="button" className="button button-secondary" onClick={() => {
       const blob=new Blob([reportDocument(preview)],{type:"text/html;charset=utf-8"});const url=URL.createObjectURL(blob);const link=document.createElement("a");link.href=url;link.download=`${preview.jobReference.replace(/[^a-z0-9-]/gi,"-")}-draft.html`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
     }}>Download printable draft</button><p className="form-help">Black answers, purple report headings. This draft is not the licensed RICS document.</p></div> : null}
+    {!demo && latest && !latest.contentRemoved ? <button type="button" className="button button-secondary" disabled={busy||!online} onClick={()=>{setBusy(true);downloadFile(`/api/v1/surveys/${surveyId}/report/practice-pdf`,"practice-report.pdf").catch(error=>setMessage({tone:"error",text:(error as Error).message})).finally(()=>setBusy(false));}}>Download practice report PDF{latest.approval && latest.current ? "" : " (review copy)"}</button> : null}
     {ricsPdfAvailable && !demo && latest?.current && !latest.contentRemoved ? <button type="button" className="button button-secondary" disabled={busy||!online} onClick={()=>void downloadRicsPdf()}>Download central RICS PDF review copy</button> : null}
     {preview ? <article className="report-preview" aria-label="Report preview">
       <header><h3>{preview.title}</h3><p>{preview.property.line1}{preview.property.city ? `, ${preview.property.city}` : ""} · {preview.jobReference} · template {preview.templateVersion}</p></header>
