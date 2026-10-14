@@ -797,3 +797,24 @@ fieldset.field legend { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
 .quote-form .client-terms-agree { display: flex; align-items: flex-start; gap: 8px; color: var(--ink); font-weight: 500; }
 .quote-form .client-terms-agree input { min-height: 0; margin-top: 3px; }
 .client-terms-signed { display: flex; align-items: center; gap: 8px; color: var(--success); font-weight: 600; }
+/* Job time & costs */
+.cost-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; }
+.cost-totals > div { display: grid; gap: 2px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--canvas); }
+.cost-totals span { color: var(--muted); font-size: 11px; }
+.cost-totals strong { font-size: 15px; font-variant-numeric: tabular-nums; }
+.cost-totals .loss strong, .data-table td.negative { color: var(--danger); }
+.cost-form { display: grid; gap: 12px; border-top: 1px solid var(--border); padding-top: 12px; }
+.segmented { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 8px; overflow: hidden; width: fit-content; }
+.segmented button { display: inline-flex; align-items: center; gap: 6px; border: 0; background: var(--surface); color: var(--muted); padding: 7px 12px; font: inherit; font-size: 12px; cursor: pointer; min-height: 36px; }
+.segmented button + button { border-left: 1px solid var(--border-strong); }
+.segmented button.active { background: var(--blue-soft); color: var(--ink); font-weight: 650; }
+.segmented button:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+.cost-fields { display: flex; flex-wrap: wrap; gap: 10px; }
+.cost-fields .field { min-width: 110px; flex: 0 1 140px; }
+.cost-fields .field.grow { flex: 1 1 220px; }
+.cost-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.cost-list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.cost-list li:last-child { border-bottom: 0; }
+.cost-list li > div { display: grid; min-width: 0; }
+.inline-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; }
+.inline-form .input { width: 110px; }
