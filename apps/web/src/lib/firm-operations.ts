@@ -1,3 +1,4 @@
+import { inviteAfterQuoteConversion } from "./client-portal";
 import {workspaceAudit} from "./workspace-audit";
 import type {WorkspaceMode} from "./workspace-mode";
 import { invoiceBalance, refreshInvoiceBalance } from "./invoice-balance";
@@ -224,6 +225,8 @@ export async function instructPaidQuote(tx: TenantTransaction, quote: typeof cus
   await tx.update(invoices).set({ jobId: job.id, updatedAt: new Date() }).where(eq(invoices.id, invoiceId));
   await tx.insert(quoteSnapshots).values({ organisationId: quote.organisationId, quoteId: quote.id, event: "converted", snapshot: { ...publicQuote({ ...quote, status: "converted", clientId: client.id, propertyId: property.id, jobId: job.id }), clientId: client.id, propertyId: property.id, jobId: job.id } });
   await tx.insert(auditEvents).values({ organisationId: quote.organisationId, actorUserId, action: "quote.converted", resourceType: "job", resourceId: job.id, metadata: { quoteId: quote.id, paymentId: paymentId } });
+  // The accepted client gets their portal link straight away.
+  await inviteAfterQuoteConversion(tx, { organisationId: quote.organisationId, jobId: job.id, email: client.email ?? quote.email, clientName: client.displayName, propertyAddress: [property.line1, property.city, property.postcode].filter(Boolean).join(", "), reference: job.reference });
   return job.id;
 }
 

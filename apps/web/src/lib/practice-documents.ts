@@ -1,7 +1,7 @@
 import "server-only";
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
-import { auditEvents, clients, createDatabase, customerQuotes, engagementAcceptances, engagementTerms, jobs, organisationOperationalSettings, organisations, properties, reportApprovals, reportVersions, withTenant, type TenantTransaction } from "@surveynt/db";
+import { auditEvents, clients, createDatabase, customerQuotes, invoiceLineItems, invoices, engagementAcceptances, engagementTerms, jobs, organisationOperationalSettings, organisations, properties, reportApprovals, reportVersions, withTenant, type TenantTransaction } from "@surveynt/db";
 import type { ComposedReport } from "@surveynt/assistant";
 import { BrandedDocument, longDate, money, type Brand } from "./branded-pdf";
 import { assignedJobScope } from "./workspace-scope";
@@ -23,7 +23,7 @@ export async function practiceBrand(tx: TenantTransaction, organisationId: strin
 }
 
 type QuoteRow = typeof customerQuotes.$inferSelect;
-async function renderQuote(brand: Brand, quote: QuoteRow) {
+export async function renderQuote(brand: Brand, quote: QuoteRow) {
   const pricing = quote.pricingSnapshot as Record<string, unknown>;
   const service = typeof pricing.service === "string" ? pricing.service : "Property survey";
   const pdf = await BrandedDocument.create(brand, `Quote ${quote.reference}`, { subject: service, watermark: ["cancelled", "expired"].includes(quote.status) ? quote.status.toUpperCase() : null });
@@ -60,7 +60,7 @@ export async function publicQuotePdf(quoteId: string, token: string) {
   return withTenant(createDatabase(process.env.DATABASE_ADMIN_URL), found.row.organisationId, async (tx) => ({ bytes: await renderQuote(await practiceBrand(tx, found.row.organisationId), found.row), filename: `quote-${found.row.reference}.pdf` }));
 }
 
-async function renderSignedTerms(tx: TenantTransaction, organisationId: string, jobId: string) {
+export async function renderSignedTerms(tx: TenantTransaction, organisationId: string, jobId: string) {
   const [row] = await tx.select({ acceptance: engagementAcceptances, terms: engagementTerms, reference: jobs.reference }).from(engagementAcceptances)
     .innerJoin(engagementTerms, and(eq(engagementTerms.id, engagementAcceptances.termsId), eq(engagementTerms.organisationId, engagementAcceptances.organisationId)))
     .innerJoin(jobs, and(eq(jobs.id, engagementAcceptances.jobId), eq(jobs.organisationId, engagementAcceptances.organisationId)))
@@ -95,7 +95,7 @@ export async function publicSignedTermsPdf(quoteId: string, token: string) {
 }
 
 /** The practice's own report layout from the latest composed version. Only an approved, current version prints without the review watermark. */
-export async function practiceReportPdf(context: Context, surveyId: string) {
+export async function practiceReportPdf(context: Context, surveyId: string, options: { requireFinal?: boolean } = {}) {
   return withTenant(createDatabase(), context.organisationId, async (tx) => {
     const [row] = await tx.select({ version: reportVersions, reference: jobs.reference, approvedAt: reportApprovals.createdAt }).from(reportVersions)
       .innerJoin(jobs, and(eq(jobs.id, reportVersions.jobId), eq(jobs.organisationId, reportVersions.organisationId)))
@@ -106,6 +106,7 @@ export async function practiceReportPdf(context: Context, surveyId: string) {
     const report = row.version.content as unknown as ComposedReport & { accommodation?: AccommodationSchedule };
     const approval = row.approvedAt ? await approvedReportIsCurrent(tx, context, surveyId) : null;
     const final = Boolean(approval?.current && approval.versionNumber === row.version.versionNumber);
+    if (options.requireFinal && !final) throw new DocumentError(409, "not_final", "The report has not been signed off yet.");
     const brand = await practiceBrand(tx, context.organisationId);
     const pdf = await BrandedDocument.create(brand, report.title, { watermark: final ? null : "REVIEW COPY", subject: report.jobReference });
     pdf.heading(report.title, 1).details([
@@ -152,3 +153,32 @@ export async function jobLetterPdf(context: Context, jobId: string, input: z.inf
     return { bytes: await pdf.finish(`${brand.name} · ${row.reference}`), filename: `letter-${row.reference}.pdf` };
   });
 }
+
+/** A branded copy of an issued invoice with its line items and balance. */
+export async function renderInvoicePdf(tx: TenantTransaction, organisationId: string, invoiceId: string, jobId: string) {
+  const [invoice] = await tx.select().from(invoices).where(and(eq(invoices.id, invoiceId), eq(invoices.organisationId, organisationId), eq(invoices.jobId, jobId))).limit(1);
+  if (!invoice || !invoice.issuedAt || invoice.status === "draft" || invoice.status === "void") return null;
+  const [[job], items] = await Promise.all([
+    tx.select({ reference: jobs.reference, client: clients.displayName, line1: properties.line1, city: properties.city, postcode: properties.postcode }).from(jobs).innerJoin(clients, and(eq(clients.id, jobs.clientId), eq(clients.organisationId, jobs.organisationId))).innerJoin(properties, and(eq(properties.id, jobs.propertyId), eq(properties.organisationId, jobs.organisationId))).where(and(eq(jobs.id, jobId), eq(jobs.organisationId, organisationId))).limit(1),
+    tx.select().from(invoiceLineItems).where(and(eq(invoiceLineItems.organisationId, organisationId), eq(invoiceLineItems.invoiceId, invoiceId))),
+  ]);
+  const brand = await practiceBrand(tx, organisationId);
+  const pdf = await BrandedDocument.create(brand, `Invoice ${invoice.number}`, { subject: job?.reference, watermark: invoice.status === "paid" ? "PAID" : null });
+  pdf.heading(`Invoice ${invoice.number}`, 1).details([
+    ["Billed to", job?.client ?? "Client"],
+    ["Property", [job?.line1, job?.city, job?.postcode].filter(Boolean).join(", ")],
+    ["Our reference", job?.reference ?? ""],
+    ["Issued", longDate(invoice.issuedAt)],
+    ["Due", invoice.dueAt ? longDate(invoice.dueAt) : "On receipt"],
+  ]);
+  const lines = items.length ? items.map((item) => ({ cells: [item.description, String(item.quantity), money(item.unitAmountMinor, invoice.currency), money(item.unitAmountMinor * item.quantity, invoice.currency)] })) : [{ cells: ["Survey services", "1", money(invoice.subtotalMinor, invoice.currency), money(invoice.subtotalMinor, invoice.currency)] }];
+  pdf.table([{ label: "Description", width: 4 }, { label: "Qty", width: 1, align: "right" }, { label: "Unit", width: 1.5, align: "right" }, { label: "Amount", width: 1.5, align: "right" }], [
+    ...lines,
+    { cells: ["Subtotal", "", "", money(invoice.subtotalMinor, invoice.currency)] },
+    { cells: ["VAT", "", "", money(invoice.vatMinor, invoice.currency)] },
+    { cells: ["Total", "", "", money(invoice.totalMinor, invoice.currency)], bold: true },
+  ]);
+  pdf.paragraph(invoice.status === "paid" ? "Paid in full. Thank you." : "Please pay using the link in your client portal or by the method agreed with the practice.", { muted: true });
+  return { bytes: await pdf.finish(`${brand.name} · Invoice ${invoice.number}`), filename: `invoice-${invoice.number}.pdf` };
+}
+

@@ -2070,3 +2070,43 @@ export const dataSubjectRequests = pgTable("data_subject_requests", {
   check("data_subject_requests_completion_chk", sql`(${table.status} = 'open') = (completed_at is null)`),
 ]);
 
+
+/** A client's secure link to the portal for one job. Only a hash of the token is stored; one active link per job. */
+export const clientPortalAccess = pgTable("client_portal_access", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  jobId: uuid("job_id").notNull(),
+  email: text("email"),
+  tokenHash: text("token_hash").notNull(),
+  source: text("source").notNull(),
+  createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  lastSentAt: timestamp("last_sent_at", { withTimezone: true }),
+  lastViewedAt: timestamp("last_viewed_at", { withTimezone: true }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  foreignKey({ name: "client_portal_access_job_fk", columns: [table.organisationId, table.jobId], foreignColumns: [jobs.organisationId, jobs.id] }).onDelete("restrict"),
+  uniqueIndex("client_portal_access_token_uidx").on(table.tokenHash),
+  uniqueIndex("client_portal_access_active_job_uidx").on(table.organisationId, table.jobId).where(sql`revoked_at is null`),
+  check("client_portal_access_source_chk", sql`${table.source} in ('quote_accepted','practice_sent','practice_link')`),
+]);
+
+/** Photos, certificates and documents a practice has chosen to share in a client's portal. */
+export const clientPortalFiles = pgTable("client_portal_files", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  jobId: uuid("job_id").notNull(),
+  mediaAssetId: uuid("media_asset_id").notNull().references(() => mediaAssets.id, { onDelete: "restrict" }),
+  category: text("category").notNull(),
+  title: text("title").notNull(),
+  sharedByUserId: uuid("shared_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  sharedAt: timestamp("shared_at", { withTimezone: true }).notNull().defaultNow(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+}, (table) => [
+  foreignKey({ name: "client_portal_files_job_fk", columns: [table.organisationId, table.jobId], foreignColumns: [jobs.organisationId, jobs.id] }).onDelete("restrict"),
+  uniqueIndex("client_portal_files_active_uidx").on(table.organisationId, table.jobId, table.mediaAssetId).where(sql`revoked_at is null`),
+  index("client_portal_files_job_idx").on(table.organisationId, table.jobId),
+  check("client_portal_files_category_chk", sql`${table.category} in ('photo','video','certificate','document')`),
+  check("client_portal_files_title_chk", sql`length(btrim(title)) between 1 and 160`),
+]);
