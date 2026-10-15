@@ -53,3 +53,22 @@ Verify on physical devices:
 - switching practice, which keeps queues separate;
 - large photos on mobile data.
 
+
+## Internal testing release
+
+The `internal` profile in `eas.json` builds a standalone Android APK and an iOS ad hoc build. It targets the production API; use dedicated, authorised test accounts and fictional records. It is not an App Store/Play Store submission or an Expo Go build.
+
+The release operator must sign in to the intended Expo account and link this app to its EAS project (`eas init` from `apps/mobile`). Set `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` in that project's **preview** EAS environment to the same Clerk instance as the production API. The API URL is already set in the profile. No server secrets belong in the mobile environment.
+
+For iOS, the operator needs Apple Developer signing access and must register each tester's device with `eas device:create` before building. Android needs the project's signing keystore (or an operator-approved new keystore for its first release). Run from `apps/mobile` with an EAS CLI satisfying the configured version:
+
+```sh
+eas build --profile internal --platform android
+eas build --profile internal --platform ios
+```
+
+Share the resulting installation links only with the internal testers. In the Expo project's settings, disable **Unauthenticated access to internal builds** so downloading requires an authorised Expo account. Project linking, signing, cloud builds and installation links remain pending until the operator signs in; JavaScript bundle export does not produce an installable app.
+
+Acceptance before broader release: sign in with MFA, switch practice, check assigned-job isolation, queue a room and expense offline, restart the app, reconnect and verify exactly one record of each. Also check photo capture, denied permissions, and that workday location sharing stops after logout or practice switch. Do not discard an existing queue when upgrading a tester's app.
+
+Reference: [Expo internal distribution](https://docs.expo.dev/build/internal-distribution/).
