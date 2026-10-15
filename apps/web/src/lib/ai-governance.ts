@@ -3,6 +3,8 @@ import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { aiUses, evaluateAiGate, getGovernedModel, type AiGateResult, type AiUse } from "@surveynt/assistant";
 import { aiConsentRecords, aiIncidents, aiModelRegister, aiRiskAssessments, auditEvents, createDatabase, jobs, organisationAiSettings, withTenant, type TenantTransaction } from "@surveynt/db";
+import { enabledConnection } from "@/lib/platform-connections";
+import { survaiReadiness } from "@/lib/survai-readiness";
 import { canManageTeam, canMutateOperations, type OrganisationRole } from "@surveynt/domain";
 
 export type GovernanceContext = { organisationId: string; internalUserId: string | null; role: OrganisationRole };
@@ -57,14 +59,19 @@ export async function loadAiGovernance(context: Pick<GovernanceContext, "organis
       tx.select().from(organisationAiSettings).where(eq(organisationAiSettings.organisationId, context.organisationId)).limit(1),
       tx.select().from(aiRiskAssessments).where(eq(aiRiskAssessments.organisationId, context.organisationId)).orderBy(desc(aiRiskAssessments.createdAt)).limit(100),
       tx.select().from(aiIncidents).where(eq(aiIncidents.organisationId, context.organisationId)).orderBy(desc(aiIncidents.createdAt)).limit(100),
-      tx.select({ providerKey: aiModelRegister.providerKey, modelId: aiModelRegister.modelId, modelVersion: aiModelRegister.modelVersion, uses: aiModelRegister.uses, status: aiModelRegister.status }).from(aiModelRegister).where(eq(aiModelRegister.status, "approved")),
+      tx.select({ providerKey: aiModelRegister.providerKey, modelId: aiModelRegister.modelId, modelVersion: aiModelRegister.modelVersion, uses: aiModelRegister.uses, status: aiModelRegister.status }).from(aiModelRegister),
     ]);
+    // SurvAI runs through the practice's selected AI connection, not the AI_PROVIDER deployment setting.
+    const selected = await enabledConnection(context.organisationId, "ai").catch(() => null);
+    const connection = selected?.connection.providerKey ? { providerKey: selected.connection.providerKey, modelId: selected.selection.modelId ?? selected.connection.modelId } : null;
+    const survai = survaiReadiness({ connection, register, settings: settings ? { aiFeaturesEnabled: settings.aiFeaturesEnabled, permittedUses: settings.permittedUses, disclosureText: settings.disclosureText } : null, riskAssessments: assessments.map((row) => ({ use: row.use, status: row.status, reviewDue: row.reviewDue })), openIncidents: incidents, today: today() });
     return {
-      providerConfigured: (process.env.AI_PROVIDER ?? "none") !== "none",
+      providerConfigured: (process.env.AI_PROVIDER ?? "none") !== "none" || Boolean(connection),
+      survai,
       settings: settings ? { aiFeaturesEnabled: settings.aiFeaturesEnabled, permittedUses: settings.permittedUses, disclosureText: settings.disclosureText, disclosureVersion: settings.disclosureVersion, version: settings.version } : { aiFeaturesEnabled: false, permittedUses: [], disclosureText: null, disclosureVersion: 0, version: 0 },
       assessments: assessments.map((row) => ({ id: row.id, use: row.use, title: row.title, summary: row.summary, risks: row.risks, status: row.status, reviewDue: row.reviewDue, approvedAt: row.approvedAt?.toISOString() ?? null, createdAt: row.createdAt.toISOString() })),
       incidents: incidents.map((row) => ({ id: row.id, category: row.category, severity: row.severity, description: row.description, status: row.status, correctionNote: row.correctionNote, relatedRecord: row.relatedRecord, createdAt: row.createdAt.toISOString(), closedAt: row.closedAt?.toISOString() ?? null })),
-      approvedModels: register,
+      approvedModels: register.filter((row) => row.status === "approved"),
     };
   });
 }
