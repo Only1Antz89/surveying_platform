@@ -392,7 +392,8 @@ describe.skipIf(!integrationEnabled)("polish API safety and readiness",()=>{
       const id=crypto.randomUUID(),key=`organisations/${orgId}/documents/${id}/original`;
       void label;
       const [document]=await db.insert(organisationDocuments).values({id,organisationId:orgId,name:"Removal worker original",category:"practice",blobUrl:`private://${key}`,blobPathname:key,checksum:"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",contentType:"text/plain",sizeBytes:3,deletedAt:new Date(),retentionUntil:new Date(Date.now()-60000),purgeStatus:"pending",purgeRequestedAt:new Date()}).returning();
-      const [job]=await db.insert(backgroundJobs).values({organisationId:orgId,queue:"document_removal",type:"remove_retained_original",payload:{documentId:document.id,checksum:document.checksum,blobPathname:key}}).returning();
+      // Worker fixtures are explicitly due, independent of database/application clock precision.
+      const [job]=await db.insert(backgroundJobs).values({organisationId:orgId,queue:"document_removal",type:"remove_retained_original",availableAt:new Date(0),payload:{documentId:document.id,checksum:document.checksum,blobPathname:key}}).returning();
       await storage.put(key,new TextEncoder().encode("abc").buffer,"text/plain");return {document,job};
     };
     // The earlier request test also queued an absent original: it must be held for review.
@@ -437,7 +438,7 @@ describe.skipIf(!integrationEnabled)("polish API safety and readiness",()=>{
   it("moves a newly protected original and its removal job into review together",async()=>{
     const id=crypto.randomUUID();
     await db.insert(organisationDocuments).values({id,organisationId:orgId,name:"Newly protected original",category:"practice",blobUrl:"private://protected",blobPathname:`organisations/${orgId}/documents/${id}/original`,checksum:"protected-checksum",contentType:"text/plain",sizeBytes:1,deletedAt:new Date(),retentionUntil:new Date(Date.now()-60000),legalHold:true,purgeStatus:"pending"});
-    const [job]=await db.insert(backgroundJobs).values({organisationId:orgId,queue:"document_removal",type:"remove_retained_original",payload:{documentId:id,checksum:"protected-checksum",blobPathname:`organisations/${orgId}/documents/${id}/original`}}).returning();
+    const [job]=await db.insert(backgroundJobs).values({organisationId:orgId,queue:"document_removal",type:"remove_retained_original",availableAt:new Date(0),payload:{documentId:id,checksum:"protected-checksum",blobPathname:`organisations/${orgId}/documents/${id}/original`}}).returning();
     const remove=vi.fn(),get=vi.fn();
     await processDocumentRemovalQueue(20,{db,storage:{name:"guard-test",get,remove,put:vi.fn()}});
     expect((await db.select().from(backgroundJobs).where(eq(backgroundJobs.id,job.id)))[0].status).toBe("verification_required");
@@ -496,7 +497,7 @@ describe.skipIf(!integrationEnabled)("polish API safety and readiness",()=>{
   it("quarantines unsupported removal jobs and reports held originals",async()=>{
     const id=crypto.randomUUID(),key=`organisations/${orgId}/documents/${id}/original`;
     await db.insert(organisationDocuments).values({id,organisationId:orgId,name:"Unsupported removal",category:"practice",blobUrl:`private://${key}`,blobPathname:key,checksum:"unsupported-checksum",contentType:"text/plain",sizeBytes:1,deletedAt:new Date(),retentionUntil:new Date(Date.now()-60000),purgeStatus:"pending"});
-    const [job]=await db.insert(backgroundJobs).values({organisationId:orgId,queue:"document_removal",type:"historical_unsupported",deduplicationKey:`document-removal:${id}`,payload:{documentId:id,checksum:"unsupported-checksum",blobPathname:key}}).returning();
+    const [job]=await db.insert(backgroundJobs).values({organisationId:orgId,queue:"document_removal",type:"historical_unsupported",availableAt:new Date(0),deduplicationKey:`document-removal:${id}`,payload:{documentId:id,checksum:"unsupported-checksum",blobPathname:key}}).returning();
     const remove=vi.fn(),get=vi.fn();
     const result=await processDocumentRemovalQueue(20,{db,storage:{name:"unsupported-guard",get,remove,put:vi.fn()}});
     expect(result.review).toBeGreaterThanOrEqual(1);

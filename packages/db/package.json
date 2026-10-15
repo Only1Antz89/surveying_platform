@@ -15,7 +15,7 @@
     "test": "vitest run --passWithNoTests",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "test:integration": "vitest run --dir test",
+    "test:integration": "vitest run --dir test --no-file-parallelism",
     "check:property-data-capabilities": "tsx scripts/check-property-data-capabilities.ts",
     "verify:property-data-security": "tsx scripts/verify-property-data-security.ts",
     "verify:property-data-spatial": "tsx scripts/verify-property-data-spatial.ts",

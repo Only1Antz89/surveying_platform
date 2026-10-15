@@ -1853,6 +1853,14 @@ export const tenantConnections = pgTable("tenant_connections", {
  organisationId:uuid("organisation_id").notNull().references(()=>organisations.id), connectionId:uuid("connection_id").notNull().references(()=>platformConnections.id),
  enabled:boolean("enabled").notNull().default(false), monthlyMessageLimit:integer("monthly_message_limit").notNull().default(1000), modelId:text("model_id"), ...timestamps,
 },t=>[primaryKey({columns:[t.organisationId,t.connectionId]}),check("tenant_connections_limit",sql`${t.monthlyMessageLimit} between 0 and 1000000`)]);
+/** Durable replay receipts for mobile room and cost capture. Retrying never recreates a deleted record. */
+export const mobileCaptureOperations = pgTable("mobile_capture_operations", {
+ organisationId: uuid("organisation_id").notNull().references(() => organisations.id),
+ userId: uuid("user_id").notNull().references(() => users.id),
+ operationId: text("operation_id").notNull(), kind: text("kind").notNull(), resourceId: uuid("resource_id").notNull(),
+ inputSha256: text("input_sha256").notNull(), result: jsonb("result").$type<Record<string, unknown>>().notNull(),
+ createdAt: timestamp("created_at", {withTimezone:true}).notNull().defaultNow(),
+}, t => [primaryKey({columns:[t.organisationId,t.userId,t.operationId]}), check("mobile_capture_operations_kind",sql`${t.kind} in ('room','cost')`)]);
 export const surveyantConversations = pgTable("surveyant_conversations", {
  id:uuid("id").primaryKey().defaultRandom(), organisationId:uuid("organisation_id").notNull().references(()=>organisations.id), jobId:uuid("job_id"),
  userId:uuid("user_id").references(()=>users.id), quoteId:uuid("quote_id"), scope:text("scope").notNull(), workspaceAudience:text("workspace_audience").notNull().default("manager"), ...timestamps,
@@ -1860,7 +1868,7 @@ export const surveyantConversations = pgTable("surveyant_conversations", {
 export const surveyantMessages = pgTable("surveyant_messages", {
  id:uuid("id").primaryKey().defaultRandom(), organisationId:uuid("organisation_id").notNull(), conversationId:uuid("conversation_id").notNull(),
  role:text("role").notNull(), content:text("content").notNull(), citations:jsonb("citations").$type<{id:string;label:string;href:string}[]>().notNull().default([]),
- modelId:text("model_id"), createdAt:timestamp("created_at",{withTimezone:true}).notNull().defaultNow(),
+ modelId:text("model_id"), searchSuggestions:text("search_suggestions"), createdAt:timestamp("created_at",{withTimezone:true}).notNull().defaultNow(),
 },t=>[foreignKey({columns:[t.organisationId,t.conversationId],foreignColumns:[surveyantConversations.organisationId,surveyantConversations.id]}),check("surveyant_messages_role",sql`${t.role} in ('user','assistant')`)]);
 export const trackingSessions = pgTable("tracking_sessions", {
  id:uuid("id").primaryKey().defaultRandom(), organisationId:uuid("organisation_id").notNull().references(()=>organisations.id), userId:uuid("user_id").notNull().references(()=>users.id),

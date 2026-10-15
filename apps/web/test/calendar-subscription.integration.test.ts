@@ -1,4 +1,4 @@
-import {afterAll,beforeAll,describe,expect,it,vi} from "vitest";
+import {afterAll,afterEach,beforeAll,describe,expect,it,vi} from "vitest";
 import {eq} from "drizzle-orm";
 import {auditEvents,backgroundJobs,calendarConnections,organisations,users,type Database} from "@surveynt/db";
 import {createTestDatabase,integrationEnabled,stopRelay,type TestDatabase} from "@surveynt/db/testing";
@@ -7,10 +7,12 @@ import {enqueueGoogleSubscriptionReplacements,enqueueMicrosoftSubscriptionRenewa
 describe.skipIf(!integrationEnabled)("durable calendar subscription cleanup",()=>{
  let database:TestDatabase,db:Database,organisationId:string,userId:string;
  beforeAll(async()=>{
-  database=await createTestDatabase();db=database.connect(database.adminUrl);vi.stubEnv("DATABASE_ADMIN_URL",database.adminUrl);vi.stubEnv("CALENDAR_TOKEN_ENCRYPTION_KEY",Buffer.alloc(32,7).toString("base64"));
+  database=await createTestDatabase();db=database.connect(database.adminUrl);vi.stubEnv("DATABASE_ADMIN_URL",database.adminUrl);vi.stubEnv("APP_URL","https://surveynt.test");vi.stubEnv("CALENDAR_WEBHOOK_SECRET","fictional-webhook");vi.stubEnv("CALENDAR_TOKEN_ENCRYPTION_KEY",Buffer.alloc(32,7).toString("base64"));
   const [org]=await db.insert(organisations).values({clerkOrganisationId:"cleanup",slug:"cleanup",name:"Cleanup",practiceType:"building_surveying",region:"Bristol",status:"active"}).returning();organisationId=org.id;
   const [user]=await db.insert(users).values({clerkUserId:"cleanup-user",email:"cleanup@example.test",firstName:"Cleanup",lastName:"Reviewer"}).returning();userId=user.id;
  },120000);
+ // Queue workers claim the oldest due job. Keep retries from earlier cases out of later cases.
+ afterEach(async()=>{vi.unstubAllGlobals();await db.delete(backgroundJobs);await db.delete(calendarConnections);});
  afterAll(async()=>{vi.unstubAllGlobals();vi.unstubAllEnvs();await database?.drop();await stopRelay();});
  async function fixture(options:{active?:boolean;expired?:boolean;resourceId?:string|null;unknownLifetime?:boolean}={}){
   const [connection]=await db.insert(calendarConnections).values({organisationId,userId,provider:"google",providerAccountId:crypto.randomUUID(),status:options.active?"active":"revoked",encryptedCredentials:"",webhookChannelId:crypto.randomUUID(),webhookResourceId:options.resourceId===undefined?"resource":options.resourceId}).returning();

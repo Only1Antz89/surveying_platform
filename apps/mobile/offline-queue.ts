@@ -11,7 +11,7 @@ export type QueueItem =
   | { id: string; kind: "room"; surveyId: string; label: string; body: Record<string, unknown>; createdAt: string; attempts: number; error?: string }
   | { id: string; kind: "cost"; jobId: string; label: string; body: Record<string, unknown>; createdAt: string; attempts: number; error?: string };
 export type NewItem = QueueItem extends infer T ? T extends QueueItem ? Omit<T, "id" | "createdAt" | "attempts" | "error"> : never : never;
-export type Sender = { json: (path: string, body: unknown) => Promise<unknown>; form: (path: string, form: FormData) => Promise<unknown> };
+export type Sender = { json: (path: string, body: unknown, operationId?: string) => Promise<unknown>; form: (path: string, form: FormData) => Promise<unknown> };
 
 const scopeName = (scope: string) => scope.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80) || "default";
 const photos = () => { const dir = new Directory(Paths.document, "surveynt-photos"); if (!dir.exists) dir.create({ intermediates: true }); return dir; };
@@ -58,8 +58,8 @@ export async function flush(scope: string, send: Sender): Promise<{ sent: number
     if (item.error) continue;
     try {
       if (item.kind === "sync") await send.json(`/api/mobile/surveys/${item.surveyId}/sync`, { operations: item.operations });
-      else if (item.kind === "room") await send.json(`/api/mobile/surveys/${item.surveyId}/rooms`, item.body);
-      else if (item.kind === "cost") await send.json(`/api/mobile/jobs/${item.jobId}/costs`, item.body);
+      else if (item.kind === "room") await send.json(`/api/mobile/surveys/${item.surveyId}/rooms`, item.body, item.id);
+      else if (item.kind === "cost") await send.json(`/api/mobile/jobs/${item.jobId}/costs`, item.body, item.id);
       else {
         const form = new FormData();
         form.append("file", { uri: item.file, name: `${item.metadata.clientGeneratedId}.jpg`, type: "image/jpeg" } as unknown as Blob);

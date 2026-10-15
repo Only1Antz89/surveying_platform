@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { organisationMemberships, organisations, platformConnections, surveyantMessages, tenantConnections, users, type Database } from "@surveynt/db";
+import { organisationMemberships, organisations, platformConnections, surveyantConversations, surveyantMessages, tenantConnections, users, type Database } from "@surveynt/db";
 import { createTestDatabase, integrationEnabled, stopRelay, type TestDatabase } from "@surveynt/db/testing";
 vi.mock("server-only", () => ({}));
 const network = vi.hoisted(() => vi.fn());
 vi.mock("../src/lib/connection-network", () => ({ connectionJson: network }));
-import { sendWebAnswer } from "../src/lib/surveyant-chat";
+import { chatHistory, sendWebAnswer } from "../src/lib/surveyant-chat";
 import { decideWebProposal } from "../src/lib/survai-web-router";
 import type { ChatContext } from "../src/lib/surveyant-chat";
 
@@ -40,5 +40,12 @@ describe.skipIf(!integrationEnabled)("SurvAI confirmed web search", () => {
     await expect(sendWebAnswer(manager, { token: propose(manager).token })).rejects.toMatchObject({ status: 409, code: "governance_required" });
     expect(network).not.toHaveBeenCalled();
     expect(await db.select().from(surveyantMessages)).toEqual([]);
+  });
+  it("restores Search Suggestions with the owning user's saved web answer", async () => {
+    const html = '<div>Google Search Suggestions <a href="https://www.google.com/search?q=survey">Survey guidance</a></div>';
+    const [thread] = await db.insert(surveyantConversations).values({organisationId:manager.organisationId,userId:manager.internalUserId!,scope:"business",workspaceAudience:"manager"}).returning();
+    await db.insert(surveyantMessages).values({organisationId:manager.organisationId,conversationId:thread.id,role:"assistant",content:"Public guidance",citations:[{id:"web:1",label:"Guidance",href:"https://example.org/guidance"}],searchSuggestions:html});
+    expect((await chatHistory(manager,{pageContext:{page:"overview"}})).messages[0]).toMatchObject({content:"Public guidance",searchSuggestions:html});
+    expect((await chatHistory(colleague,{pageContext:{page:"overview"}})).messages).toEqual([]);
   });
 });

@@ -1,0 +1,12 @@
+{
+  "cli": { "version": ">= 19.1.0" },
+  "build": {
+    "internal": {
+      "distribution": "internal",
+      "environment": "preview",
+      "env": { "EXPO_PUBLIC_SURVEYNT_URL": "https://surveying-platform-taupe.vercel.app" },
+      "android": { "buildType": "apk" },
+      "ios": { "simulator": false }
+    }
+  }
+}

@@ -1,3 +1,4 @@
+import { replayableMobileCapture } from "./mobile-capture-operation";
 import "server-only";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { auditEvents, createDatabase, jobCostEntries, jobs, organisationOperationalSettings, users, withTenant, type TenantTransaction } from "@surveynt/db";
@@ -32,14 +33,16 @@ export async function jobCosts(context: Context, jobId: string) {
   });
 }
 
-export async function addCostEntry(context: Context, jobId: string, input: CostEntryInput) {
+export async function addCostEntry(context: Context, jobId: string, input: CostEntryInput, operationId?: string) {
   if (!recorders.has(context.role) || !context.internalUserId) throw new JobCostError(403, "forbidden", "Your role cannot record time or expenses.");
   return withTenant(createDatabase(), context.organisationId, async (tx) => {
     const [job] = await tx.select({ id: jobs.id }).from(jobs).where(and(eq(jobs.id, jobId), eq(jobs.organisationId, context.organisationId), assignedJobScope(context))).limit(1);
     if (!job) throw new JobCostError(404, "not_found", "The job could not be found.");
+    return replayableMobileCapture(tx, {organisationId:context.organisationId,userId:context.internalUserId!,operationId,kind:"cost",resourceId:jobId,input}, async () => {
     const [row] = await tx.insert(jobCostEntries).values({ organisationId: context.organisationId, jobId, userId: context.internalUserId!, kind: input.kind, occurredOn: input.occurredOn, minutes: input.kind === "time" ? input.minutes : null, miles: input.kind === "mileage" ? input.miles.toFixed(1) : null, amountMinor: input.kind === "expense" ? input.amountMinor : null, category: input.kind === "expense" ? input.category : null, description: input.description || null }).returning();
     await tx.insert(auditEvents).values(workspaceAudit(context, { organisationId: context.organisationId, actorUserId: context.internalUserId, action: "job.cost_recorded", resourceType: "job", resourceId: jobId, metadata: { entryId: row.id, kind: row.kind } }));
     return toEntry({ ...row, firstName: null, lastName: null });
+    });
   });
 }
 

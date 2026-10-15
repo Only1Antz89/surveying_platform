@@ -1,3 +1,4 @@
+import { replayableMobileCapture } from "./mobile-capture-operation";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { auditEvents, createDatabase, jobs, surveyRooms, surveys, withTenant, type TenantTransaction } from "@surveynt/db";
 import { workspaceAudit } from "./workspace-audit";
@@ -35,13 +36,15 @@ async function writable(tx: TenantTransaction, context: SurveyContext, surveyId:
   return survey;
 }
 
-export async function addRoom(context: SurveyContext, surveyId: string, input: RoomInput) {
+export async function addRoom(context: SurveyContext, surveyId: string, input: RoomInput, operationId?: string) {
   return withTenant(createDatabase(), context.organisationId, async (tx) => {
     await writable(tx, context, surveyId);
+    return replayableMobileCapture(tx, {organisationId:context.organisationId,userId:context.internalUserId!,operationId,kind:"room",resourceId:surveyId,input}, async () => {
     const [{ next }] = await tx.select({ next: sql<number>`coalesce(max(${surveyRooms.position}), -1)::int + 1` }).from(surveyRooms).where(and(eq(surveyRooms.organisationId, context.organisationId), eq(surveyRooms.surveyId, surveyId)));
     const [row] = await tx.insert(surveyRooms).values({ organisationId: context.organisationId, surveyId, floor: input.floor, name: input.name, lengthM: decimal(input.lengthM), widthM: decimal(input.widthM), heightM: decimal(input.heightM), areaOverrideM2: decimal(input.areaOverrideM2), notes: input.notes || null, position: next, createdByUserId: context.internalUserId }).returning();
     await tx.insert(auditEvents).values(workspaceAudit(context, { organisationId: context.organisationId, actorUserId: context.internalUserId, action: "survey.room_added", resourceType: "survey", resourceId: surveyId, metadata: { roomId: row.id, floor: row.floor } }));
     return toRoom(row);
+    });
   });
 }
 

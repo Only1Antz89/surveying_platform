@@ -1,7 +1,7 @@
 import type { SurvaiAction } from "./survai-context";
 
 export type SurvaiWebProposal = { query: string; reason: string; token: string; expiresAt: string };
-export type SurvaiAnswer = { role: string; content: string; demo?: boolean; model?: string; citations?: { id: string; label: string; href: string }[]; coverage?: "answered" | "partial" | "not_in_records"; webProposal?: SurvaiWebProposal | null; web?: boolean; query?: string };
+export type SurvaiAnswer = { role: string; content: string; demo?: boolean; model?: string; citations?: { id: string; label: string; href: string }[]; coverage?: "answered" | "partial" | "not_in_records"; webProposal?: SurvaiWebProposal | null; web?: boolean; query?: string; searchSuggestions?: string | null };
 export type SurvaiReview = { id: string; title: string; question: string; status: "working" | "ready" | "error"; answer?: SurvaiAnswer; error?: string; webToken?: string };
 
 /** Web citations link out to public pages; record citations stay inside the workspace. */
