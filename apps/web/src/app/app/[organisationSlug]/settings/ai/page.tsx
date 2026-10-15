@@ -5,6 +5,7 @@ import { AiGovernancePanel } from "@/components/ai-governance-panel";
 import { PageHeader } from "@/components/page-header";
 import { requireFirmAccess } from "@/lib/access";
 import { loadAiGovernance } from "@/lib/ai-governance";
+import { survaiReadiness } from "@/lib/survai-readiness";
 
 export const metadata = { title: "AI and assistant" };
 export const dynamic = "force-dynamic";
@@ -14,7 +15,7 @@ export default async function AiSettingsPage({ params }: PageProps<"/app/[organi
   const access = await requireFirmAccess(organisationSlug);
   const demo = access.userId === "demo_user";
   const governance = demo
-    ? { providerConfigured: false, settings: { aiFeaturesEnabled: false, permittedUses: [], disclosureText: null, disclosureVersion: 0, version: 0 }, assessments: [], incidents: [], approvedModels: [] }
+    ? { providerConfigured: false, settings: { aiFeaturesEnabled: false, permittedUses: [], disclosureText: null, disclosureVersion: 0, version: 0 }, assessments: [], incidents: [], approvedModels: [], survai: survaiReadiness({ connection: null, register: [], settings: null, riskAssessments: [], openIncidents: [], today: "" }) }
     : await loadAiGovernance(access);
   const full = access.accessLevel === "full";
   return <main className="page">

@@ -637,6 +637,11 @@ fieldset.field legend { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
 .ai-governance .panel { margin: 0; }
 .ai-list { display: grid; gap: 8px; margin: 12px 20px; padding: 0; list-style: none; }
 .ai-list > li { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
+.readiness-list { display: grid; gap: 10px; margin: 12px 20px 16px; padding: 0; list-style: none; }
+.readiness-list > li { display: grid; grid-template-columns: 16px 1fr; gap: 10px; align-items: start; font-size: 13px; }
+.readiness-list > li > svg { margin-top: 2px; color: var(--muted); }
+.readiness-list > li[data-done] > svg { color: var(--success); }
+.readiness-list .cell-sub { display: block; }
 .ai-gates { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 12px; }
 .ai-gates li { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
 .job-ai-consent { display: grid; gap: 12px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border); }

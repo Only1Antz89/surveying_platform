@@ -2,13 +2,14 @@
 import {workspaceFetch} from "@/lib/workspace-request";
 
 import { type FormEvent, useState } from "react";
-import { ShieldAlert } from "lucide-react";
+import { CheckCircle2, Circle, ShieldAlert } from "lucide-react";
 import { StatusDot } from "@surveynt/ui";
 import { aiUseLabels, aiUses, type AiUse } from "@surveynt/assistant";
 import type { loadAiGovernance } from "@/lib/ai-governance";
 
 type Governance = Awaited<ReturnType<typeof loadAiGovernance>>;
 
+const ownerLabels = { platform: "Surveynt platform", practice: "Your practice", client: "Your client" } as const;
 const severityTone = { low: "slate", medium: "amber", high: "red", critical: "red" } as const;
 
 /**
@@ -62,6 +63,14 @@ export function AiGovernancePanel({ initial, canManage, canReport, demo }: { ini
     {demo ? <p className="address-demo-label">Demo workspace: AI features are off and nothing is saved.</p> : null}
     {!data.providerConfigured ? <p className="identity-warning"><ShieldAlert size={14} aria-hidden="true" /> No AI provider is configured for this deployment, so no AI feature can run whatever is set here. Suggestions from records, completion checks and report assembly do not use AI.</p> : null}
     {message ? <p className={message.tone === "error" ? "form-error" : "form-success"} role="status">{message.text}</p> : null}
+
+    <section className="panel" aria-labelledby="survai-readiness-heading">
+      <div className="panel-header"><div><h2 id="survai-readiness-heading">SurvAI activation</h2><p>{data.survai.businessReady ? (data.survai.caseReady ? "SurvAI is active. Case conversations run once the client's consent is recorded on the job." : "Business conversations are active. Case conversations still need the steps below.") : "SurvAI stays off until every step below is complete. Each step is a sign-off by the people named; none can be skipped."}</p></div><StatusDot tone={data.survai.businessReady ? "green" : "amber"}>{data.survai.businessReady ? "Active" : "Not active"}</StatusDot></div>
+      <ol className="readiness-list">{data.survai.steps.map((step) => <li key={step.key} data-done={step.done || undefined}>
+        {step.done ? <CheckCircle2 size={16} aria-hidden="true" /> : <Circle size={16} aria-hidden="true" />}
+        <div><strong>{step.label}</strong><span className="sr-only">{step.done ? " (done)" : step.key === "case_consent" ? " (per case)" : " (to do)"}</span><span className="cell-sub">{ownerLabels[step.owner]} · {step.done ? "Done" : step.detail}</span></div>
+      </li>)}</ol>
+    </section>
 
     <section className="panel">
       <div className="panel-header"><div><h2>Firm settings</h2><p>Off by default. A use runs only when it is on here, covered by an approved risk assessment, approved in the platform model register, and agreed by the client for that job.</p></div></div>
