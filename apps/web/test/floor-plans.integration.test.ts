@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { clients, createDatabase, jobs, organisationMemberships, organisations, properties, surveyRooms, surveys, users, withTenant, type Database } from "@surveynt/db";
+import { clients, createDatabase, jobs, mobileCaptureOperations, organisationMemberships, organisations, properties, surveyRooms, surveys, users, withTenant, type Database } from "@surveynt/db";
 import { createTestDatabase, integrationEnabled, stopRelay, type TestDatabase } from "@surveynt/db/testing";
 vi.mock("server-only", () => ({}));
 import { createSurvey, type SurveyContext } from "../src/lib/surveys";
@@ -45,6 +45,19 @@ describe.skipIf(!integrationEnabled)("survey floor plans", () => {
     expect(await listRooms(foreign, surveyId)).toBeNull();
     await expect(addRoom({ ...surveyor, role: "manager", canRecordSurvey: false }, surveyId, { floor: "ground", name: "Nope" })).rejects.toMatchObject({ status: 403 });
     expect(await withTenant(createDatabase(), foreign.organisationId, (tx) => tx.select().from(surveyRooms))).toEqual([]);
+  });
+  it("replays mobile room creates once and still checks current access", async () => {
+    const body = { floor: "ground" as const, name: "Retry room", lengthM: 2, widthM: 3 };
+    const [first, second] = await Promise.all([addRoom(surveyor, surveyId, body, "q_retry_room_1"), addRoom(surveyor, surveyId, body, "q_retry_room_1")]);
+    expect(second.id).toBe(first.id);
+    expect(await withTenant(createDatabase(), foreign.organisationId, tx => tx.select().from(mobileCaptureOperations))).toEqual([]);
+    expect((await listRooms(surveyor, surveyId))!.filter(room => room.name === body.name)).toHaveLength(1);
+    await expect(addRoom(surveyor, surveyId, {...body, name: "Changed"}, "q_retry_room_1")).rejects.toMatchObject({status:409});
+    await expect(addRoom(other, surveyId, body, "q_retry_room_1")).rejects.toMatchObject({status:404});
+    await expect(addRoom(foreign, surveyId, body, "q_retry_room_1")).rejects.toMatchObject({status:404});
+    await removeRoom(surveyor, surveyId, first.id);
+    expect((await addRoom(surveyor, surveyId, body, "q_retry_room_1")).id).toBe(first.id);
+    expect((await listRooms(surveyor, surveyId))!.filter(room => room.name === body.name)).toHaveLength(0);
   });
   it("marks a composed report out of date when measurements change, and locks rooms after sign-off", async () => {
     const before = await withTenant(createDatabase(), surveyor.organisationId, (tx) => currentReportInput(tx, surveyor, surveyId));

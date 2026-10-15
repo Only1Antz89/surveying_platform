@@ -108,11 +108,12 @@ describe("fictional Gemini demo adapter", () => {
   const proposal = (await sendDemoSurvai(manager, { message: "What does an amber rain warning mean?", pageContext: { page: "overview" } })).message.webProposal!;
   await expect(sendDemoWebAnswer({ ...manager, role: "surveyor" }, { token: proposal.token })).rejects.toThrow("expired");
   await expect(sendDemoWebAnswer(manager, { token: `${proposal.token}x` })).rejects.toThrow("expired");
-  mocked.web.mockResolvedValue({ content: "Amber means be prepared.", citations: [{ id: "web:1", label: "Met Office", href: "https://www.metoffice.gov.uk/" }], searchQueries: [] });
+  mocked.web.mockResolvedValue({ content: "Amber means be prepared.", citations: [{ id: "web:1", label: "Met Office", href: "https://www.metoffice.gov.uk/" }], searchQueries: [], searchSuggestions: "<div>Google Search Suggestions</div>" });
   const result = await sendDemoWebAnswer(manager, { token: proposal.token });
   expect(mocked.web).toHaveBeenCalledWith(expect.objectContaining({ query: "Met Office heavy rain warning guidance", credentialEnv: "SURVEYNT_CONNECTION_SECRET_GEMINI" }));
   expect(result.message).toMatchObject({ web: true, query: "Met Office heavy rain warning guidance", citations: [{ id: "web:1" }] });
   expect(result.message.content).toBe("Amber means be prepared.");
+  expect(result.message.searchSuggestions).toBe("<div>Google Search Suggestions</div>");
  });
  it("replaces the fictional outlook with a live free forecast for the visit postcode area, falling back safely", async () => {
   vi.stubEnv("SURVEYNT_DEMO_EVALUATION_SERVICES", "true");

@@ -6,7 +6,7 @@ Expo companion for assigned jobs, navigation, site capture and explicit workday 
 
 Copy `.env.example` to your local mobile environment. Use the deployed HTTPS app URL and the same Clerk instance as the web application. Public variables contain no server secrets.
 
-Configure a Clerk JWT template named `surveynt-mobile`, with `aud` set to `surveynt-mobile` and `org_id` supplied from the active organisation. Sign in, select a practice and ensure the corresponding internal active membership has survey recording permission and full subscription access (or the existing `billing_exempt` entitlement).
+Configure a Clerk JWT template named `surveynt-mobile`, with `aud` set to `surveynt-mobile` and `org_id` supplied from the active organisation. The app also sends its Clerk session token in `x-surveynt-session-token`. A custom JWT alone is not session-bound and cannot prove MFA. Practices requiring two-step sign-in accept only a separately verified session token for the same user and active organisation, with a verified second factor. Sign in, select a practice and ensure the corresponding internal active membership has survey recording permission and full subscription access (or the existing `billing_exempt` entitlement).
 
 From the repository root:
 
@@ -37,9 +37,9 @@ Rooms with dimensions and time on site can also be recorded. Field answers and r
 
 Every action is written to the device first: a JSON queue per practice and user in the app's document directory, and photos copied out of the camera cache. The queue syncs on launch, on returning to the app and after each capture, in order, stopping at the first connection problem.
 
-- **Retries:** survey changes carry operation ids and photos carry client ids, so retries are not applied twice.
+- **Retries:** survey changes and room/cost submissions carry stable operation ids; photos carry client ids. The server stores room/cost replay receipts atomically, scoped to the practice and user. Retries return the original result, including concurrent sends. Reusing an id for different data is rejected.
 - **Errors:** if the server refuses an item (validation or permission), it stays on the device marked for attention and can be discarded. Sign-in, rate-limit and server errors are retried.
-- **Rooms:** a room sent just before a connection drops may be sent again; remove the duplicate in the survey workspace.
+- **Release pairing:** apply migration `0084_mobile_capture_retries` before releasing this server code; grant the tenant runtime role DML on the new `mobile_capture_operations` table if migration-owner default grants are not configured. Deploy the updated companion with the server: older companions without a stable `x-surveynt-operation-id` are explicitly rejected for room/cost writes instead of risking duplicates. MFA-required practices also need the updated session-token header. Physical-device acceptance remains required.
 
 Server endpoints: `GET /api/mobile/jobs/:id/capture`, `POST /api/mobile/surveys/:id/sync` (status, notes and photo links only), `POST /api/mobile/surveys/:id/media`, `POST /api/mobile/surveys/:id/rooms` and `POST /api/mobile/jobs/:id/costs`. All use the same mobile token, assignment checks and recording permission as the existing mobile routes.
 

@@ -1,14 +1,14 @@
 import { PermanentError } from "./offline-queue";
 
 export const endpoint = process.env.EXPO_PUBLIC_SURVEYNT_URL ?? "";
-type TokenSource = (options: { template: string }) => Promise<string | null>;
+type TokenSource = (options?: { template: string }) => Promise<string | null>;
 
 /** Authenticated calls to the practice's Surveynt API with the dedicated mobile token. */
 export function apiClient(getToken: TokenSource) {
   async function call(path: string, init: RequestInit) {
-    const token = await getToken({ template: "surveynt-mobile" });
+    const [token, sessionToken] = await Promise.all([getToken({ template: "surveynt-mobile" }), getToken()]);
     let response: Response;
-    try { response = await fetch(`${endpoint}${path}`, { ...init, headers: { authorization: `Bearer ${token}`, ...init.headers } }); }
+    try { response = await fetch(`${endpoint}${path}`, { ...init, headers: { ...init.headers, authorization: `Bearer ${token}`, ...(sessionToken ? { "x-surveynt-session-token": sessionToken } : {}) } }); }
     catch { throw new Error("No connection. Changes are kept on this device."); }
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -21,7 +21,7 @@ export function apiClient(getToken: TokenSource) {
   }
   return {
     get: (path: string) => call(path, { method: "GET" }),
-    json: (path: string, body: unknown) => call(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+    json: (path: string, body: unknown, operationId?: string) => call(path, { method: "POST", headers: { "content-type": "application/json", ...(operationId ? { "x-surveynt-operation-id": operationId } : {}) }, body: JSON.stringify(body) }),
     form: (path: string, form: FormData) => call(path, { method: "POST", body: form }),
   };
 }

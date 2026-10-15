@@ -11,13 +11,14 @@ export const geminiNativeEndpoint = "https://generativelanguage.googleapis.com/v
 export const geminiCompatibleEndpoint = `${geminiNativeEndpoint}/openai`;
 
 export type WebCitation = { id: string; label: string; href: string };
-export type WebAnswer = { content: string; citations: WebCitation[]; searchQueries: string[] };
+export type WebAnswer = { content: string; citations: WebCitation[]; searchQueries: string[]; searchSuggestions: string };
 
 const response = z.object({
   candidates: z.array(z.object({
     content: z.object({ parts: z.array(z.object({ text: z.string().optional() })).optional() }).optional(),
     groundingMetadata: z.object({
       webSearchQueries: z.array(z.string()).optional(),
+      searchEntryPoint: z.object({ renderedContent: z.string().trim().min(1).max(100_000) }).optional(),
       groundingChunks: z.array(z.object({ web: z.object({ uri: z.string(), title: z.string().optional() }).optional() })).optional(),
     }).optional(),
   })).min(1),
@@ -42,6 +43,8 @@ export async function groundedWebAnswer(input: { credentialEnv: string; model: s
   const seen = new Set<string>();
   const citations = (candidate.groundingMetadata?.groundingChunks ?? []).flatMap((chunk) => chunk.web && /^https:\/\//.test(chunk.web.uri) && !seen.has(chunk.web.uri) ? (seen.add(chunk.web.uri), [{ uri: chunk.web.uri, title: chunk.web.title }]) : [])
     .slice(0, 10).map((web, index) => ({ id: `web:${index + 1}`, label: web.title?.slice(0, 160) || new URL(web.uri).hostname, href: web.uri }));
+  const searchSuggestions = candidate.groundingMetadata?.searchEntryPoint?.renderedContent;
   if (!content || !citations.length) throw new GovernanceError(502, "web_search_ungrounded", "Web search did not return sourced results for this query. Nothing was saved.");
-  return { content: content.slice(0, 12000), citations, searchQueries: (candidate.groundingMetadata?.webSearchQueries ?? []).slice(0, 5) };
+  if (!searchSuggestions) throw new GovernanceError(502, "search_suggestions_missing", "Google Search Suggestions were unavailable. No web answer was saved.");
+  return { searchSuggestions, content: content.slice(0, 12000), citations, searchQueries: (candidate.groundingMetadata?.webSearchQueries ?? []).slice(0, 5) };
 }

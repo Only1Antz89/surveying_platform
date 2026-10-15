@@ -5,4 +5,10 @@ describe("personal Surveyant history authorization",()=>{
  it("retains an answer while all its cited assignments remain permitted",()=>expect(personalConversationHistory(messages,new Set(["job:own"]))).toEqual(messages));
  it("does not replay an answer or its question after reassignment",()=>expect(personalConversationHistory(messages,new Set(["job:other"]))).toEqual([]));
  it("does not replay finance or uncited answers into personal surveying",()=>{expect(personalConversationHistory([{role:"assistant",citations:[{id:"business:finance-totals"}]}],new Set(["job:own"]))).toEqual([]);expect(personalConversationHistory([{role:"assistant"}],new Set(["job:own"]))).toEqual([]);});
+ it("retains public web sources while still rejecting inaccessible records and forged web citations",()=>{
+  const web={role:"assistant",citations:[{id:"web:1",href:"https://example.org/guidance"}],searchSuggestions:"<div>Google Search Suggestions</div>"};
+  expect(personalConversationHistory([web],new Set())).toEqual([web]);
+  expect(personalConversationHistory([web,...messages],new Set())).toEqual([]);
+  expect(personalConversationHistory([{role:"assistant",citations:[{id:"web:1",href:"/jobs/private"}]}],new Set())).toEqual([]);
+ });
 });

@@ -181,6 +181,6 @@ export async function sendDemoWebAnswer(access: DemoAccess, input: { token: stri
  recent.push(now); inFlight++;
  try {
   const answer = await groundedWebAnswer({ credentialEnv, model, query });
-  return { message: { role: "assistant", content: answer.content, citations: answer.citations, web: true, query, demo: true, model } };
+  return { message: { role: "assistant", content: answer.content, citations: answer.citations, searchSuggestions: answer.searchSuggestions, web: true, query, demo: true, model } };
  } finally { inFlight--; }
 }

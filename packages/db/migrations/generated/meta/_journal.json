@@ -589,6 +589,13 @@
       "when": 1791977419595,
       "tag": "0083_client_portal",
       "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1792077900196,
+      "tag": "0084_mobile_capture_retries",
+      "breakpoints": true
     }
   ]
 }
