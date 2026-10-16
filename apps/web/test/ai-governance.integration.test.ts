@@ -1,7 +1,9 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { aiConsentRecords, aiModelRegister, aiRiskAssessments, auditEvents, clients, createDatabase, jobs, organisations, platformStaff, properties, users, withTenant } from "@surveynt/db";
 import { createTestDatabase, integrationEnabled, stopRelay, type TestDatabase } from "@surveynt/db/testing";
+
+vi.mock("server-only", () => ({}));
 import { approveRiskAssessment, createRiskAssessment, governedModelFor, GovernanceError, loadAiGovernance, loadAssistantMetrics, loadJobAiStatus, proposeModel, recordAiConsent, reportAiIncident, setModelStatus, settingsInput, updateAiIncident, updateAiSettings, type GovernanceContext } from "../src/lib/ai-governance";
 
 const firmA = "00000000-0000-0000-0000-0000000000ac";
