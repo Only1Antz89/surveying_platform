@@ -20,9 +20,11 @@ export default async function TeamPage({ params }: { params: Promise<{ organisat
   const access = await requireFirmAccess(organisationSlug);
   const isManager = access.workspaceMode === "manager" || access.userRole === "manager";
 
-  if (isManager) {
+  // The manager mock-up uses illustrative sample data, so it is shown only in the demo workspace.
+  if (access.userId === "demo_user" && isManager) {
     return (
       <main className="page">
+        <p className="address-demo-label">Demo workspace: sample data for illustration. Nothing here is saved.</p>
         <ManagerStaff slug={organisationSlug} />
       </main>
     );
@@ -32,10 +34,10 @@ export default async function TeamPage({ params }: { params: Promise<{ organisat
 
   return <main className="page">
     <PageHeader
-      title="Surveyors & staff"
-      description="Control practice access, professional roles and current workload."
+      title={isManager ? "Surveyors" : "Surveyors & staff"}
+      description={isManager ? "Surveyors in this practice and their current workload." : "Control practice access, professional roles and current workload."}
     />
-    <TeamManager slug={organisationSlug} members={members} canManage={canManageTeam(access.userRole) && access.accessLevel === "full"} actorRole={access.userRole} isManager={false} />
+    <TeamManager slug={organisationSlug} members={isManager ? members.filter((member) => member.role === "surveyor") : members} canManage={canManageTeam(access.userRole) && access.accessLevel === "full"} actorRole={access.userRole} isManager={isManager} />
     {access.userRole === "owner" && access.accessLevel === "full" ? <ProfessionalPermissions members={members} /> : null}
     {access.userRole === "owner" ? <SupportApprovalPanel organisationSlug={organisationSlug} initialRequests={supportRequests} /> : null}
   </main>;
