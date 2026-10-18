@@ -45,7 +45,7 @@
 
 .manager-cal-title-group p {
   font-size: 14px;
-  color: #64748b;
+  color: #475569;
   margin: 0;
   line-height: 1.5;
 }
@@ -77,7 +77,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #64748b;
+  color: #475569;
 }
 
 .manager-cal-range h2 {
@@ -123,7 +123,7 @@
   padding: 6px 14px;
   font-size: 13px;
   font-weight: 500;
-  color: #64748b;
+  color: #475569;
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -182,7 +182,7 @@
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  color: #64748b;
+  color: #475569;
 }
 
 .manager-cal-day-label b {
@@ -194,7 +194,7 @@
 .manager-cal-today-badge {
   font-size: 10px;
   font-weight: 700;
-  color: #2563eb;
+  color: #1d4ed8;
   background: #dbeafe;
   padding: 2px 6px;
   border-radius: 4px;
@@ -261,7 +261,7 @@
 
 .manager-cal-event-client {
   font-size: 11px;
-  color: #64748b;
+  color: #475569;
 }
 
 /* Agenda / Day View */
@@ -292,7 +292,7 @@
 
 .manager-agenda-info span {
   font-size: 12.5px;
-  color: #64748b;
+  color: #475569;
 }
 
 /* Legend */
@@ -303,7 +303,7 @@
   justify-content: space-between;
   background: #f8fafc;
   font-size: 12px;
-  color: #64748b;
+  color: #475569;
   flex-wrap: wrap;
   gap: 12px;
 }
@@ -352,7 +352,7 @@
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  color: #64748b;
+  color: #475569;
   letter-spacing: 0.05em;
 }
 
@@ -405,3 +405,9 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Dark theme: the title and supporting text sit on the dark canvas. */
+[data-theme=dark] .manager-cal-title-group h1 { color: #e6edf9; }
+[data-theme=dark] .manager-cal-title-group p { color: #a4b6d2; }
+[data-theme=dark] .manager-cal-eyebrow { color: #8fb0ff; }
+.manager-cal-grid:focus-visible { outline: 2px solid #2455dc; outline-offset: 2px; }

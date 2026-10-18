@@ -29,5 +29,5 @@ export function ThemeCycleButton() {
       }
     });
   }
-  return <><button type="button" className="nav-link sidebar-theme" aria-label={`Theme: ${current.label}. Switch to ${next.label}.`} title={`Switch to ${next.label} theme`} onClick={cycle}><Icon aria-hidden="true"/><span>{current.label} theme</span></button><span className="sr-only" role="status">{status}</span></>;
+  return <><button type="button" className="nav-link sidebar-theme" aria-label={`${current.label} theme. Switch to ${next.label}.`} title={`Switch to ${next.label} theme`} onClick={cycle}><Icon aria-hidden="true"/><span>{current.label} theme</span></button><span className="sr-only" role="status">{status}</span></>;
 }

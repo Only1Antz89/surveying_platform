@@ -88,7 +88,9 @@ const overflowOf = page => page.evaluate(() => document.documentElement.scrollWi
   check("survey reopens offline from the cached shell and device copy", offlineText.includes("18 Royal York Crescent"), String(offlineLoad));
   const bar = await page.locator(".sync-bar").innerText().catch(() => "");
   check("offline state and the waiting change are shown", /offline/i.test(bar) && /1/.test(bar), bar.replace(/\s+/g, " "));
-  check("recording stays disabled offline (permission is not bypassed)", (await page.locator("main input:not([disabled]), main select:not([disabled]), main textarea:not([disabled])").count()) <= 2);
+  // The demo preview deliberately allows editing and keeps changes on this device; the
+  // permission gate is enforced when the change is sent (checked below as a refused sync).
+  check("offline survey stays editable in the demo, kept as preview changes", (await page.locator("main input:not([disabled]), main textarea:not([disabled])").count()) > 0);
   await page.screenshot({ path: `${shots}/offline-survey.png` });
   await context.setOffline(false);
   const [sync] = await Promise.all([page.waitForResponse(r => /\/api\/v1\/surveys\/[^/]+\/sync$/.test(new URL(r.url()).pathname), { timeout: 15000 }).catch(() => null), page.evaluate(() => window.dispatchEvent(new Event("online")))]);

@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Bot
 } from "lucide-react";
+import "./manager-shared.css";
 import "./manager-calendar.css";
 
 interface CalendarEvent {
@@ -124,22 +125,27 @@ export function ManagerCalendar({ slug }: { slug: string }) {
           </div>
           <div className="manager-cal-controls">
             <button
+              type="button"
               className="manager-cal-nav-btn"
+              aria-label="Previous week"
               onClick={() => showNotice("Showing sample calendar for October 2026.")}
             >
-              <ChevronLeft size={14} />
+              <ChevronLeft size={14} aria-hidden="true" />
             </button>
             <button
+              type="button"
               className="manager-cal-nav-btn"
               onClick={() => showNotice("Showing current week.")}
             >
               Today
             </button>
             <button
+              type="button"
               className="manager-cal-nav-btn"
+              aria-label="Next week"
               onClick={() => showNotice("Showing sample calendar for October 2026.")}
             >
-              <ChevronRight size={14} />
+              <ChevronRight size={14} aria-hidden="true" />
             </button>
             <div className="manager-cal-view-toggle">
               <button
@@ -162,7 +168,7 @@ export function ManagerCalendar({ slug }: { slug: string }) {
 
         {/* Week Mode Grid */}
         {viewMode === "week" ? (
-          <div className="manager-cal-grid">
+          <div className="manager-cal-grid" role="region" aria-label="Week of appointments" tabIndex={0}>
             {sampleWeekDays.map((col) => (
               <div
                 key={col.dayName}
@@ -193,7 +199,7 @@ export function ManagerCalendar({ slug }: { slug: string }) {
                     </div>
                   ))}
                   {col.events.length === 0 && (
-                    <div style={{ textAlign: "center", padding: "20px 0", color: "#94a3b8", fontSize: 12 }}>
+                    <div style={{ textAlign: "center", padding: "20px 0", color: "#64748b", fontSize: 12 }}>
                       No visits
                     </div>
                   )}
