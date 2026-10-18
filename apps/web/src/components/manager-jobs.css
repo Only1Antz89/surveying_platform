@@ -45,7 +45,7 @@
 
 .manager-jobs-title-group p {
   font-size: 14px;
-  color: #64748b;
+  color: #475569;
   margin: 0;
   line-height: 1.5;
 }
@@ -73,7 +73,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #64748b;
+  color: #475569;
 }
 
 .manager-jobs-kpi-card b {
@@ -85,7 +85,7 @@
 
 .manager-jobs-kpi-card span {
   font-size: 12px;
-  color: #64748b;
+  color: #475569;
 }
 
 /* Toolbar */
@@ -107,7 +107,7 @@
 .manager-jobs-filter-btn {
   border: 1px solid #dce5f2;
   background: #ffffff;
-  color: #64748b;
+  color: #475569;
   border-radius: 6px;
   padding: 7px 14px;
   font-size: 13px;
@@ -167,7 +167,7 @@
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: #64748b;
+  color: #475569;
 }
 
 .manager-jobs-table tbody tr {
@@ -195,7 +195,7 @@
 
 .job-service-text {
   font-size: 12px;
-  color: #64748b;
+  color: #475569;
   display: block;
 }
 
@@ -207,7 +207,7 @@
 
 .job-client-text small {
   font-size: 12px;
-  color: #64748b;
+  color: #475569;
   display: block;
 }
 
@@ -252,3 +252,8 @@
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* Dark theme: the title and supporting text sit on the dark canvas. */
+[data-theme=dark] .manager-jobs-title-group h1 { color: #e6edf9; }
+[data-theme=dark] .manager-jobs-title-group p { color: #a4b6d2; }
+[data-theme=dark] .manager-jobs-eyebrow { color: #8fb0ff; }

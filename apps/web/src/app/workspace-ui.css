@@ -1,5 +1,5 @@
 /* Approved Clifton workspace presentation. Rollout is independent of entitlements. */
-.new-ui { --blue:#2455dc; --ink:#16233a; --muted:#637695; --border:#dce5f2; --nav-active:#eaf0ff; --canvas:#f2f5fa; --radius:4px; grid-template-columns:228px minmax(0,1fr); font-size:14px; }
+.new-ui { --blue:#2455dc; --ink:#16233a; --muted:#56688a; --border:#dce5f2; --nav-active:#eaf0ff; --canvas:#f2f5fa; --radius:4px; grid-template-columns:228px minmax(0,1fr); font-size:14px; }
 .new-ui .sidebar {background:var(--surface,#fff);color:var(--ink);border-right:1px solid var(--border);padding:0 14px;}
 .new-ui .sidebar-top {height:76px;margin:0 -14px;padding:0 20px;border-bottom:1px solid var(--border);}
 .practice-brand {display:flex;gap:12px;align-items:center;text-decoration:none;color:var(--ink);min-width:0;}
@@ -277,3 +277,13 @@
 @media(prefers-reduced-motion:reduce){.survai-home-dock,.survai-edge-guide{transition:none;}}
 
 .survai-tool[data-side="right"][data-view="results"] .surveyant-overlay{border-radius:24px 12px 12px 24px;}
+
+/* Contrast: sidebar practice caption, and blue text on dark surfaces. */
+.new-ui .practice-label span{color:var(--muted);}
+[data-theme=dark] .new-ui .nav-link.active{color:#93b4ff;border-color:#2c3e57;}
+[data-theme=dark] .app-shell .context-nav a.active{color:#a9c1ff;}
+[data-theme=dark] .surveyant-toggle{color:#8fb0ff;}
+/* The floating label can sit over light cards, so give it its own dark backing. */
+[data-theme=dark] .surveyant-toggle>span{background:#0b1421;padding:1px 7px;border-radius:999px;}
+[data-theme=dark] .new-ui .data-table th,[data-theme=dark] .app-shell.new-ui .data-table:not(.survey-workspace .data-table) th{background:#16263d;}
+[data-theme=dark] .new-ui .status-blue,[data-theme=dark] .new-ui .fieldwork-mode button[aria-pressed=true],[data-theme=dark] .new-ui .field-map-toolbar button[aria-pressed=true]{color:#a9c1ff;}
