@@ -4,7 +4,7 @@ import { canMutateOperations, isManagementRole, type OrganisationRole } from "@s
 import { workspaceAudit } from "./workspace-audit";
 import { assignedJobScope } from "./workspace-scope";
 import { enqueueEmail } from "./email-queue";
-import { defaultTemplates, fillTemplate, messageKeys, type MessageChannel, type MessageKey, type MessageValues } from "./client-messages-model";
+import { defaultOnMessageKeys, defaultTemplates, fillTemplate, messageKeys, type MessageChannel, type MessageKey, type MessageValues } from "./client-messages-model";
 
 type Context = { organisationId: string; internalUserId: string | null; role: OrganisationRole; actorRole?: OrganisationRole; workspaceMode?: import("./workspace-mode").WorkspaceMode };
 export class MessageError extends Error { constructor(public status: number, public code: string, message: string) { super(message); } }
@@ -18,7 +18,7 @@ async function savedTemplates(tx: TenantTransaction, organisationId: string) {
 function merged(saved: (typeof messageTemplates.$inferSelect)[]): TemplateView[] {
   return messageKeys.flatMap((key) => (["email", "sms"] as const).map((channel) => {
     const row = saved.find((item) => item.key === key && item.channel === channel);
-    return row ? { key, channel, subject: row.subject, body: row.body, enabled: row.enabled, customised: true } : { key, channel, subject: channel === "email" ? defaultTemplates[key].subject : null, body: channel === "email" ? defaultTemplates[key].body : defaultTemplates[key].sms, enabled: false, customised: false };
+    return row ? { key, channel, subject: row.subject, body: row.body, enabled: row.enabled, customised: true } : { key, channel, subject: channel === "email" ? defaultTemplates[key].subject : null, body: channel === "email" ? defaultTemplates[key].body : defaultTemplates[key].sms, enabled: channel === "email" && defaultOnMessageKeys.includes(key), customised: false };
   }));
 }
 
@@ -71,14 +71,21 @@ async function deliver(tx: TenantTransaction, input: { organisationId: string; f
     if (row) results.push({ channel, status, reason });
     return Boolean(row);
   };
-  if (email?.enabled) {
+  if (email ? email.enabled : defaultOnMessageKeys.includes(input.key)) {
     if (!input.facts.clientEmail) await record("email", "skipped", "The client has no email address.", null);
     else if (await record("email", "queued", null, input.facts.clientEmail)) {
-      await enqueueEmail({ organisationId: input.organisationId, type: "client_message", deduplicationKey: `client-message:${input.dedupKey}`, payload: { recipients: [input.facts.clientEmail], organisationName: input.facts.organisationName, subject: fillTemplate(email.subject ?? defaultTemplates[input.key].subject, values), body: fillTemplate(email.body, values), ...(input.key === "review_request" && values.reviewLink ? { actionLabel: "Leave a review", actionUrl: values.reviewLink } : {}) } });
+      await enqueueEmail({ organisationId: input.organisationId, type: "client_message", deduplicationKey: `client-message:${input.dedupKey}`, payload: { recipients: [input.facts.clientEmail], organisationName: input.facts.organisationName, subject: fillTemplate(email?.subject ?? defaultTemplates[input.key].subject, values), body: fillTemplate(email?.body ?? defaultTemplates[input.key].body, values), ...(input.key === "review_request" && values.reviewLink ? { actionLabel: "Leave a review", actionUrl: values.reviewLink } : {}) } });
     }
   }
   if (sms?.enabled) await record("sms", "skipped", "No text message provider is connected.", null);
   return results;
+}
+
+/** Automatic client messages for workflow events (booking, payment, report issue). Call inside the event's transaction; the dedup key makes retries safe. */
+export async function queueWorkflowMessage(tx: TenantTransaction, input: { organisationId: string; jobId: string; key: "booking_confirmed" | "payment_received" | "report_ready"; values?: MessageValues; dedupKey: string; actorUserId?: string | null }) {
+  const [facts] = await jobFacts(tx, input.organisationId, [input.jobId]);
+  if (!facts) return [];
+  return deliver(tx, { organisationId: input.organisationId, facts, key: input.key, values: input.values ?? {}, dedupKey: input.dedupKey, actorUserId: input.actorUserId ?? null });
 }
 
 /** Manual messages from the job record (on the way, access request). */

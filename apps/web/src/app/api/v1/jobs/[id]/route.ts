@@ -1,4 +1,5 @@
 import { workspaceApiGuard } from "@/lib/workspace-api-guard";
+import { queueWorkflowMessage } from "@/lib/client-messages";
 import { z } from "zod";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { canMutateOperations, canTransitionJob, jobStages } from "@surveynt/domain";
@@ -106,6 +107,7 @@ export async function PATCH(request: Request, context: RouteContext<"/api/v1/job
       if (parsed.data.coordinatorId) await tx.insert(jobAssignments).values({ organisationId: session.organisationId, jobId: id, userId: parsed.data.coordinatorId, responsibility: "coordinator" });
     }
     if (parsed.data.stage) await tx.insert(jobStageEvents).values({ organisationId: session.organisationId, jobId: id, fromStage: current.stage, toStage: parsed.data.stage, changedByUserId: session.internalUserId, reason: "API stage update" });
+    if (parsed.data.stage === "issued" && current.stage !== "issued") await queueWorkflowMessage(tx, { organisationId: session.organisationId, jobId: id, key: "report_ready", dedupKey: `report-ready:${id}`, actorUserId: session.internalUserId });
     await tx.insert(auditEvents).values({ organisationId: session.organisationId, actorUserId: session.internalUserId, action: "job.updated", resourceType: "job", resourceId: id, metadata: { fromVersion: current.version, toVersion: current.version + 1, fields: Object.keys(parsed.data).filter((key) => key !== "version") } });
     return { kind: "updated" as const, job: updated };
   }).catch((reason: unknown) => {

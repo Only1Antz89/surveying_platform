@@ -1,12 +1,18 @@
 import { z } from "zod";
 
-export const messageKeys = ["appointment_reminder", "on_the_way", "access_request", "review_request"] as const;
+export const messageKeys = ["booking_confirmed", "appointment_reminder", "on_the_way", "access_request", "payment_received", "report_ready", "review_request"] as const;
 export type MessageKey = (typeof messageKeys)[number];
 export type MessageChannel = "email" | "sms";
-export const messageTokens = ["clientName", "practiceName", "reference", "propertyAddress", "appointmentDate", "appointmentTime", "surveyorName", "reviewLink"] as const;
+export const messageTokens = ["clientName", "practiceName", "reference", "propertyAddress", "appointmentDate", "appointmentTime", "surveyorName", "reviewLink", "amount", "paymentLabel"] as const;
 export type MessageValues = Partial<Record<(typeof messageTokens)[number], string>>;
 
+/** Transactional messages a client expects. They send unless the practice switches them off. */
+export const defaultOnMessageKeys: readonly MessageKey[] = ["booking_confirmed", "payment_received", "report_ready"];
+
 export const messageMeta: Record<MessageKey, { label: string; when: string; automatic: boolean }> = {
+  booking_confirmed: { label: "Booking confirmation", when: "Sent automatically when a visit is booked. On unless you switch it off.", automatic: true },
+  payment_received: { label: "Payment receipt", when: "Sent automatically when an online deposit or balance payment is confirmed. On unless you switch it off.", automatic: true },
+  report_ready: { label: "Report ready", when: "Sent automatically when the report is issued. On unless you switch it off.", automatic: true },
   appointment_reminder: { label: "Appointment reminder", when: "Sent automatically the day before a confirmed visit.", automatic: true },
   on_the_way: { label: "On the way", when: "Sent by the surveyor from the job record when they set off.", automatic: false },
   access_request: { label: "Access request", when: "Sent from the job record to ask for keys, loft access or occupier contact.", automatic: false },
@@ -14,6 +20,9 @@ export const messageMeta: Record<MessageKey, { label: string; when: string; auto
 };
 
 export const defaultTemplates: Record<MessageKey, { subject: string; body: string; sms: string }> = {
+  booking_confirmed: { subject: "Your survey visit is booked · {reference}", body: "Dear {clientName},\n\nYour survey of {propertyAddress} is booked for {appointmentDate} at {appointmentTime}. {surveyorName} will carry out the inspection.\n\nYou can follow progress in your client portal. If the date no longer suits you, please contact us.\n\nKind regards,\n{practiceName}", sms: "{practiceName}: your survey at {propertyAddress} is booked for {appointmentDate} at {appointmentTime}. Ref {reference}." },
+  payment_received: { subject: "Payment received · {reference}", body: "Dear {clientName},\n\nThank you. We have received your {paymentLabel} of {amount} for the survey of {propertyAddress}.\n\nYour invoices are available in your client portal.\n\nKind regards,\n{practiceName}", sms: "{practiceName}: we have received your {paymentLabel} of {amount}. Ref {reference}." },
+  report_ready: { subject: "Your survey report is ready · {reference}", body: "Dear {clientName},\n\nYour survey report for {propertyAddress} has been issued. You can read and download it in your client portal.\n\nIf you have any questions about the findings, please get in touch.\n\nKind regards,\n{practiceName}", sms: "{practiceName}: your survey report for {propertyAddress} is ready in your client portal. Ref {reference}." },
   appointment_reminder: { subject: "Your survey visit tomorrow · {reference}", body: "Dear {clientName},\n\nThis is a reminder that {surveyorName} will visit {propertyAddress} on {appointmentDate} at {appointmentTime}.\n\nPlease make sure we can reach the loft hatch, the boiler and any outbuildings. If the property is occupied, let the occupier know we are coming.\n\nKind regards,\n{practiceName}", sms: "{practiceName}: reminder that your survey at {propertyAddress} is on {appointmentDate} at {appointmentTime}. Ref {reference}." },
   on_the_way: { subject: "Your surveyor is on the way · {reference}", body: "Dear {clientName},\n\n{surveyorName} is on the way to {propertyAddress} and expects to arrive shortly.\n\nKind regards,\n{practiceName}", sms: "{practiceName}: {surveyorName} is on the way to {propertyAddress}." },
   access_request: { subject: "Arranging access for your survey · {reference}", body: "Dear {clientName},\n\nTo complete the inspection at {propertyAddress} we need access to every room, the loft hatch and any outbuildings.\n\nPlease reply with how we should collect keys or contact the occupier.\n\nKind regards,\n{practiceName}", sms: "{practiceName}: please reply to our email about access to {propertyAddress} for your survey. Ref {reference}." },

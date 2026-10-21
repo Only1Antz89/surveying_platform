@@ -2032,7 +2032,7 @@ export const messageTemplates = pgTable("message_templates", {
   ...timestamps,
 }, (table) => [
   primaryKey({ columns: [table.organisationId, table.key, table.channel] }),
-  check("message_templates_key_chk", sql`${table.key} in ('appointment_reminder','on_the_way','access_request','review_request')`),
+  check("message_templates_key_chk", sql`${table.key} in ('appointment_reminder','on_the_way','access_request','review_request','booking_confirmed','payment_received','report_ready')`),
   check("message_templates_channel_chk", sql`${table.channel} in ('email','sms')`),
 ]);
 
