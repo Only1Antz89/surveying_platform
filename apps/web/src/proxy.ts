@@ -3,9 +3,25 @@ import { NextResponse, type NextRequest, type NextFetchEvent } from "next/server
 import {workspaceRoute} from "@/lib/workspace-mode";
 import { embeddingOrigins } from "@/lib/website-form";
 
+const internalPath=/^(\/app\/[^/]+)\/workspace-instances\/([^/]+)(.*)$/;
+// Next.js runs the proxy a second time on the path a workspace alias was rewritten
+// to, carrying the mode header the first pass set. Keep that mode: resetting it
+// would drop every manager/surveyor API call back to the default view, and
+// redirecting the internal page path back to its alias would loop forever.
+// Honouring the header is safe because manager and surveyor modes only narrow
+// access, and the handler still checks the mode against the current membership.
+const rewriteModes=["manager","surveyor"];
+function rewrittenMode(request:NextRequest){
+ const mode=request.headers.get("x-surveynt-workspace-mode");if(!mode||!rewriteModes.includes(mode))return null;
+ const path=request.nextUrl.pathname;const internal=path.match(internalPath);
+ if(internal)return internal[2]===mode?mode:null;
+ return path.startsWith("/api/")&&!workspaceRoute(path).requested?mode:null;
+}
 function workspaceResponse(request:NextRequest){
+ const passthrough=rewrittenMode(request);
+ if(passthrough){const headers=new Headers(request.headers);headers.set("x-surveynt-workspace-mode",passthrough);return NextResponse.next({request:{headers}});}
  const route=workspaceRoute(request.nextUrl.pathname);const headers=new Headers(request.headers);
- // Caller-supplied instance headers never control authentication or workspace scope.
+ // Otherwise caller-supplied instance headers are replaced: they never widen authentication or workspace scope.
  headers.set("x-surveynt-workspace-mode",route.requested??"default");
  const target=request.nextUrl.clone();target.pathname=route.requested&&request.nextUrl.pathname.startsWith("/app/")?route.canonical.replace(/^(\/app\/[^/]+)/,`$1/workspace-instances/${route.requested}`):route.canonical;
  return route.requested?NextResponse.rewrite(target,{request:{headers}}):NextResponse.next({request:{headers}});
@@ -13,8 +29,8 @@ function workspaceResponse(request:NextRequest){
 const clerkProxy = clerkMiddleware((_auth,request)=>workspaceResponse(request));
 
 export default async function proxy(request: NextRequest, event: NextFetchEvent) {
-  const internal=request.nextUrl.pathname.match(/^(\/app\/[^/]+)\/workspace-instances\/([^/]+)(.*)$/);
-  if(internal){if(!["administration","manager","surveyor"].includes(internal[2]))return new NextResponse(null,{status:404});const publicUrl=request.nextUrl.clone();publicUrl.pathname=internal[1]+(internal[2]==="administration"?"":`/${internal[2]}`)+(internal[3]||"/overview");return NextResponse.redirect(publicUrl);}
+  const internal=request.nextUrl.pathname.match(internalPath);
+  if(internal&&!rewrittenMode(request)){if(!["administration","manager","surveyor"].includes(internal[2]))return new NextResponse(null,{status:404});const publicUrl=request.nextUrl.clone();publicUrl.pathname=internal[1]+(internal[2]==="administration"?"":`/${internal[2]}`)+(internal[3]||"/overview");return NextResponse.redirect(publicUrl);}
   if (request.nextUrl.pathname.startsWith("/app/north-star-surveying")) {
     const destination = request.nextUrl.clone();
     destination.pathname = request.nextUrl.pathname.replace("/app/north-star-surveying", "/app/clifton-surveyors");

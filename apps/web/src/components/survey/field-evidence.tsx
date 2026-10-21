@@ -9,7 +9,7 @@ export function FieldEvidence({ path }: { path: string }) {
   const mapping = evidenceMapping(path);
   if (!context || !mapping || !context.pack.template.key.startsWith("surveynt-home-survey-")) return null;
   const pending = context.pack.proposals.filter(proposal => proposal.fieldPath === path).length;
-  return <details className="field-evidence"><summary aria-label={`Evidence assistance for ${resolveField(context.pack.template, path)?.field.label ?? path}`}>Evidence assistance{pending ? ` · ${pending} suggestion${pending === 1 ? "" : "s"}` : ""}</summary>
+  return <details className="field-evidence"><summary aria-label={`Evidence assistance${pending ? ` · ${pending} suggestion${pending === 1 ? "" : "s"}` : ""} for ${resolveField(context.pack.template, path)?.field.label ?? path}`}>Evidence assistance{pending ? ` · ${pending} suggestion${pending === 1 ? "" : "s"}` : ""}</summary>
     <p className="form-help">{mapping.mode === "context_only" ? "Context only — not an inspection answer." : "Review each proposed answer before applying."} {mapping.boundary}</p>
     {!context.online ? <p className="form-help">Current evidence cannot be checked while offline or device changes are awaiting sync.</p> : context.preview ? <p className="form-help">Preview: source availability is not verified.</p> : context.error ? <p role="status">{context.error}</p> : <ul>{mapping.sources.map(key => {
       const source = context.sources?.find(source => source.key === key);

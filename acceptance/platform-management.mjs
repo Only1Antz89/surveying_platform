@@ -32,7 +32,7 @@ await operator.getByRole("button", { name: "Suspend tenant" }).waitFor();
 await operator.reload();
 check("reactivation persists after operator reload", await operator.getByRole("button", { name: "Suspend tenant" }).isVisible());
 await owner.reload();
-check("reactivated workspace opens the client register", await owner.getByRole("button", { name: "New client" }).isVisible());
+check("reactivated workspace opens the client register", await owner.getByRole("button", { name: "New client" }).waitFor().then(() => true, () => false));
 
 // 2. Write support access requires owner approval.
 await operator.getByRole("button", { name: "Request support access" }).click();
@@ -90,10 +90,10 @@ await operator.screenshot({ path: `${shots}/04-support-edit.png`, fullPage: true
 // 4. Visible in the practice's own register from a separate session, after reload.
 const secondCtx = await browser.newContext(); const second = await secondCtx.newPage(); watch(second, "second");
 await second.goto(`${base}/app/${slug}/clients`);
-check("support-created client visible in practice register (second session)", await second.getByText(`${name} Edited`).first().isVisible());
+check("support-created client visible in practice register (second session)", await second.getByText(`${name} Edited`).first().waitFor().then(() => true, () => false));
 await second.reload();
 const clientRow = second.getByRole("row", { name: new RegExp(`${name} Edited`) });
-check("edit persists after reload", await clientRow.isVisible());
+check("edit persists after reload", await clientRow.waitFor().then(() => true, () => false));
 check("phone change persisted", (await clientRow.innerText()).includes("0117 000 0000"));
 await clientRow.getByRole("button", { name: "Open" }).click();
 await second.getByText("Acceptance Contact").first().waitFor({ timeout: 5000 }).catch(() => {});

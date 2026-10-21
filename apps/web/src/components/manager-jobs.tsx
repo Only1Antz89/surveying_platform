@@ -9,6 +9,8 @@ import {
   Eye,
   X
 } from "lucide-react";
+import { jobs as demoJobs, type Job as DemoJob } from "@/lib/demo-data";
+import "./manager-shared.css";
 import "./manager-jobs.css";
 
 interface JobRow {
@@ -23,96 +25,35 @@ interface JobRow {
   nextAction: string;
 }
 
-const initialJobs: JobRow[] = [
-  {
-    id: "job_01",
-    reference: "CS-24081",
-    service: "RICS Level 2 Home Survey",
-    client: "Alex Harper",
-    address: "14 Elmwood Road, Chiswick · W4 3AA",
-    timeTarget: "Today, 09:00–11:00",
-    stage: "Inspection",
-    stageTone: "blue",
-    nextAction: "Survey visit · 09:00"
-  },
-  {
-    id: "job_02",
-    reference: "CS-24084",
-    service: "Residential Valuation",
-    client: "Priya Patel",
-    address: "8 The Grove, Ealing · W5 2AB",
-    timeTarget: "Today, 11:45–12:30",
-    stage: "Preparation",
-    stageTone: "amber",
-    nextAction: "Confirm access · before 11:45"
-  },
-  {
-    id: "job_03",
-    reference: "CS-24076",
-    service: "Level 3 Building Survey",
-    client: "Morgan Lewis",
-    address: "22 Birch Avenue, Acton · W3 7QJ",
-    timeTarget: "Today, 14:00–16:00",
-    stage: "Reporting",
-    stageTone: "amber",
-    nextAction: "Surveyor review · due today"
-  },
-  {
-    id: "job_04",
-    reference: "CS-24089",
-    service: "Roof & Chimney Access Follow-up",
-    client: "Samira Khan",
-    address: "London · W4",
-    timeTarget: "Today, 16:15–16:45",
-    stage: "Follow-up",
-    stageTone: "amber",
-    nextAction: "Call client · 16:15"
-  },
-  {
-    id: "job_05",
-    reference: "CS-24091",
-    service: "Level 2 Home Survey",
-    client: "Jamie Morgan",
-    address: "6 Linden Gardens, Hammersmith · W6 0PH",
-    timeTarget: "Tomorrow, 09:30",
-    stage: "Booked",
-    stageTone: "green",
-    nextAction: "Prepare case · tomorrow 09:30"
-  },
-  {
-    id: "job_06",
-    reference: "CS-24094",
-    service: "Drone Inspection",
-    client: "Taylor Bennett",
-    address: "31 St Mary’s Road, Ealing · W5 5RA",
-    timeTarget: "Tomorrow, 12:00",
-    stage: "Booked",
-    stageTone: "green",
-    nextAction: "Drone visit · tomorrow 12:00"
-  },
-  {
-    id: "job_07",
-    reference: "CS-24096",
-    service: "Residential Valuation",
-    client: "Nadia Wilson",
-    address: "4 Oakfield Close, Richmond · TW9 2AB",
-    timeTarget: "Tomorrow, 15:00",
-    stage: "Booked",
-    stageTone: "green",
-    nextAction: "Valuation · tomorrow 15:00"
-  },
-  {
-    id: "job_08",
-    reference: "CS-24078",
-    service: "Level 2 Home Survey",
-    client: "Olivia Reed",
-    address: "17 Willow Lane, Brentford · TW8 0AA",
-    timeTarget: "7 Oct 2026",
-    stage: "Complete",
-    stageTone: "slate",
-    nextAction: "Report issued · 7 October"
-  }
-];
+// Built from the shared demo records, so the list matches the job pages,
+// calendar and fieldwork views the demo opens from it.
+const stageRows: Record<DemoJob["stage"], { stage: string; stageTone: JobRow["stageTone"]; nextAction: (target: string) => string }> = {
+  enquiry: { stage: "Enquiry", stageTone: "slate", nextAction: () => "Send a quote" },
+  quoted: { stage: "Follow-up", stageTone: "amber", nextAction: () => "Chase quote acceptance" },
+  instructed: { stage: "Booked", stageTone: "green", nextAction: () => "Book the inspection" },
+  scheduled: { stage: "Inspection", stageTone: "blue", nextAction: (target) => `Survey visit · ${target}` },
+  inspection_complete: { stage: "Reporting", stageTone: "amber", nextAction: () => "Start the report" },
+  report_drafting: { stage: "Reporting", stageTone: "amber", nextAction: (target) => `Surveyor report · due ${target}` },
+  internal_review: { stage: "Review", stageTone: "amber", nextAction: (target) => `Senior review · ${target}` },
+  issued: { stage: "Complete", stageTone: "slate", nextAction: () => "Report issued" },
+  paid: { stage: "Complete", stageTone: "slate", nextAction: () => "Paid" },
+  archived: { stage: "Complete", stageTone: "slate", nextAction: () => "Archived" },
+};
+
+const initialJobs: JobRow[] = demoJobs.map((job) => ({
+  id: job.id,
+  reference: job.reference,
+  service: job.service,
+  client: job.client,
+  address: job.address,
+  timeTarget: job.target,
+  ...stageRows[job.stage],
+  nextAction: stageRows[job.stage].nextAction(job.target),
+}));
+
+const needsAttention = (job: JobRow) => job.stageTone === "amber";
+const inInspection = (job: JobRow) => job.stage === "Inspection" || job.stage === "Booked";
+const inReporting = (job: JobRow) => job.stage === "Reporting" || job.stage === "Review" || job.stage === "Complete";
 
 export function ManagerJobs({ slug }: { slug: string }) {
   const [jobs, setJobs] = useState<JobRow[]>(initialJobs);
@@ -124,9 +65,9 @@ export function ManagerJobs({ slug }: { slug: string }) {
   const filteredJobs = jobs.filter((job) => {
     const matchesFilter =
       filter === "all" ||
-      (filter === "attention" && (job.stageTone === "amber" || job.stage === "Follow-up")) ||
-      (filter === "inspection" && (job.stage === "Inspection" || job.stage === "Booked")) ||
-      (filter === "report" && (job.stage === "Reporting" || job.stage === "Complete"));
+      (filter === "attention" && needsAttention(job)) ||
+      (filter === "inspection" && inInspection(job)) ||
+      (filter === "report" && inReporting(job));
 
     const matchesSearch =
       job.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -136,6 +77,14 @@ export function ManagerJobs({ slug }: { slug: string }) {
 
     return matchesFilter && matchesSearch;
   });
+
+  const activeCount = jobs.filter((job) => job.stage !== "Complete").length;
+  const counts = {
+    all: jobs.length,
+    attention: jobs.filter(needsAttention).length,
+    inspection: jobs.filter(inInspection).length,
+    report: jobs.filter(inReporting).length,
+  };
 
   const showNotice = (msg: string) => {
     setToastMessage(msg);
@@ -151,7 +100,7 @@ export function ManagerJobs({ slug }: { slug: string }) {
 
     const newJob: JobRow = {
       id: "job_" + Date.now(),
-      reference: "CS-" + Math.floor(24100 + Math.random() * 900),
+      reference: "SVY-" + Math.floor(1100 + Math.random() * 900),
       service,
       client,
       address,
@@ -177,7 +126,7 @@ export function ManagerJobs({ slug }: { slug: string }) {
       {/* Header */}
       <div className="manager-jobs-header">
         <div className="manager-jobs-title-group">
-          <span className="manager-jobs-eyebrow">JOB CONTROL · 8 ACTIVE JOBS</span>
+          <span className="manager-jobs-eyebrow">JOB CONTROL · {activeCount} ACTIVE JOBS</span>
           <h1>Every job, at the right stage.</h1>
           <p>See what needs action, what’s in progress and what is ready to report.</p>
         </div>
@@ -193,43 +142,44 @@ export function ManagerJobs({ slug }: { slug: string }) {
       <div className="manager-jobs-kpis">
         <div className="manager-jobs-kpi-card">
           <small>INSPECTIONS</small>
-          <b>4</b>
-          <span>Today &amp; tomorrow</span>
+          <b>{counts.inspection}</b>
+          <span>Booked and scheduled visits</span>
         </div>
         <div className="manager-jobs-kpi-card">
           <small>IN PROGRESS</small>
-          <b>3</b>
-          <span>Evidence and inspection</span>
+          <b>{activeCount}</b>
+          <span>Open jobs</span>
         </div>
         <div className="manager-jobs-kpi-card">
           <small>NEEDS ATTENTION</small>
-          <b style={{ color: "#d97706" }}>3</b>
+          <b style={{ color: "#b45309" }}>{counts.attention}</b>
           <span>Review or client follow-up</span>
         </div>
         <div className="manager-jobs-kpi-card">
           <small>READY TO REPORT</small>
-          <b>1</b>
-          <span>Surveyor check required</span>
+          <b>{counts.report}</b>
+          <span>Reporting and review</span>
         </div>
       </div>
 
       {/* Toolbar */}
       <div className="manager-jobs-toolbar">
         <div className="manager-search-box">
-          <Search size={16} color="#94a3b8" />
+          <Search size={16} color="#94a3b8" aria-hidden="true" />
           <input
             type="text"
             placeholder="Search reference, client or address"
+            aria-label="Search jobs"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
         <div className="manager-jobs-filters">
           {[
-            { id: "all", label: "All jobs", count: 8 },
-            { id: "attention", label: "Needs attention", count: 3 },
-            { id: "inspection", label: "Inspection", count: 3 },
-            { id: "report", label: "Reporting", count: 2 }
+            { id: "all", label: "All jobs", count: counts.all },
+            { id: "attention", label: "Needs attention", count: counts.attention },
+            { id: "inspection", label: "Inspection", count: counts.inspection },
+            { id: "report", label: "Reporting", count: counts.report }
           ].map((tab) => (
             <button
               key={tab.id}
@@ -293,7 +243,7 @@ export function ManagerJobs({ slug }: { slug: string }) {
                   <td>
                     <div className="job-actions-group">
                       <Link
-                        href={`/app/${slug}/jobs/${job.id}`}
+                        href={`/app/${slug}/jobs/${job.id}/survey`}
                         className="manager-btn-primary"
                         style={{ padding: "5px 10px", fontSize: 12, textDecoration: "none" }}
                       >

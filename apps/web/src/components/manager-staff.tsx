@@ -13,6 +13,7 @@ import {
   X,
   ExternalLink
 } from "lucide-react";
+import "./manager-shared.css";
 import "./manager-staff.css";
 
 interface SurveyorItem {
