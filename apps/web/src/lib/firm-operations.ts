@@ -1,4 +1,5 @@
 import { inviteAfterQuoteConversion } from "./client-portal";
+import { queueWorkflowMessage } from "./client-messages";
 import {workspaceAudit} from "./workspace-audit";
 import type {WorkspaceMode} from "./workspace-mode";
 import { invoiceBalance, refreshInvoiceBalance } from "./invoice-balance";
@@ -190,8 +191,15 @@ export async function settleBalancePayment(input: { paymentId: string; checkoutS
     await refreshInvoiceBalance(tx,record.invoice);
     await tx.insert(settlementLedger).values({organisationId:record.payment.organisationId,paymentId:record.payment.id,entryType:"firm_liability",currency:record.payment.currency,amountMinor:record.payment.amountMinor,metadata:{jobId:record.invoice.jobId,purpose:"balance"}});
     await tx.insert(auditEvents).values({organisationId:record.payment.organisationId,action:"client_payment.balance_succeeded",resourceType:"client_payment",resourceId:record.payment.id,metadata:{invoiceId:record.invoice.id}});
+    await queuePaymentReceipt(tx,record.payment,record.invoice.jobId);
     return record.invoice.jobId;
   });
+}
+
+const formatMoney = (amountMinor: number, currency: string) => new Intl.NumberFormat("en-GB", { style: "currency", currency: currency.toUpperCase() }).format(amountMinor / 100);
+async function queuePaymentReceipt(tx: TenantTransaction, payment: typeof clientPayments.$inferSelect, jobId: string | null) {
+  if (!jobId) return;
+  await queueWorkflowMessage(tx, { organisationId: payment.organisationId, jobId, key: "payment_received", values: { amount: formatMoney(payment.amountMinor, payment.currency), paymentLabel: payment.purpose === "deposit" ? "deposit" : "balance payment" }, dedupKey: `payment:${payment.id}` });
 }
 
 export function verifiedPaymentStatus(amountMinor:number,refundedMinor:number){return refundedMinor>=amountMinor?"refunded" as const:refundedMinor>0?"partially_refunded" as const:"succeeded" as const;}
@@ -208,6 +216,7 @@ export async function convertPaidQuote(input: { paymentId: string; checkoutSessi
     await tx.update(clientPayments).set({ status: verifiedPaymentStatus(record.payment.amountMinor,record.payment.refundedMinor), stripeCheckoutSessionId: input.checkoutSessionId, stripePaymentIntentId: input.paymentIntentId, succeededAt: new Date(), updatedAt: new Date() }).where(eq(clientPayments.id, record.payment.id));
     await refreshInvoiceBalance(tx,record.invoice);
     await tx.insert(settlementLedger).values({ organisationId: record.quote.organisationId, paymentId: record.payment.id, entryType: "firm_liability", currency: record.quote.currency, amountMinor: record.payment.amountMinor, metadata: { quoteId: record.quote.id, jobId } });
+    await queuePaymentReceipt(tx, record.payment, jobId);
     return jobId;
   });
 }

@@ -28,6 +28,9 @@ export function databaseSpatialQuery(db: Executor): SpatialQuery {
               case when st_isvalid(geometry) then geometry else st_makevalid(geometry) end as geom
             from public.spatial_reference_features
             where dataset_version_id = ${legacyDatasetVersionId}::uuid and source_key = 'historic_england'
+              -- Filter on the stored geometry first so the GiST index is used; repairing
+              -- a shape never grows its bounding box, so no nearby feature is missed.
+              and geometry && st_expand((select g from origin), ${degrees})
               and coalesce(nullif(properties->>'layer',''), split_part(source_record_id, ':', 1), 'listed_building') = ${legacyLayer})
           select f.feature_id, f.name, f.attributes, st_intersects(f.geom, origin.g) as intersects,
             st_distance(f.geom::geography, origin.g::geography) as distance

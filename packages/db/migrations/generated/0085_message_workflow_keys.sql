@@ -1,0 +1,2 @@
+ALTER TABLE "message_templates" DROP CONSTRAINT "message_templates_key_chk";--> statement-breakpoint
+ALTER TABLE "message_templates" ADD CONSTRAINT "message_templates_key_chk" CHECK ("message_templates"."key" in ('appointment_reminder','on_the_way','access_request','review_request','booking_confirmed','payment_received','report_ready'));

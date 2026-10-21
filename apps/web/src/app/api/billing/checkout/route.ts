@@ -15,6 +15,8 @@ export async function POST(request: Request) {
   if (context.role !== "owner") return problem(403, "owner_required", "Only owners can change the Surveynt subscription.");
   const parsed = await parseBody(request, requestSchema);
   if (!parsed.success) return problem(400, "invalid_request", "The requested seat quantity is invalid.");
+  // Without a seat price, extra seats would silently go unbilled.
+  if (parsed.data.seats > 1 && !process.env.STRIPE_SEAT_PRICE_ID) return problem(503, "billing_not_configured", "Additional seats cannot be billed until the seat price is configured.");
 
   const db = createDatabase(process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL);
   const [organisation] = await db.select().from(organisations).where(eq(organisations.id, context.organisationId)).limit(1);
@@ -36,7 +38,7 @@ export async function POST(request: Request) {
   }
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? new URL(request.url).origin;
   const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [{ price: process.env.STRIPE_BASE_PRICE_ID, quantity: 1 }];
-  if (process.env.STRIPE_SEAT_PRICE_ID && parsed.data.seats > 1) lineItems.push({ price: process.env.STRIPE_SEAT_PRICE_ID, quantity: parsed.data.seats - 1 });
+  if (parsed.data.seats > 1) lineItems.push({ price: process.env.STRIPE_SEAT_PRICE_ID, quantity: parsed.data.seats - 1 });
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     customer: customerId,
