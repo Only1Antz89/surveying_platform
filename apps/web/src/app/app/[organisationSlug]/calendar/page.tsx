@@ -9,9 +9,11 @@ export default async function Page({ params }: PageProps<"/app/[organisationSlug
   await requireWorkspacePageAccess(organisationSlug, "calendar");
   const access = await requireFirmAccess(organisationSlug);
 
-  if (access.workspaceMode === "manager" || access.userId === "demo_user") {
+  // The manager mock-up uses illustrative sample data, so it is shown only in the demo workspace.
+  if (access.userId === "demo_user") {
     return (
       <main className="page">
+        <p className="address-demo-label">Demo workspace: sample data for illustration. Nothing here is saved.</p>
         <ManagerCalendar slug={organisationSlug} />
       </main>
     );

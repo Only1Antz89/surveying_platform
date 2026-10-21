@@ -12,9 +12,11 @@ export default async function JobsPage({ params,searchParams }: PageProps<"/app/
   const [jobs, options, access] = await Promise.all([loadJobs(organisationSlug), loadJobFormOptions(organisationSlug), requireFirmAccess(organisationSlug)]);
   const selected = (await searchParams).job;
 
-  if (!selected && (access.workspaceMode === "manager" || access.userId === "demo_user")) {
+  // The manager mock-up uses illustrative sample data, so it is shown only in the demo workspace.
+  if (!selected && access.userId === "demo_user") {
     return (
       <main className="page">
+        <p className="address-demo-label">Demo workspace: sample data for illustration. Nothing here is saved.</p>
         <ManagerJobs slug={organisationSlug} />
       </main>
     );
