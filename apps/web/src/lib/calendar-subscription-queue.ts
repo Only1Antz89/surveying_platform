@@ -16,7 +16,8 @@ export async function processCalendarSubscriptionQueue(limit=1,deadline=Date.now
  for(let index=0;index<batchLimit&&Date.now()+35000<=deadline;index++){
   const now=new Date();
   const claimed=await db.transaction(async tx=>{
-   const [job]=await tx.select().from(backgroundJobs).where(and(eq(backgroundJobs.queue,"calendar_subscription"),or(eq(backgroundJobs.type,"stop_webhook"),eq(backgroundJobs.type,"renew_webhook"),eq(backgroundJobs.type,"replace_webhook"),eq(backgroundJobs.type,"register_webhook")),or(and(eq(backgroundJobs.status,"queued"),lte(backgroundJobs.availableAt,now)),and(eq(backgroundJobs.status,"processing"),lte(backgroundJobs.lockedUntil,now))))).orderBy(asc(backgroundJobs.availableAt)).limit(1).for("update",{skipLocked:true});
+   // availableAt defaults to the database clock (microseconds); compare on that clock so a job queued in the same millisecond is due.
+   const [job]=await tx.select().from(backgroundJobs).where(and(eq(backgroundJobs.queue,"calendar_subscription"),or(eq(backgroundJobs.type,"stop_webhook"),eq(backgroundJobs.type,"renew_webhook"),eq(backgroundJobs.type,"replace_webhook"),eq(backgroundJobs.type,"register_webhook")),or(and(eq(backgroundJobs.status,"queued"),lte(backgroundJobs.availableAt,sql`now()`)),and(eq(backgroundJobs.status,"processing"),lte(backgroundJobs.lockedUntil,now))))).orderBy(asc(backgroundJobs.availableAt)).limit(1).for("update",{skipLocked:true});
    if(!job)return null;
    const leaseToken=randomUUID();
    await tx.update(backgroundJobs).set({status:"processing",leaseToken,lockedUntil:new Date(Date.now()+300000),attempts:job.attempts+1,updatedAt:now}).where(eq(backgroundJobs.id,job.id));
