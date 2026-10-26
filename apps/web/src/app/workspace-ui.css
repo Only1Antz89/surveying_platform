@@ -305,7 +305,7 @@
 .enquiry-status-field { max-width: 220px; }
 
 /* Settings pages are reached from the tab row above the page, so the older in-page menu would repeat it. */
-.new-ui .settings-pages-nav { display: none; }
+.new-ui .settings-nav.settings-pages-nav { display: none; }
 .new-ui .settings-grid:has(> .settings-pages-nav) { grid-template-columns: minmax(0, 1fr); }
 
 @media (max-width: 800px) {
@@ -337,5 +337,5 @@
   .demo-banner a { display: inline-block; padding: 4px 0; }
   .account-menu-content a { display: block; padding: 6px 0; }
 }
-[data-theme=dark] .new-ui .section-tabs .active,[data-theme=dark] .new-ui .panel-link,[data-theme=dark] .new-ui .studio-breadcrumb a,[data-theme=dark] .new-ui #studio-tab-edit,[data-theme=dark] .new-ui .account-nav button[aria-current],[data-theme=dark] .new-ui .scenario-list a,[data-theme=dark] .new-ui .settings-nav a.active{color:#a9c1ff;}
+[data-theme=dark] .new-ui .section-tabs .active,[data-theme=dark] .new-ui .panel-link,[data-theme=dark] .new-ui .studio-breadcrumb a,[data-theme=dark] .new-ui #studio-tab-edit,[data-theme=dark] .new-ui .account-nav button[aria-current],[data-theme=dark] .new-ui .scenario-list a{color:#a9c1ff;}
 [data-theme=dark] .new-ui [aria-label="Profile initials"]{color:#a9c1ff;background:#1e3355;}
