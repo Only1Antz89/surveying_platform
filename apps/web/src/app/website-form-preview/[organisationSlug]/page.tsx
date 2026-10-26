@@ -9,3 +9,5 @@ export default async function Page({ params }: { params: Promise<{ organisationS
   if (!websiteFormEditorRole(access.userRole)) notFound();
   return <WebsiteFormPreview initial={studioContext(await studioData(access, organisationSlug))}/>;
 }
+
+export const metadata = { title: "Website form preview" };

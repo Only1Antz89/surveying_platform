@@ -29,7 +29,7 @@ export async function ricsReportPdf(context: Pick<SurveyContext, "organisationId
   if (options.final && !snapshot.approvedAt) throw new RicsOutputError(409, "not_signed_off", "The report has not been signed off yet.");
   try {
     const asset = await centralRicsTemplate(snapshot.pack.template);
-    if (!asset) throw new RicsOutputError(409, "rics_output_unavailable", "Surveyant’s authorised central RICS template has not yet been provisioned for this version.");
+    if (!asset) throw new RicsOutputError(409, "rics_output_unavailable", "Surveynt’s authorised central RICS template has not yet been provisioned for this version.");
     const photos: OutputPhoto[] = [];
     const mediaIds = new Set(snapshot.pack.evidence.filter((link) => link.evidenceType === "media").map((link) => link.evidenceId));
     let totalBytes = 0;
@@ -48,6 +48,6 @@ export async function ricsReportPdf(context: Pick<SurveyContext, "organisationId
   } catch (error) {
     if (error instanceof RicsOutputError) throw error;
     if (error instanceof PdfOutputError) throw new RicsOutputError(422, "pdf_output_failed", error.message);
-    throw new RicsOutputError(503, "rics_output_unavailable", "The central RICS output is unavailable or failed verification. Contact Surveyant support.");
+    throw new RicsOutputError(503, "rics_output_unavailable", "The central RICS output is unavailable or failed verification. Contact Surveynt support.");
   }
 }

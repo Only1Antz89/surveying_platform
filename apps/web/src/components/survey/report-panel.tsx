@@ -55,7 +55,7 @@ export function ReportPanel({ surveyId, canEdit, canJudge, online, demo, onChang
   }, [online, fetchState]);
 
   async function compose() {
-    if (demo && composePreview) {setPreview(composePreview());setMessage({tone:"success",text:"Draft assembled from your device answers. Surveyant’s central RICS output must be provisioned and verified before issue."});return;}
+    if (demo && composePreview) {setPreview(composePreview());setMessage({tone:"success",text:"Draft assembled from your device answers. Surveynt’s central RICS output must be provisioned and verified before issue."});return;}
     setBusy(true); setMessage(null); setConfirmed(false);
     const response = await workspaceFetch(`/api/v1/surveys/${surveyId}/report`, { method: "POST" });
     const payload = await response.json().catch(() => null);
@@ -120,7 +120,7 @@ export function ReportPanel({ surveyId, canEdit, canJudge, online, demo, onChang
       {preview.recommendations.length ? <section><h4>Recommendations</h4>{preview.recommendations.map((block) => <Block key={block.id} block={block} />)}</section> : null}
       {preview.omissions.length ? <section className="report-omissions"><h4>Left out of this version</h4><ul>{preview.omissions.map((item) => <li key={item}>{item}</li>)}</ul></section> : null}
     </article> : <p className="form-help assistant-empty">{latest?.contentRemoved ? "Report content was removed after retention review. Version and approval records remain." : "No report composed yet."}</p>}
-    {!demo && !templateReviewed ? <p className="identity-warning intel-inline">Formal issue is unavailable until Surveyant’s centrally supplied RICS template and recording workflow have been professionally verified. Company licence selection alone does not enable sign-off.</p> : null}
+    {!demo && !templateReviewed ? <p className="identity-warning intel-inline">Formal issue is unavailable until Surveynt’s centrally supplied RICS template and recording workflow have been professionally verified. Company licence selection alone does not enable sign-off.</p> : null}
     {canSignOff && latest ? <div className="report-signoff">
       <label className="check-field"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /> {REPORT_SIGN_OFF_STATEMENT}</label>
       <input className="input" value={note} onChange={(event) => setNote(event.target.value)} maxLength={1000} placeholder="Note (optional)" aria-label="Sign-off note" />
