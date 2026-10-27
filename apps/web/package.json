@@ -11,7 +11,8 @@
     "test": "vitest run --dir src",
     "test:integration": "vitest run --dir test --no-file-parallelism",
     "verify:property-worker": "tsx scripts/verify-property-intelligence-worker.ts",
-    "check:learning-activation": "tsx scripts/check-learning-activation.ts"
+    "check:learning-activation": "tsx scripts/check-learning-activation.ts",
+    "check:go-live": "tsx scripts/check-go-live.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.0.1",

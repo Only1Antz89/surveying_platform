@@ -5,6 +5,7 @@ import { readPublicQuote } from "@/lib/firm-operations";
 import { ok, parseBody, problem } from "@/lib/api";
 import { availableSurveyor, quoteSlots, schedulingAvailability } from "@/lib/booking-slots";
 import { termsBlockBooking } from "@/lib/engagement-terms";
+import { queueWorkflowMessage } from "@/lib/client-messages";
 
 export async function GET(request:Request,route:RouteContext<"/api/v1/public/quotes/[id]/appointments">){
   const found=await readPublicQuote((await route.params).id,request.headers.get("x-quote-token")??"");
@@ -43,6 +44,10 @@ export async function POST(request: Request, route: RouteContext<"/api/v1/public
     const [appointment] = await tx.insert(appointments).values({ organisationId: found.row.organisationId, jobId: found.row.jobId!, quoteId: found.row.id, status: "confirmed", startsAt, endsAt, timezone, surveyorId }).returning();
     await tx.update(jobs).set({ stage: "scheduled", assignedSurveyorId: surveyorId, version:job.version+1, targetDate: new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(startsAt), updatedAt: new Date() }).where(and(eq(jobs.id, found.row.jobId!), eq(jobs.organisationId, found.row.organisationId)));
     if(job.stage!=="scheduled")await tx.insert(jobStageEvents).values({organisationId:found.row.organisationId,jobId:job.id,fromStage:job.stage,toStage:"scheduled",reason:"Customer selected an available appointment"});
+    await queueWorkflowMessage(tx, { organisationId: found.row.organisationId, jobId: job.id, key: "booking_confirmed", dedupKey: `booking:${appointment.id}`, values: {
+      appointmentDate: startsAt.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: timezone }),
+      appointmentTime: startsAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: timezone }),
+    } });
     await tx.insert(auditEvents).values({ organisationId: found.row.organisationId, action: "appointment.confirmed", resourceType: "appointment", resourceId: appointment.id, metadata: { jobId: found.row.jobId, surveyorId, startsAt: startsAt.toISOString() } });
     return { kind: "created" as const, appointment };
   });
