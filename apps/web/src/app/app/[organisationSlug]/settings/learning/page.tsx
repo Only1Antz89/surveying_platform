@@ -26,7 +26,7 @@ export default async function LearningSettingsPage({ params }: PageProps<"/app/[
   return <main className="page">
     <PageHeader title="Shared learning" description="Choose whether reviewed, generalised cases from your signed-off surveys may improve assistance for every firm. Off by default." />
     <div className="settings-grid">
-      <nav className="settings-nav" aria-label="Settings"><Link href={`/app/${organisationSlug}/settings`}>Practice details</Link><Link href={`/app/${organisationSlug}/settings/billing`}>Billing</Link><Link href={`/app/${organisationSlug}/settings/ai`}>AI and assistant</Link><Link className="active" href={`/app/${organisationSlug}/settings/learning`}>Shared learning</Link><Link href={`/app/${organisationSlug}/team`}>Security</Link></nav>
+      <nav className="settings-nav settings-pages-nav" aria-label="Settings"><Link href={`/app/${organisationSlug}/settings`}>Practice details</Link><Link href={`/app/${organisationSlug}/settings/billing`}>Billing</Link><Link href={`/app/${organisationSlug}/settings/ai`}>AI and assistant</Link><Link className="active" href={`/app/${organisationSlug}/settings/learning`}>Shared learning</Link><Link href={`/app/${organisationSlug}/team`}>Security</Link></nav>
       <LearningContributions initial={dashboard} jobs={jobOptions} canManage={full && canManageTeam(access.userRole)} canWithdraw={full && canMutateOperations(access.userRole)} demo={demo} />
     </div>
   </main>;

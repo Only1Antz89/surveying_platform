@@ -9,11 +9,18 @@ import { ok, parseBody, problem } from "@/lib/api";
 
 const schema = servicePricingInput;
 
+// Matches the two services the demo practice settings and overview describe.
+const demoPricing = (version: number, baseAmountMinor: number, durationMinutes: number) => ({ version, currency: "GBP", baseAmountMinor, vatBasisPoints: 2000, depositBasisPoints: 2000, durationMinutes, validityDays: 30, surcharges: {}, recommendationRules: {} });
+const demoCatalogue = [
+  { service: { id: "00000000-0000-4000-8000-000000000201", name: "Level 2 Home Survey", active: true }, pricing: demoPricing(1, 89500, 150) },
+  { service: { id: "00000000-0000-4000-8000-000000000202", name: "Level 3 Building Survey", active: true }, pricing: demoPricing(1, 129500, 240) },
+];
+
 export async function GET(request: Request) {
   const context = await apiContext(request); if (!context) return problem(401, "unauthorised", "Authentication is required.");
   const accessDenial = await workspaceApiGuard(request, context);
   if (accessDenial) return accessDenial;
-  if (context.demo) return ok([] as unknown[], { demo: true });
+  if (context.demo) return ok(demoCatalogue, { demo: true });
   const data = await withTenant(createDatabase(), context.organisationId, (tx) => tx.select({ service: serviceDefinitions, pricing: servicePricingVersions }).from(serviceDefinitions).leftJoin(servicePricingVersions, and(eq(servicePricingVersions.serviceDefinitionId, serviceDefinitions.id), eq(servicePricingVersions.version, sql`(select max(v.version) from service_pricing_versions v where v.service_definition_id=${serviceDefinitions.id} and v.organisation_id=${context.organisationId})`))).where(eq(serviceDefinitions.organisationId, context.organisationId)).orderBy(serviceDefinitions.name, desc(servicePricingVersions.version)));
   return ok(data);
 }

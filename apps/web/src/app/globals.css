@@ -114,6 +114,7 @@ a { color: inherit; text-decoration: none; }
 .panel-body { padding: 20px; }
 .empty-state { display: grid; gap: 5px; justify-items: center; padding: 42px 20px; color: var(--muted); text-align: center; font-size: 11px; }
 .empty-state strong { color: var(--ink); font-size: 12px; }
+.empty-state .empty-state-title { margin: 6px 0 0; color: var(--ink); font-size: 1.125rem; font-weight: 650; }
 .empty-state.compact { padding: 28px 20px; }
 
 .data-table-wrap { overflow-x: auto; }

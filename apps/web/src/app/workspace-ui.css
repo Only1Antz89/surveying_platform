@@ -287,3 +287,55 @@
 [data-theme=dark] .surveyant-toggle>span{background:#0b1421;padding:1px 7px;border-radius:999px;}
 [data-theme=dark] .new-ui .data-table th,[data-theme=dark] .app-shell.new-ui .data-table:not(.survey-workspace .data-table) th{background:#16263d;}
 [data-theme=dark] .new-ui .status-blue,[data-theme=dark] .new-ui .fieldwork-mode button[aria-pressed=true],[data-theme=dark] .new-ui .field-map-toolbar button[aria-pressed=true]{color:#a9c1ff;}
+
+/* Website enquiries register */
+.enquiry-error { margin: 14px 20px 0; }
+.enquiry-list { margin: 0; padding: 0; list-style: none; }
+.enquiry-list > li { border-bottom: 1px solid var(--border); }
+.enquiry-list > li:last-child { border-bottom: 0; }
+.enquiry-item summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 20px; cursor: pointer; }
+.enquiry-name { display: grid; gap: 2px; min-width: 0; }
+.enquiry-name small { color: var(--muted); font-size: .8125rem; }
+.enquiry-body { display: grid; gap: 12px; padding: 0 20px 18px; }
+.enquiry-body p { margin: 0; }
+.enquiry-contact { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.enquiry-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px 20px; margin: 0; }
+.enquiry-details dt { color: var(--muted); font-size: .75rem; }
+.enquiry-details dd { margin: 2px 0 0; overflow-wrap: anywhere; }
+.enquiry-status-field { max-width: 220px; }
+
+/* Settings pages are reached from the tab row above the page, so the older in-page menu would repeat it. */
+.new-ui .settings-nav.settings-pages-nav { display: none; }
+.new-ui .settings-grid:has(> .settings-pages-nav) { grid-template-columns: minmax(0, 1fr); }
+
+@media (max-width: 800px) {
+  /* Leave room so the SurvAI button never covers the last controls on a page. */
+  .new-ui .page { padding-bottom: 112px; }
+  /* Section menus wrap into tappable chips instead of hiding options off-screen. */
+  .new-ui .settings-nav, .account-nav { display: flex; flex-wrap: wrap; gap: 6px; overflow: visible; }
+  .new-ui .settings-nav a, .account-nav button { flex: 0 1 auto; padding: 9px 12px; white-space: nowrap; text-align: center; }
+  .account-nav { padding: 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+  .section-tabs { flex-wrap: nowrap; gap: 16px; overflow-x: auto; scrollbar-width: none; }
+  .section-tabs::-webkit-scrollbar { display: none; }
+  .section-tabs a, .section-tabs button { flex: 0 0 auto; white-space: nowrap; }
+}
+
+/* Reports library: protected survey template outline */
+.template-note { margin: 0; padding: 16px 20px 4px; color: var(--muted); font-size: .875rem; }
+.template-sections { margin: 0; padding: 8px 20px 16px; list-style: none; counter-reset: template; }
+.template-sections li { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--border); counter-increment: template; }
+.template-sections li:last-child { border-bottom: 0; }
+.template-sections li span::before { content: counter(template) ". "; color: var(--muted); }
+.template-sections small { color: var(--muted); white-space: nowrap; }
+@media (max-width: 800px) { .panel-header:has(> .button) { flex-wrap: wrap; padding-block: 14px; } }
+.scenario-list { display: grid; gap: 10px; margin: 16px 0; padding-left: 22px; font-size: .875rem; }
+.scenario-list a { font-weight: 600; color: var(--blue); }
+
+/* Comfortable tap targets on touch screens (WCAG 2.2 target size). */
+@media (max-width: 800px) {
+  .mobile-close { min-width: 40px; min-height: 40px; align-items: center; justify-content: center; }
+  .demo-banner a { display: inline-block; padding: 4px 0; }
+  .account-menu-content a { display: block; padding: 6px 0; }
+}
+[data-theme=dark] .new-ui .section-tabs .active,[data-theme=dark] .new-ui .panel-link,[data-theme=dark] .new-ui .studio-breadcrumb a,[data-theme=dark] .new-ui #studio-tab-edit,[data-theme=dark] .new-ui .account-nav button[aria-current],[data-theme=dark] .new-ui .scenario-list a{color:#a9c1ff;}
+[data-theme=dark] .new-ui [aria-label="Profile initials"]{color:#a9c1ff;background:#1e3355;}

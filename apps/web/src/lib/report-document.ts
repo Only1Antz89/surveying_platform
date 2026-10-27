@@ -11,5 +11,5 @@ export function reportDocument(report:ComposedReport & { accommodation?: Accommo
   ${accommodation(report.accommodation)}
   ${report.recommendations.length ? `<section><h2>Recommendations</h2>${report.recommendations.map(block).join("")}</section>` : ""}
   ${report.omissions.length ? `<section><h2>Review required</h2><ul>${report.omissions.map(item=>`<li>${escape(item)}</li>`).join("")}</ul></section>` : ""}
-  <footer>Surveyant review copy · ${escape(report.templateKey)} ${escape(report.templateVersion)} · Configure the company’s licensed template and complete professional review before issue.</footer></body></html>`;
+  <footer>Surveynt review copy · ${escape(report.templateKey)} ${escape(report.templateVersion)} · Configure the company’s licensed template and complete professional review before issue.</footer></body></html>`;
 }

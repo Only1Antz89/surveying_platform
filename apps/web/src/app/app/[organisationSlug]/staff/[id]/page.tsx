@@ -4,3 +4,5 @@ import {staffProfile} from "@/lib/staff-operations";
 import {StaffProfile} from "@/components/staff-profile";
 import {PageHeader} from "@/components/page-header";
 export default async function Page({params}:{params:Promise<{organisationSlug:string;id:string}>}){const {organisationSlug,id}=await params;const c=await requireWorkspacePageAccess(organisationSlug,"staff");if(c.userId!=="demo_user"&&!/^[\da-f-]{36}$/i.test(id))notFound();const isManager=c.workspaceMode==="manager"||c.userRole==="manager";const profile=await staffProfile({organisationId:c.organisationId,internalUserId:c.internalUserId,role:c.userRole,workspaceMode:c.workspaceMode,demo:c.userId==="demo_user"},id);if(!profile)notFound();if(isManager&&profile.role!=="surveyor")notFound();return <main className="page"><PageHeader eyebrow={isManager?"Practice surveyors":"Practice people"} title={isManager?"Surveyor profile":"Staff profile"} description="Professional services, workload and declared operating coverage."/><StaffProfile profile={profile} canEdit={!isManager&&c.accessLevel==="full"&&["owner","administrator"].includes(c.userRole)}/></main>;}
+
+export const metadata = { title: "Staff profile" };
