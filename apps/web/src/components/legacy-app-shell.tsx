@@ -37,7 +37,10 @@ const firmItems = (slug: string, isManager?: boolean): Item[] => [
 ];
 
 const platformItems: Item[] = [
-  { label: "Tenants", href: "/platform/tenants", icon: Building2 },
+  { label: "Platform users", href: "/platform/users", icon: Users },
+  { label: "Reports", href: "/platform/reports", icon: BarChart3 },
+  { label: "Integrations", href: "/platform/integrations", icon: Network },
+  { label: "Customers", href: "/platform/tenants", icon: Building2 },
   { label: "Onboarding", href: "/platform/onboarding", icon: ClipboardCheck },
   { label: "Billing", href: "/platform/billing", icon: CircleDollarSign },
   { label: "Usage", href: "/platform/usage", icon: Activity },
@@ -72,7 +75,7 @@ export function LegacyAppShell({ children, mode, slug = "north-star-surveying", 
     if (["Finance", "Performance", "Settings"].includes(item.label)) return ["owner", "administrator", "manager"].includes(role ?? "");
     if (item.label === "Team" || item.label === "Surveyors") return ["owner", "administrator", "manager"].includes(role ?? "");
     return true;
-  }) : platformItems;
+  }) : platformItems.filter(item=>!["/platform/users","/platform/integrations"].includes(item.href)||platformWorkspace?.userRole==="super_admin");
   const isDemo = !process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
   return (
@@ -81,7 +84,7 @@ export function LegacyAppShell({ children, mode, slug = "north-star-surveying", 
       {open ? <button className="mobile-overlay" aria-label="Close navigation" onClick={() => setOpen(false)} /> : null}
       <aside className={`sidebar ${open ? "open" : ""}`}>
         <div className="sidebar-top">
-          <BrandMark />
+          {mode==="platform"?<Link href="/platform/tenants" aria-label="Surveynt customer management"><BrandMark/></Link>:<BrandMark/>}
           <button className="mobile-close" aria-label="Close navigation" onClick={() => setOpen(false)}><X size={18} /></button>
         </div>
         <div className="nav-label">{mode === "firm" ? "Workspace" : "Platform operations"}</div>

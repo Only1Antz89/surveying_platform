@@ -2118,3 +2118,31 @@ export const clientPortalFiles = pgTable("client_portal_files", {
   check("client_portal_files_category_chk", sql`${table.category} in ('photo','video','certificate','document')`),
   check("client_portal_files_title_chk", sql`length(btrim(title)) between 1 and 160`),
 ]);
+
+/** Platform-only invitations. Neither this table nor provisioning requests are granted to the tenant runtime. */
+export const platformStaffInvitations = pgTable("platform_staff_invitations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  email: text("email").notNull(),
+  role: platformRole("role").notNull(),
+  clerkInvitationId: text("clerk_invitation_id").unique(),
+  invitedBy: uuid("invited_by").notNull().references(() => platformStaff.id),
+  acceptedBy: text("accepted_by"),
+  expiresAt: timestamp("expires_at", {withTimezone:true}).notNull(),
+  acceptedAt: timestamp("accepted_at", {withTimezone:true}),
+  revokedAt: timestamp("revoked_at", {withTimezone:true}),
+  ...timestamps,
+}, table => [index("platform_staff_invitations_email_idx").on(table.email)]).enableRLS();
+export const customerProvisioning = pgTable("customer_provisioning", {
+  remoteCreateAttempted: boolean("remote_create_attempted").notNull().default(false),
+  requestedBy: uuid("requested_by").references(() => platformStaff.id),
+  input: jsonb("input").$type<Record<string,string>>().notNull().default({}),
+  id: uuid("id").primaryKey().defaultRandom(),
+  requestKey: text("request_key").notNull().unique(),
+  organisationId: uuid("organisation_id").references(() => organisations.id),
+  clerkOrganisationId: text("clerk_organisation_id"),
+  clerkInvitationId: text("clerk_invitation_id"),
+  ownerEmail: text("owner_email").notNull(),
+  state: text("state").notNull().default("pending"),
+  error: text("error"),
+  ...timestamps,
+}).enableRLS();
