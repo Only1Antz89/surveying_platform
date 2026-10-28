@@ -1,3 +1,4 @@
+import { CustomerSetupVisit } from "@/components/customer-setup-visit";
 import {Suspense} from "react";
 import {WorkspaceProvider} from "@/components/workspace-provider";
 import {createDatabase,withTenant,organisationOperationalSettings} from "@surveynt/db";
@@ -26,5 +27,5 @@ export default async function FirmLayout({ children, params }: { children: React
     userRole: context.userRole,actorRole:context.actorRole,workspaceMode:context.workspaceMode,
     trialEnds,
     demo: context.isDemo,
-  }}>{content}</AppShell></WorkspaceProvider></Suspense>;
+  }}>{context.userId!=="demo_user"&&context.accessLevel!=="blocked"?<CustomerSetupVisit key={context.organisationId} workspace/>:null}{content}</AppShell></WorkspaceProvider></Suspense>;
 }

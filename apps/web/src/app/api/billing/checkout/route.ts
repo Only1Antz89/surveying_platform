@@ -1,6 +1,6 @@
 import Stripe from "stripe";
 import { currentUser } from "@clerk/nextjs/server";
-import { createDatabase, organisations, subscriptions } from "@surveynt/db";
+import { auditEvents, createDatabase, organisations, subscriptions } from "@surveynt/db";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { apiContext } from "@/lib/access";
@@ -51,5 +51,8 @@ export async function POST(request: Request) {
     success_url: `${appUrl}/app/${organisation.slug}/overview?trial=started`,
     cancel_url: `${appUrl}/trial/checkout?checkout=cancelled`,
   });
+  // Track provider-confirmed checkout creation, never browser-reported payment success.
+  // Analytics failure must not strand an owner after Stripe created their checkout.
+  await db.insert(auditEvents).values({ organisationId: organisation.id, actorUserId: context.internalUserId, action: "customer.checkout_started", resourceType: "customer_signup", resourceId: organisation.id, metadata: { source: "stripe_checkout" } }).catch(() => console.warn("Customer checkout measurement could not be recorded."));
   return ok({ url: session.url });
 }

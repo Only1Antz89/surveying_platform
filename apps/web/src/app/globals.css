@@ -963,3 +963,28 @@ fieldset.field legend { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
 .portal-admin-list li > span { display: grid; gap: 4px; min-width: 0; flex: 1; }
 .client-case-space .portal-entry { margin: 18px 0; width: fit-content; }
 .portal-invoice-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+
+/* Platform customer engagement: readable operational queues. */
+.lifecycle-stages { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; }
+.lifecycle-stages a { display:flex; flex-direction:column; gap:6px; padding:16px; border:1px solid var(--border); border-radius:8px; color:inherit; }
+.lifecycle-stages a[aria-current="page"] { outline:2px solid #3b82f6; outline-offset:2px; }
+.lifecycle-stages strong { font-size:28px; }
+.lifecycle-muted { color:var(--muted); font-size:13px; margin-top:6px; }
+.lifecycle-table td { vertical-align:top; }
+.lifecycle-table td:nth-child(4) { max-width:280px; }
+.lifecycle-table details { margin-top:8px; }
+.lifecycle-table summary, .lifecycle-task+details summary { cursor:pointer; }
+.lifecycle-table ul { padding-left:18px; margin-top:8px; }
+.lifecycle-table li { margin-bottom:6px; }
+.lifecycle-fieldset { border:0; padding:0; margin:0; min-width:0; }
+.lifecycle-task,.lifecycle-prospect { display:flex; justify-content:space-between; align-items:flex-start; gap:20px; padding:18px 0; border-bottom:1px solid var(--border); }
+.lifecycle-task p { white-space:pre-wrap; overflow-wrap:anywhere; }
+.lifecycle-task button,.lifecycle-prospect button { flex-shrink:0; }
+.lifecycle-pagination { display:flex; align-items:center; justify-content:flex-end; gap:16px; }
+.lifecycle-completion { border:1px solid var(--border); border-radius:8px; padding:20px; margin:20px 0; }
+@media(max-width:1000px) { .lifecycle-stages { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+@media(max-width:650px) { .lifecycle-stages { grid-template-columns:repeat(2,minmax(0,1fr)); } .lifecycle-task,.lifecycle-prospect { flex-direction:column; gap:12px; } .lifecycle-table td:nth-child(4) { max-width:none; } }
+
+.console-metrics.lifecycle-metrics { grid-template-columns:repeat(3,minmax(0,1fr)); }
+@media(min-width:1600px) { .lifecycle-stages,.console-metrics.lifecycle-metrics { grid-template-columns:repeat(6,minmax(0,1fr)); } }
+@media(max-width:650px) { .console-metrics.lifecycle-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } }
