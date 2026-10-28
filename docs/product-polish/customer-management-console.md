@@ -22,7 +22,7 @@ Invitation URLs use the server-controlled canonical application origin. Producti
 
 ## Validation
 
-- 658 web unit tests pass.
+- 659 web unit tests pass.
 - 15 targeted PostgreSQL/PostGIS integration tests pass, including existing timed-support persistence.
 - Coverage includes interrupted remote creation, manual/self onboarding, synchronous owner acceptance, staff acceptance/revocation/expiry, verified-account grants, customer edits, RLS, concurrent admin revocations, report totals, London DST boundaries, demo exclusion and CSV consistency.
 - Web TypeScript, full web lint and the production build are checked before release.

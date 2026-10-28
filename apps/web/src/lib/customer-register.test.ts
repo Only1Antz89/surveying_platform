@@ -18,6 +18,20 @@ describe("customer register and report boundaries", () => {
       sorted.map((t) => t.seats).sort((a, b) => b - a),
     );
   });
+  it("separates account state from subscription state so summary filters match their totals", () => {
+    expect(
+      filterCustomers(
+        tenants,
+        registerQuery(new URLSearchParams("status=active")),
+      ),
+    ).toHaveLength(tenants.filter((t) => t.subscription === "active").length);
+    expect(
+      filterCustomers(
+        tenants,
+        registerQuery(new URLSearchParams("account=suspended")),
+      ),
+    ).toHaveLength(tenants.filter((t) => t.status === "suspended").length);
+  });
   it("escapes spreadsheet formulas, commas, quotes and newlines", () => {
     expect(platformCsv([["=cmd", "a,b", 'a"b', "a\nb"]])).toBe(
       '"\'=cmd","a,b","a""b","a\nb"',

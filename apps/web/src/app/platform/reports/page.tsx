@@ -65,21 +65,33 @@ export default async function Page({
         ["Support sessions in period", report.supportSessions],
       ];
   const states = business
-    ? ["active", "trialing", "past_due", "unpaid", "incomplete", "canceled"]
+    ? [
+        "active",
+        "trialing",
+        "past_due",
+        "unpaid",
+        "incomplete",
+        "canceled",
+        "not_configured",
+      ]
     : ["provisioning", "active", "suspended", "closed"];
   const max = Math.max(
     1,
     ...states.map(
       (s) =>
-        customers.filter((c) => (business ? c.subscription : c.status) === s)
-          .length,
+        customers.filter(
+          (c) =>
+            (business ? (c.subscription ?? "not_configured") : c.status) === s,
+        ).length,
     ),
   );
   const exportParams = new URLSearchParams(params);
   exportParams.set("format", "csv");
   const attention = business
     ? customers.filter((c) =>
-        ["past_due", "unpaid", "incomplete"].includes(c.subscription ?? ""),
+        ["past_due", "unpaid", "incomplete", "not_configured"].includes(
+          c.subscription ?? "not_configured",
+        ),
       )
     : customers.filter(
         (c) => !c.steps || c.completed < c.steps || c.failures > 0,
@@ -199,7 +211,9 @@ export default async function Page({
         {stats.map(([label, value]) => (
           <div className="console-metric" key={label}>
             <span>{label}</span>
-            <strong>{report.preview ? "—" : Number(value).toLocaleString("en-GB")}</strong>
+            <strong>
+              {report.preview ? "—" : Number(value).toLocaleString("en-GB")}
+            </strong>
           </div>
         ))}
       </div>
@@ -214,7 +228,10 @@ export default async function Page({
           <div className="panel-body report-bars">
             {states.map((s) => {
               const count = customers.filter(
-                (c) => (business ? c.subscription : c.status) === s,
+                (c) =>
+                  (business
+                    ? (c.subscription ?? "not_configured")
+                    : c.status) === s,
               ).length;
               return (
                 <div className="report-bar" key={s}>

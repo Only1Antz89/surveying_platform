@@ -86,7 +86,7 @@ export function TenantDirectory({
       t.plan,
       t.status,
       t.subscription,
-      t.seats,
+      t.plan === "Pending" ? "" : t.seats,
       t.onboarding,
       t.lastActive,
     ]),
@@ -170,16 +170,14 @@ export function TenantDirectory({
           <button className="button button-secondary">Search</button>
           <select
             className="select"
-            aria-label="Account or billing status"
+            aria-label="Billing status"
             value={query.status}
             onChange={(e) => change("status", e.target.value)}
           >
-            <option value="">All statuses</option>
+            <option value="">All billing statuses</option>
             {[
               "active",
               "trialing",
-              "provisioning",
-              "suspended",
               "past_due",
               "unpaid",
               "incomplete",
@@ -187,6 +185,19 @@ export function TenantDirectory({
             ].map((s) => (
               <option key={s} value={s}>
                 {s.replaceAll("_", " ")}
+              </option>
+            ))}
+          </select>
+          <select
+            className="select"
+            aria-label="Account status"
+            value={query.account}
+            onChange={(e) => change("account", e.target.value)}
+          >
+            <option value="">All account statuses</option>
+            {["provisioning", "active", "suspended", "closed"].map((status) => (
+              <option key={status} value={status}>
+                {status}
               </option>
             ))}
           </select>
@@ -276,10 +287,14 @@ export function TenantDirectory({
                     <StatusDot
                       tone={t.subscription === "active" ? "blue" : "slate"}
                     >
-                      {t.subscription.replaceAll("_", " ")}
+                      {t.plan === "Pending"
+                        ? "Not configured"
+                        : t.subscription.replaceAll("_", " ")}
                     </StatusDot>
                   </td>
-                  <td data-label="Seats">{t.seats}</td>
+                  <td data-label="Seats">
+                    {t.plan === "Pending" ? "—" : t.seats}
+                  </td>
                   <td data-label="Onboarding">
                     <div className="progress">
                       <span style={{ width: `${t.onboarding}%` }} />

@@ -2,6 +2,7 @@ import type { Tenant } from "./demo-data";
 export type RegisterQuery = {
   q: string;
   status: string;
+  account: string;
   plan: string;
   demo: string;
   sort: string;
@@ -11,7 +12,18 @@ export type RegisterQuery = {
 export function registerQuery(params: URLSearchParams): RegisterQuery {
   return {
     q: (params.get("q") ?? "").slice(0, 160),
-    status: params.get("status") ?? "",
+    status: ["provisioning", "suspended", "closed"].includes(
+      params.get("status") ?? "",
+    )
+      ? ""
+      : (params.get("status") ?? ""),
+    account:
+      params.get("account") ??
+      (["provisioning", "suspended", "closed"].includes(
+        params.get("status") ?? "",
+      )
+        ? params.get("status")!
+        : ""),
     plan: params.get("plan") ?? "",
     demo: params.get("demo") ?? "",
     sort: [
@@ -36,9 +48,8 @@ export function filterCustomers(tenants: Tenant[], query: RegisterQuery) {
     .filter(
       (t) =>
         `${t.name} ${t.owner}`.toLowerCase().includes(query.q.toLowerCase()) &&
-        (!query.status ||
-          t.status === query.status ||
-          t.subscription === query.status) &&
+        (!query.status || t.subscription === query.status) &&
+        (!query.account || t.status === query.account) &&
         (!query.plan || t.plan === query.plan) &&
         (!query.demo || (query.demo === "demo" ? t.isDemo : !t.isDemo)),
     )
