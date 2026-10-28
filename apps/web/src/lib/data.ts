@@ -402,32 +402,16 @@ export async function loadTenants(): Promise<Tenant[]> {
   if (!process.env.DATABASE_ADMIN_URL || !isClerkConfigured()) return (await demoStore.snapshot()).tenants;
   await requirePlatformAccess();
   const db = createDatabase(process.env.DATABASE_ADMIN_URL);
-  const [rows, ownerRows, onboardingRows, activityRows] = await Promise.all([
-    db.select({ organisation: organisations, subscription: subscriptions }).from(organisations).leftJoin(subscriptions, eq(subscriptions.organisationId, organisations.id)).orderBy(desc(organisations.createdAt)),
-    db.select({ organisationId: organisationMemberships.organisationId, firstName: users.firstName, lastName: users.lastName, email: users.email }).from(organisationMemberships).innerJoin(users, eq(organisationMemberships.userId, users.id)).where(and(eq(organisationMemberships.role, "owner"), eq(organisationMemberships.active, true))),
-    db.select({ organisationId: onboardingSteps.organisationId, completedAt: onboardingSteps.completedAt }).from(onboardingSteps),
-    db.select({ organisationId: auditEvents.organisationId, occurredAt: auditEvents.occurredAt }).from(auditEvents).where(isNotNull(auditEvents.organisationId)).orderBy(desc(auditEvents.occurredAt)),
-  ]);
-  return rows.map(({ organisation, subscription }) => {
-    const owner = ownerRows.find((row) => row.organisationId === organisation.id);
-    const completed = onboardingRows.filter((row) => row.organisationId === organisation.id && row.completedAt).length;
-    const lastAudit = activityRows.find((row) => row.organisationId === organisation.id)?.occurredAt;
-    return {
-      id: organisation.id,
-      slug: organisation.slug,
-      isDemo: organisation.isDemo,
-      name: organisation.name,
-      owner: owner ? [owner.firstName, owner.lastName].filter(Boolean).join(" ") || owner.email : "No owner assigned",
-      plan: subscription?.planKey ?? "Pending",
-      status: organisation.status,
-      subscription: subscription?.status ?? "incomplete",
-      seats: subscription?.seats ?? 1,
-      trialEnds: subscription?.trialEndsAt?.toLocaleDateString("en-GB") ?? "—",
-      onboarding: Math.min(100, Math.round((completed / 4) * 100)),
-      usage: 0,
-      lastActive: (lastAudit ?? organisation.updatedAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/London" }),
-    };
-  });
+  const result=await db.execute(sql`
+    select o.id,o.slug,o.is_demo as "isDemo",o.name,o.status,
+      coalesce((select nullif(trim(concat_ws(' ',u.first_name,u.last_name)),'') from organisation_memberships m join users u on u.id=m.user_id where m.organisation_id=o.id and m.role='owner' and m.active order by m.created_at limit 1),
+      (select u.email from organisation_memberships m join users u on u.id=m.user_id where m.organisation_id=o.id and m.role='owner' and m.active order by m.created_at limit 1),'No owner assigned') as owner,
+      coalesce(s.plan_key,'Pending') as plan,coalesce(s.status::text,'incomplete') as subscription,coalesce(s.seats,1) as seats,s.trial_ends_at as "trialEndsAt",
+      (select count(*)::int from onboarding_steps where organisation_id=o.id) as steps,
+      (select count(*)::int from onboarding_steps where organisation_id=o.id and completed_at is not null) as completed,
+      (select max(occurred_at) from audit_events where organisation_id=o.id and actor_user_id is not null) as "lastActiveAt"
+    from organisations o left join subscriptions s on s.organisation_id=o.id order by o.created_at desc`);
+  return result.rows.map(row=>({id:String(row.id),slug:String(row.slug),isDemo:Boolean(row.isDemo),name:String(row.name),owner:String(row.owner),plan:String(row.plan),status:row.status as Tenant["status"],subscription:row.subscription as Tenant["subscription"],seats:Number(row.seats),trialEnds:row.trialEndsAt?new Date(String(row.trialEndsAt)).toLocaleDateString("en-GB",{timeZone:"Europe/London"}):"—",onboarding:Number(row.steps)?Math.round(Number(row.completed)/Number(row.steps)*100):0,usage:0,lastActiveAt:row.lastActiveAt?new Date(String(row.lastActiveAt)).toISOString():null,lastActive:row.lastActiveAt?new Date(String(row.lastActiveAt)).toLocaleString("en-GB",{dateStyle:"medium",timeStyle:"short",timeZone:"Europe/London"}):"No recorded user activity"}));
 }
 
 export async function loadTenantDetail(tenantId: string): Promise<PlatformTenantDetail | null> {
@@ -463,9 +447,9 @@ export async function loadTenantDetail(tenantId: string): Promise<PlatformTenant
     subscription: record.subscription?.status ?? "incomplete",
     seats: record.subscription?.seats ?? 1,
     trialEnds: record.subscription?.trialEndsAt?.toLocaleDateString("en-GB") ?? "—",
-    onboarding: Math.min(100, Math.round((completed / 4) * 100)),
+    onboarding: onboardingRows.length ? Math.round(completed / onboardingRows.length * 100) : 0,
     usage: jobRows.length,
-    lastActive: (auditRows[0]?.occurredAt ?? record.organisation.updatedAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/London" }),
+    lastActive: auditRows.find(row=>row.actorUserId)?.occurredAt.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/London" }) ?? "No recent recorded user activity",
   };
   return {
     tenant,

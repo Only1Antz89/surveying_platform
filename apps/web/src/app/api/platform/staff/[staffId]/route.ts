@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { and, count, eq, ne } from "drizzle-orm";
+import { and, count, eq, ne, sql } from "drizzle-orm";
 import { auditEvents, createDatabase, platformStaff, users } from "@surveynt/db";
 import { platformRoles } from "@surveynt/domain";
 import { platformApiContext } from "@/lib/access";
@@ -20,6 +20,9 @@ export async function PATCH(request: Request, route: RouteContext<"/api/platform
   if (operator.demo) return ok({ id: staffId, ...parsed.data }, { demo: true, persisted: false });
   const db = createDatabase(process.env.DATABASE_ADMIN_URL);
   const result = await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended('platform-staff-access',0))`);
+    const [acting] = await tx.select().from(platformStaff).where(eq(platformStaff.id, operator.platformStaffId));
+    if (!acting?.active || acting.role !== "super_admin") return { kind: "access_changed" as const };
     const [current] = await tx.select({ staff: platformStaff, email: users.email }).from(platformStaff).leftJoin(users, eq(users.clerkUserId, platformStaff.clerkUserId)).where(eq(platformStaff.id, staffId)).limit(1);
     if (!current) return { kind: "missing" as const };
     const removesSuperAdmin = current.staff.role === "super_admin" && (parsed.data.active === false || (parsed.data.role && parsed.data.role !== "super_admin"));
@@ -32,6 +35,7 @@ export async function PATCH(request: Request, route: RouteContext<"/api/platform
     await tx.insert(auditEvents).values({ platformStaffId: operator.platformStaffId, action: parsed.data.active === false ? "platform_staff.revoked" : parsed.data.active === true && !current.staff.active ? "platform_staff.reactivated" : "platform_staff.role_changed", resourceType: "platform_staff", resourceId: staffId, metadata: { email: current.email, previousRole: current.staff.role, role: updated.role, previousActive: current.staff.active, active: updated.active } });
     return { kind: "updated" as const, staff: updated };
   });
+  if (result.kind === "access_changed") return problem(403,"access_changed","Your platform access changed. Refresh before continuing.");
   if (result.kind === "missing") return problem(404, "staff_not_found", "The platform operator could not be found.");
   if (result.kind === "self") return problem(400, "self_lockout", "You cannot remove or reduce your own super-administrator access.");
   if (result.kind === "final_super_admin") return problem(400, "final_super_admin", "At least one active super administrator must remain.");

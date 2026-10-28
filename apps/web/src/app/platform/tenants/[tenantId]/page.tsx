@@ -1,37 +1,289 @@
-import {ConnectionsPanel} from "@/components/connections-panel";
-import { notFound } from "next/navigation";
-import { ArrowLeft, Building2, ShieldCheck } from "lucide-react";
 import Link from "next/link";
-import { canManageTenants, roleLabels } from "@surveynt/domain";
-import { StatusDot } from "@surveynt/ui";
-import { PageHeader } from "@/components/page-header";
-import { TenantControls } from "@/components/tenant-controls";
-import { isClerkConfigured, requirePlatformAccess } from "@/lib/access";
+import { notFound } from "next/navigation";
+import { requirePlatformAccess, isClerkConfigured } from "@/lib/access";
 import { loadTenantDetail } from "@/lib/data";
-
+import { TenantControls } from "@/components/tenant-controls";
+import { CustomerAccountForm } from "@/components/customer-account-form";
+import { ConnectionsPanel } from "@/components/connections-panel";
+import { roleLabels } from "@surveynt/domain";
+const date = (v: string | null) =>
+  v
+    ? new Date(v).toLocaleString("en-GB", {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone: "Europe/London",
+      })
+    : "—";
 export const metadata = { title: "Customer account" };
-
-const date = (value: string | null) => value ? new Date(value).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/London" }) : "—";
-
-export default async function TenantPage({ params }: { params: Promise<{ tenantId: string }> }) {
+export const dynamic = "force-dynamic";
+export default async function Page({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ tenantId: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
+}) {
   const { tenantId } = await params;
-  const [detail, operator] = await Promise.all([loadTenantDetail(tenantId), requirePlatformAccess()]);
+  const operator = await requirePlatformAccess(),
+    detail = await loadTenantDetail(tenantId);
   if (!detail) notFound();
   const { tenant } = detail;
-  return <main className="page">
-    <Link className="panel-link" href="/platform/tenants"><ArrowLeft size={13} style={{ verticalAlign: "middle", marginRight: 6 }} />All customer accounts</Link>
-    <PageHeader eyebrow={tenant.id} title={tenant.name} description={`${tenant.owner} · ${detail.region} · Created ${detail.createdAt}`} actions={<StatusDot tone={tenant.status === "active" ? "green" : tenant.status === "suspended" ? "red" : "amber"}>{tenant.status}</StatusDot>} />
-    {!isClerkConfigured() && tenant.slug ? <p><Link className="button button-secondary" href={`/app/${tenant.slug}/clients`}>Open local demo client workspace</Link></p> : null}
-    <div className="dashboard-grid"><div className="stack">
-      <section className="panel"><div className="panel-header"><div><h2>Account controls</h2><p>High-impact actions require a reason and are permanently audited.</p></div><ShieldCheck size={17} color="#3b82f6" /></div><div className="panel-body"><TenantControls tenantId={tenant.id} initialStatus={tenant.status} canManage={canManageTenants(operator.role)} canSupport={operator.role === "super_admin" || operator.role === "support"} canBreakGlass={operator.role === "super_admin"} /></div></section>
-      <section className="panel"><div className="panel-header"><div><h2>Members</h2><p>{detail.members.filter((member) => member.active).length} active members · {detail.invitations.length} pending invitations</p></div></div>{detail.members.length ? <div className="data-table-wrap"><table className="data-table"><thead><tr><th>Name</th><th>Role</th><th>Status</th></tr></thead><tbody>{detail.members.map((member) => <tr key={member.id}><td data-label="Name"><strong>{member.name}</strong><span className="cell-sub">{member.email}</span></td><td data-label="Role">{roleLabels[member.role]}</td><td data-label="Status"><StatusDot tone={member.active ? "green" : "slate"}>{member.active ? "Active" : "Inactive"}</StatusDot></td></tr>)}</tbody></table></div> : <div className="empty-state compact"><strong>No members</strong><span>This tenant has no synchronised organisation members.</span></div>}</section>
-      {detail.invitations.length ? <section className="panel"><div className="panel-header"><div><h2>Pending invitations</h2><p>Invitations waiting for customer acceptance</p></div></div><div className="data-table-wrap"><table className="data-table"><thead><tr><th>Email</th><th>Role</th><th>Expires</th></tr></thead><tbody>{detail.invitations.map((invitation) => <tr key={invitation.id}><td data-label="Email">{invitation.email}</td><td data-label="Role">{roleLabels[invitation.role]}</td><td data-label="Expires">{date(invitation.expiresAt)}</td></tr>)}</tbody></table></div></section> : null}
-      <section className="panel"><div className="panel-header"><div><h2>Recent audit events</h2><p>Latest immutable activity for this tenant</p></div></div>{detail.audit.length ? <div className="panel-body"><ul className="activity-list">{detail.audit.map((event) => <li className="activity-item" key={event.id}><strong>{event.action.replaceAll("_", " ")}</strong><span>{event.resourceType.replaceAll("_", " ")} · {event.actor}</span><time>{date(event.occurredAt)}</time></li>)}</ul></div> : <div className="empty-state compact"><strong>No audit events</strong><span>Audited tenant activity will appear here.</span></div>}</section>
-    </div><aside className="stack">
-      <section className="panel"><div className="panel-header"><div><h2>Organisation</h2><p>Tenant identity and branding</p></div><Building2 size={17} color="#3b82f6" /></div><dl className="detail-grid"><div className="detail"><dt>Trading name</dt><dd>{detail.branding.tradingName}</dd></div><div className="detail"><dt>Practice type</dt><dd>{detail.practiceType}</dd></div><div className="detail"><dt>Region</dt><dd>{detail.region}</dd></div><div className="detail"><dt>Support email</dt><dd>{detail.branding.supportEmail || "—"}</dd></div><div className="detail"><dt>Accent colour</dt><dd>{detail.branding.accentColour}</dd></div><div className="detail"><dt>Last activity</dt><dd>{tenant.lastActive}</dd></div></dl></section>
-      <section className="panel"><div className="panel-header"><h2>Subscription</h2></div><dl className="detail-grid"><div className="detail"><dt>Status</dt><dd>{detail.subscription?.status ?? "Not configured"}</dd></div><div className="detail"><dt>Plan</dt><dd>{detail.subscription?.planKey ?? "—"}</dd></div><div className="detail"><dt>Seats</dt><dd>{detail.subscription?.seats ?? "—"}</dd></div><div className="detail"><dt>Trial ends</dt><dd>{date(detail.subscription?.trialEndsAt ?? null)}</dd></div><div className="detail"><dt>Period ends</dt><dd>{date(detail.subscription?.currentPeriodEndsAt ?? null)}</dd></div><div className="detail"><dt>Grace ends</dt><dd>{date(detail.subscription?.graceEndsAt ?? null)}</dd></div></dl></section>
-      <section className="panel"><div className="panel-header"><h2>Usage snapshot</h2></div><dl className="detail-grid"><div className="detail"><dt>Clients</dt><dd>{detail.usage.clients}</dd></div><div className="detail"><dt>Properties</dt><dd>{detail.usage.properties}</dd></div><div className="detail"><dt>Jobs</dt><dd>{detail.usage.jobs}</dd></div><div className="detail"><dt>Active jobs</dt><dd>{detail.usage.activeJobs}</dd></div></dl></section>
-      <section className="panel"><div className="panel-header"><h2>Onboarding</h2></div>{detail.onboarding.length ? <div className="panel-body"><ul className="activity-list">{detail.onboarding.map((step) => <li className="activity-item" key={step.key}><strong>{step.key.replaceAll("_", " ")}</strong><time>{step.completedAt ? `Completed ${date(step.completedAt)}` : "Incomplete"}</time></li>)}</ul></div> : <div className="empty-state compact"><strong>No onboarding steps</strong><span>This tenant has not recorded onboarding progress.</span></div>}</section>
-    </aside></div>
-  {operator.role==="super_admin"?<ConnectionsPanel scope="tenant" tenantId={tenantId}/>:null}</main>;
+  const tab = (await searchParams).tab ?? "overview";
+  const manage = operator.role === "super_admin",
+    financial = manage || operator.role === "billing";
+  const tabs = [
+    ["overview", "Overview"],
+    ["account", "Account details"],
+    ["members", "Members"],
+    ...(financial ? [["billing", "Billing & usage"]] : []),
+    ["activity", "Activity"],
+  ];
+  if (!tabs.some(([key]) => key === tab)) notFound();
+  return (
+    <main className="page platform-console">
+      <Link className="panel-link" href="/platform/tenants">
+        Back to customers
+      </Link>
+      <header className="console-heading">
+        <div>
+          <h1>{tenant.name}</h1>
+          <p>
+            {detail.region} · {tenant.status}
+            {tenant.isDemo ? " · Demo account" : ""}
+          </p>
+        </div>
+        <span>{tenant.owner}</span>
+      </header>
+      <nav className="console-tabs" aria-label="Customer account sections">
+        {tabs.map(([key, label]) => (
+          <Link
+            key={key}
+            href={`?tab=${key}`}
+            aria-current={tab === key ? "page" : undefined}
+          >
+            {label}
+          </Link>
+        ))}
+      </nav>
+      {tab === "overview" ? (
+        <>
+          <div className="console-metrics">
+            {[
+              ["Onboarding", `${tenant.onboarding}%`],
+              ["Active members", detail.members.filter((m) => m.active).length],
+              ["Clients", detail.usage.clients],
+              ["Jobs", detail.usage.jobs],
+              ["Active jobs", detail.usage.activeJobs],
+            ].map(([label, value]) => (
+              <div className="console-metric" key={label}>
+                <span>{label}</span>
+                <strong>{value}</strong>
+              </div>
+            ))}
+          </div>
+          <div className="console-report-grid">
+            <section className="panel">
+              <div className="panel-header">
+                <div>
+                  <h2>Account controls</h2>
+                  <p>Access changes and support sessions are audited.</p>
+                </div>
+              </div>
+              <div className="panel-body">
+                <TenantControls
+                  tenantId={tenant.id}
+                  initialStatus={tenant.status}
+                  canManage={manage}
+                  canSupport={manage || operator.role === "support"}
+                  canBreakGlass={manage}
+                />
+              </div>
+            </section>
+            <section className="panel">
+              <div className="panel-header">
+                <h2>Onboarding progress</h2>
+              </div>
+              <div className="panel-body">
+                {detail.onboarding.length ? (
+                  detail.onboarding.map((s) => (
+                    <p key={s.key}>
+                      {s.key.replaceAll("_", " ")} ·{" "}
+                      {s.completedAt
+                        ? `Completed ${date(s.completedAt)}`
+                        : "Incomplete"}
+                    </p>
+                  ))
+                ) : (
+                  <p>No onboarding steps recorded.</p>
+                )}
+                <p>Last user activity: {tenant.lastActive}</p>
+                <Link
+                  href={`/platform/reports?customer=${isClerkConfigured() ? tenant.id : ""}&view=${financial ? "business" : "operations"}`}
+                >
+                  View customer reporting
+                </Link>
+              </div>
+            </section>
+          </div>
+          {manage ? (
+            <ConnectionsPanel scope="tenant" tenantId={tenant.id} />
+          ) : null}
+          {!isClerkConfigured() && tenant.slug ? (
+            <p>
+              <Link href={`/app/${tenant.slug}/clients`}>
+                Open local demo workspace
+              </Link>
+            </p>
+          ) : null}
+        </>
+      ) : null}
+      {tab === "account" ? (
+        <CustomerAccountForm
+          disabled={!manage || !isClerkConfigured()}
+          account={{
+            id: tenant.id,
+            name: tenant.name,
+            tradingName: detail.branding.tradingName,
+            region: detail.region,
+            practiceType: detail.practiceType,
+            supportEmail: detail.branding.supportEmail ?? "",
+          }}
+        />
+      ) : null}
+      {tab === "members" ? (
+        <>
+          <p className="console-notice">
+            Customer members are shown for account administration. Customers
+            manage their own team; internal Surveynt access is managed under
+            Platform users.
+          </p>
+          <section className="panel">
+            <div className="panel-header">
+              <h2>Members · {detail.members.length}</h2>
+            </div>
+            <div className="data-table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {detail.members.map((m) => (
+                    <tr key={m.id}>
+                      <td>{m.name}</td>
+                      <td>{m.email}</td>
+                      <td>{roleLabels[m.role]}</td>
+                      <td>{m.active ? "Active" : "Inactive"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {!detail.members.length ? (
+              <p className="panel-body">No synchronised members.</p>
+            ) : null}
+          </section>
+          <section className="panel" style={{ marginTop: 24 }}>
+            <div className="panel-header">
+              <h2>Pending owner and team invitations</h2>
+            </div>
+            <div className="data-table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Expires</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {detail.invitations.map((i) => (
+                    <tr key={i.id}>
+                      <td>{i.email}</td>
+                      <td>{roleLabels[i.role]}</td>
+                      <td>{date(i.expiresAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {!detail.invitations.length ? (
+              <p className="panel-body">No pending invitations.</p>
+            ) : null}
+          </section>
+        </>
+      ) : null}
+      {tab === "billing" ? (
+        <div className="console-report-grid">
+          <section className="panel">
+            <div className="panel-header">
+              <h2>Subscription · current</h2>
+            </div>
+            <dl className="detail-grid">
+              {[
+                ["Status", detail.subscription?.status ?? "Not configured"],
+                ["Plan", detail.subscription?.planKey ?? "—"],
+                ["Seats", detail.subscription?.seats ?? "—"],
+                ["Trial ends", date(detail.subscription?.trialEndsAt ?? null)],
+                [
+                  "Period ends",
+                  date(detail.subscription?.currentPeriodEndsAt ?? null),
+                ],
+                ["Grace ends", date(detail.subscription?.graceEndsAt ?? null)],
+              ].map(([label, value]) => (
+                <div className="detail" key={label}>
+                  <dt>{label}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+            </dl>
+            <div className="panel-body">
+              <Link href="/platform/billing">Open billing operations</Link>
+            </div>
+          </section>
+          <section className="panel">
+            <div className="panel-header">
+              <h2>Usage · current</h2>
+            </div>
+            <dl className="detail-grid">
+              {Object.entries(detail.usage).map(([key, value]) => (
+                <div className="detail" key={key}>
+                  <dt>{key.replace("activeJobs", "Active jobs")}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        </div>
+      ) : null}
+      {tab === "activity" ? (
+        <section className="panel">
+          <div className="panel-header">
+            <h2>Recent audited activity</h2>
+          </div>
+          <div className="panel-body">
+            {detail.audit.length ? (
+              <ul className="activity-list">
+                {detail.audit.map((e) => (
+                  <li className="activity-item" key={e.id}>
+                    <strong>{e.action.replaceAll("_", " ")}</strong>
+                    <span>
+                      {e.resourceType} · {e.actor}
+                    </span>
+                    <time>{date(e.occurredAt)}</time>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No recorded audit events.</p>
+            )}
+          </div>
+        </section>
+      ) : null}
+    </main>
+  );
 }

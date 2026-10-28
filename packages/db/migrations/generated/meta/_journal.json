@@ -603,6 +603,13 @@
       "when": 1792597680473,
       "tag": "0085_message_workflow_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1793193059555,
+      "tag": "0086_platform_customer_console",
+      "breakpoints": true
     }
   ]
 }
